@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tasty Tuesday | Meet Portal</title>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;600&family=Cinzel:wght@600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #030305;
+            --surface: rgba(14, 14, 20, 0.75);
+            --border: rgba(255, 255, 255, 0.08);
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent: #a855f7;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text-main);
+            font-family: 'Space Grotesk', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        /* Ambient background glow */
+        body::after {
+            content: '';
+            position: absolute;
+            width: 400px;
+            height: 400px;
+            background: radial-gradient(circle, rgba(168, 85, 247, 0.12) 0%, transparent 70%);
+            top: 10%;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        .wrapper {
+            width: 100%;
+            max-width: 420px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .header-card {
+            text-align: center;
+            padding: 20px 0;
+        }
+
+        .header-card h1 {
+            font-family: 'Cinzel', serif;
+            font-size: 1.8rem;
+            letter-spacing: 3px;
+            color: #ffffff;
+            margin-bottom: 6px;
+            text-shadow: 0 0 15px rgba(255, 255, 255, 0.25);
+        }
+
+        .header-card p {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 4px;
+            color: var(--text-muted);
+        }
+
+        .card {
+            background: var(--surface);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 24px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+        }
+
+        .detail-row {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .detail-row span.label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: var(--text-muted);
+        }
+
+        .detail-row span.value {
+            font-size: 1.05rem;
+            font-weight: 600;
+            color: var(--text-main);
+            line-height: 1.4;
+        }
+
+        .divider {
+            height: 1px;
+            background: var(--border);
+            width: 100%;
+        }
+
+        .btn-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .action-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            width: 100%;
+            padding: 14px;
+            border-radius: 12px;
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 600;
+            font-size: 0.95rem;
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.25s ease;
+        }
+
+        .btn-satellite {
+            background: #ffffff;
+            color: #000000;
+            border: none;
+            box-shadow: 0 4px 15px rgba(255, 255, 255, 0.15);
+        }
+
+        .btn-satellite:hover {
+            background: #e2e8f0;
+            transform: translateY(-1px);
+        }
+
+        .btn-map {
+            background: rgba(255, 255, 255, 0.04);
+            color: #ffffff;
+            border: 1px solid var(--border);
+        }
+
+        .btn-map:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        .notice {
+            background: rgba(168, 85, 247, 0.05);
+            border: 1px solid rgba(168, 85, 247, 0.15);
+            border-radius: 14px;
+            padding: 14px 18px;
+            font-size: 0.85rem;
+            color: #d8b4fe;
+            line-height: 1.4;
+        }
+
+        .footer {
+            text-align: center;
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-top: 8px;
+            letter-spacing: 1px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="wrapper">
+        <!-- Title Header -->
+        <div class="header-card">
+            <h1>TASTY TUESDAY</h1>
+            <p>Live Event Hub</p>
+        </div>
+
+        <!-- Main Info Container -->
+        <div class="card">
+            <div class="detail-row">
+                <span class="label">Schedule</span>
+                <span class="value">Tuesdays | 7:00 PM – 10:00 PM[span_0](start_span)[span_0](end_span)</span>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="detail-row">
+                <span class="label">Location</span>
+                <span class="value">9184 W Northern Ave #105<br>Glendale, AZ 85305[span_1](start_span)[span_1](end_span)</span>
+            </div>
+
+            <div class="divider"></div>
+
+            <!-- Action Triggers -->
+            <div class="btn-group">
+                <!-- Direct Satellite View Link -->
+                <a href="https://www.google.com/maps/search/?api=1&query=9184+W+Northern+Ave+%23105,+Glendale,+AZ+85305&basemap=satellite" 
+                   target="_blank" 
+                   class="action-btn btn-satellite">
+                   🛰️ Open Satellite View
+                </a>
+
+                <!-- Standard Maps Link -->
+                <a href="https://maps.apple.com/?q=9184+W+Northern+Ave+%23105,+Glendale,+AZ+85305" 
+                   target="_blank" 
+                   class="action-btn btn-map">
+                   📍 Standard Map Directions
+                </a>
+            </div>
+        </div>
+
+        <!-- Rules / Vibe Check -->
+        <div class="notice">
+            ⚠️ <strong>Community Rules:</strong> No burnouts, no revving, and respect the lot. Keep it clean so we keep the spot.
+        </div>
+
+        <div class="footer">
+            COMMUNITY SYSTEM PROTOCOL
+        </div>
+    </div>
+
+</body>
+</html>
+
