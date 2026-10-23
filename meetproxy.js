@@ -13,7 +13,27 @@ const on = () => String(process.env.MEET_PARTNER_KEY || '').length >= 24;
 
 // Headers never passed on: the customer can't set the proxy ones, and this site's own sign-in stays here.
 const DROP = new Set(['host', 'connection', 'keep-alive', 'proxy-connection', 'transfer-encoding', 'upgrade', 'te', 'trailer',
-  'x-meet-proxy', 'x-meet-origin', 'x-meet-client-ip', 'x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto', 'x-real-ip']);
+  'x-meet-proxy', 'x-meet-origin', 'x-meet-client-ip', 'x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto', 'x-real-ip',
+  'x-meet-bg-video', 'x-meet-bg-poster', 'x-meet-back']);
+
+/* A truck's menu page plays that vendor's own clip when their profile has one (and on their own address, its back
+   link goes to their profile). Only the page itself asks: /meet/<ref>/<slug>/ and its order tracker. */
+const PAGE_RE = /^\/meet\/([A-Za-z0-9_-]{4,40})\/([a-z0-9-]{1,40})\/(?:o\/[A-Za-z0-9]{8,64})?(?:\?.*)?$/;
+async function vendorLook(req) {
+  const m = req.method === 'GET' && PAGE_RE.exec(req.originalUrl);
+  if (!m) return null;
+  try {
+    const D = require('./db');
+    const k = await D.get(`SELECT k.video, k.video_poster, k.video_status, k.page_slug, k.page_on FROM kit_logos k JOIN meets mt ON mt.host_id = k.host_id
+      WHERE mt.ref = ? AND k.truck_slug = ? AND k.kind IN ('vendor', 'sponsor') LIMIT 1`, [m[1], m[2]]);
+    if (!k) return null;
+    const out = {};
+    if (k.video && k.video_status === 'ready') { out.video = '/uploads/' + k.video; out.poster = '/uploads/' + k.video_poster; }
+    // On the vendor's own address, "back" is their profile.
+    if (req.vendorSub && k.page_on && k.page_slug === req.vendorSub) out.back = '/';
+    return Object.keys(out).length ? out : null;
+  } catch (e) { return null; }
+}
 const OWN_COOKIES = /^(mh_session|mn_[a-z_]*)$/;
 
 function cookiesFor(h) {
@@ -22,8 +42,11 @@ function cookiesFor(h) {
 }
 
 function middleware(scheme) {
-  return (req, res, next) => {
+  return async (req, res, next) => {
     if (!on()) return next();
+    // Which vendor address this is, if any (the site's own check runs after this proxy).
+    req.vendorSub = req.vendorSub || require('./util').subOf(req.hostname);
+    const look = await vendorLook(req);
     const t = target();
     const headers = {};
     for (const [k, v] of Object.entries(req.headers)) if (!DROP.has(k)) headers[k] = v;
@@ -33,6 +56,8 @@ function middleware(scheme) {
     headers['x-meet-proxy'] = secret();
     headers['x-meet-origin'] = `${scheme}://${req.get('host')}`;
     headers['x-meet-client-ip'] = req.ip || '';
+    if (look && look.video) { headers['x-meet-bg-video'] = look.video; headers['x-meet-bg-poster'] = look.poster; }
+    if (look && look.back) headers['x-meet-back'] = look.back;
     const lib = t.protocol === 'https:' ? https : http;
     const up = lib.request({ protocol: t.protocol, hostname: t.hostname, port: t.port || (t.protocol === 'https:' ? 443 : 80),
       method: req.method, path: req.originalUrl, headers, agent: false }, (r) => {
@@ -51,4 +76,4 @@ function middleware(scheme) {
   };
 }
 
-module.exports = { middleware, secret, on, cookiesFor };
+module.exports = { middleware, secret, on, cookiesFor, PAGE_RE };

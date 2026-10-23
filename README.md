@@ -56,6 +56,21 @@ npm test
 A second verified domain in the same Resend account, with its own send-only key for that domain. Set
 `RESEND_API_KEY` and `MAIL_FROM` (an address on this domain). Emails go out "from" the host's name.
 
+## Food vendor profiles
+
+Settings › Food vendors › Edit › **Edit profile page**: their clip (any phone clip becomes the loop behind their profile
+and their menu), what they sell, known for, serving since, an about in their words, up to 12 food photos, up to 12 past
+logos with the year, and up to 8 spots they park at. "At 6 meets" counts itself. A page is **off** until you turn it on
+(ask the truck first); while it's off, only you see it, as a preview. The Food logos on a meet page open a vendor's
+profile once it's on. Its Order button opens their menu when they're at one of your next meets taking pre-orders, and
+says "Not serving tonight" otherwise.
+
+Addresses: `/v/<name>` on the site. With `VENDOR_SUBDOMAINS=1` each one gets its own, `<name>.azmonarchy.com`, and
+`/v/<name>` moves there. Renaming keeps the old address working (it redirects).
+
+Clips are saved on the phone the first time they play (`public/sw.js`) and play from there after: no second download,
+and it works with no signal. The truck's menu is on the same address, so its clip comes from that copy too.
+
 ## Domain and server (Caddy)
 
 ```
@@ -64,7 +79,32 @@ meetnight.example, www.meetnight.example {
 }
 ```
 
-A host's own domain gets its own block pointing at the same port (or Caddy's on-demand TLS). Then turn it on:
+For vendor subdomains (and hosts' own domains without editing Caddy each time), use on-demand certificates. Caddy asks
+this site before getting one, and it only says yes for the site, a host's own domain, or a vendor page that exists:
+
+```
+{
+  on_demand_tls {
+    ask http://127.0.0.1:4100/caddy/ask
+  }
+}
+
+azmonarchy.com, www.azmonarchy.com {
+  reverse_proxy 127.0.0.1:4100
+}
+
+https:// {
+  tls {
+    on_demand
+  }
+  reverse_proxy 127.0.0.1:4100
+}
+```
+
+DNS: one wildcard record at Porkbun, `*.azmonarchy.com` → the server's IP (an A record, plus AAAA if it has IPv6). Then
+`VENDOR_SUBDOMAINS=1` in `.env` and restart. A vendor's first visit takes a few seconds while its certificate is made.
+
+A host's own domain gets its own block pointing at the same port (or the on-demand block above). Then turn it on:
 
 ```
 curl -X POST https://<this domain>/api/host/admin/domain \

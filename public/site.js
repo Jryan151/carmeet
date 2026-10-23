@@ -8,8 +8,13 @@
   }
 
   // Data saver on: keep the still frame, skip the background video.
-  var bgv = document.querySelector('.hero-bg video');
-  if (bgv && navigator.connection && navigator.connection.saveData) { bgv.removeAttribute('autoplay'); bgv.pause(); bgv.remove(); }
+  var bgv = document.querySelector('.page-bg video');
+  if (bgv && navigator.connection && navigator.connection.saveData) { bgv.removeAttribute('autoplay'); bgv.pause(); bgv.remove(); bgv = null; }
+  // Each clip is saved on the phone the first time it plays (sw.js), so it never downloads twice. The truck's menu is on
+  // the same address, so its clip comes from the saved copy too.
+  if (bgv && 'serviceWorker' in navigator && location.protocol === 'https:') {
+    navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(function () {});
+  }
 
   // "Starts in 2 days 4 hrs" / "Happening now" / "Starts in 35 min".
   var cd = document.querySelector('[data-countdown]');
