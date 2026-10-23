@@ -5,6 +5,14 @@
   var $ = function (id) { return document.getElementById(id); };
   var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
   var me = null, tab = 'next', openMeet = null, invite = null;
+  // A logo picture that won't load (its file is gone from the server): say so instead of a broken-picture icon.
+  document.addEventListener('error', function (e) {
+    var img = e.target;
+    if (!img || img.tagName !== 'IMG' || !img.closest('.art') || img.hasAttribute('data-gone')) return;
+    img.setAttribute('data-gone', '');
+    var tip = document.createElement('span'); tip.className = 'gone small dim'; tip.textContent = 'Picture missing. Upload it again.';
+    img.style.display = 'none'; img.parentNode.appendChild(tip);
+  }, true);
   var ACCENTS = ['#c9adff', '#f2a33a', '#e8e4d8', '#5fb3d9', '#e0574f', '#7cc47f', '#c792ea'];
 
   function api(method, url, body, raw) {
@@ -34,6 +42,19 @@
       $('fEmail').hidden = true; $('fCode').hidden = false; $('newHost').hidden = r.d.known;
       say($('signMsg'), 'We sent a code to ' + $('email').value.trim() + '.' + (r.d.devCode ? ' (Test code: ' + r.d.devCode + ')' : ''), true);
       $('code').focus();
+    });
+  });
+  // A password, when the site has one set up for a host's workspace: asked first, email below.
+  api('GET', '/sign-in-options').then(function (r) {
+    if (!r.ok || !r.d.password) return;
+    $('fPass').hidden = false; $('fEmail').hidden = true;
+  });
+  $('useEmail').addEventListener('click', function () { $('fPass').hidden = true; $('fEmail').hidden = false; say($('signMsg'), ''); });
+  $('fPass').addEventListener('submit', function (e) {
+    e.preventDefault();
+    api('POST', '/password', { password: $('pass').value }).then(function (r) {
+      if (!r.ok) return say($('signMsg'), r.d.error);
+      $('pass').value = ''; say($('signMsg'), ''); boot();
     });
   });
   $('again').addEventListener('click', function () { $('fCode').hidden = true; $('fEmail').hidden = false; say($('signMsg'), ''); });
@@ -128,7 +149,8 @@
     var box = $('lotBox'); if (!box || !window.LotEditor) return;
     api('GET', '/kit').then(function (r) {
       var clubs = r.ok ? (r.d.logos || []).filter(function (l) { return l.kind === 'group'; }).map(function (l) { return l.name; }) : [];
-      if ($('lotBox') === box) LotEditor.mount(box, { api: api, me: me, meet: m, clubs: clubs });
+      var places = r.ok ? (r.d.logos || []).filter(function (l) { return l.kind === 'venue'; }) : [];
+      if ($('lotBox') === box) LotEditor.mount(box, { api: api, me: me, meet: m, clubs: clubs, venues: places });
     });
   }
 
@@ -166,7 +188,7 @@
         var list = logos.filter(function (l) { return l.kind === k; });
         if (!list.length) return;
         html += '<h3 style="margin:22px 0 10px">' + KIND_NAMES[k] + ' (' + list.length + ')</h3><div class="kit">' + list.map(function (l) {
-          return '<figure data-kit-id="' + l.id + '"><div class="art"><img src="' + esc(l.url) + '" alt="' + esc(l.name) + '" loading="lazy"></div><figcaption>' + esc(l.name) + '</figcaption>' +
+          return '<figure data-kit-id="' + l.id + '"><div class="art"><img src="' + esc(l.thumb || l.url) + '" alt="' + esc(l.name) + '" loading="lazy" decoding="async"></div><figcaption>' + esc(l.name) + '</figcaption>' +
             '<div class="bar"><button class="btn sm go" data-kit-copy="' + esc(l.url) + '">Copy</button><a class="btn sm" href="' + esc(l.url) + '" download="' + esc(l.name.replace(/[^A-Za-z0-9 _-]/g, '')) + '.png">Save</a></div>' +
             '<button class="link small" data-kit-edit="' + l.id + '">Edit</button></figure>';
         }).join('') + '</div>';
@@ -208,7 +230,7 @@
     var ONE = { vendor: 'Food vendor', group: 'Club', sponsor: 'Vendor (not food)', title: 'Meet title' };
     var opts = ['vendor', 'group', 'sponsor', 'title'].map(function (k) { return '<option value="' + k + '"' + (l.kind === k ? ' selected' : '') + '>' + ONE[k] + '</option>'; }).join('');
     fig.classList.add('editing');
-    fig.innerHTML = '<div class="art"><img src="' + esc(l.url) + '" alt=""></div>' +
+    fig.innerHTML = '<div class="art"><img src="' + esc(l.thumb || l.url) + '" alt=""></div>' +
       '<label>Name<input data-e="name" maxlength="60" value="' + esc(l.name) + '"></label>' +
       '<label>Type<select data-e="kind">' + opts + '</select></label>' +
       '<label>New picture (optional)<input data-e="file" type="file" accept="image/png,image/jpeg"></label>' +
@@ -241,7 +263,7 @@
       var trucks = ((r[2].ok && r[2].d.trucks) || []).filter(function (v) { return v.status === 'in' && v.slug; });
       var tiles = function (list, none) {
         return list.length ? '<div class="vpick">' + list.map(function (l) {
-          return '<button type="button" data-kv="' + l.id + '" aria-pressed="' + (on.indexOf(l.id) >= 0) + '"><span class="art"><img src="' + esc(l.url) + '" alt=""></span><span>' + esc(l.name) + '</span></button>';
+          return '<button type="button" data-kv="' + l.id + '" aria-pressed="' + (on.indexOf(l.id) >= 0) + '"><span class="art"><img src="' + esc(l.thumb || l.url) + '" alt="" loading="lazy" decoding="async"></span><span>' + esc(l.name) + '</span></button>';
         }).join('') + '</div>' : '<p class="small dim">' + none + '</p>';
       };
       var food = logos.filter(function (l) { return l.kind === 'vendor'; });
@@ -295,7 +317,7 @@
           '<div class="bar"><button class="btn go sm" data-copy-invite>Copy message</button><a class="btn sm" href="sms:?&body=' + encodeURIComponent(invite.text) + '">Text it</a><button class="btn sm" data-close-invite>Done</button></div></div>';
       }
       if (vendors && vendors.length) html += '<p class="small dim" style="margin:14px 0 6px">Send a truck its link (from your Food vendors):</p><div class="vpick">' +
-        vendors.map(function (k) { return '<button type="button" data-send-kit="' + k.id + '"><span class="art">' + (k.url ? '<img src="' + esc(k.url) + '" alt="">' : '🍽') + '</span><span>' + esc(k.name) + '</span></button>'; }).join('') + '</div>';
+        vendors.map(function (k) { return '<button type="button" data-send-kit="' + k.id + '"><span class="art">' + (k.url ? '<img src="' + esc(k.thumb || k.url) + '" alt="" loading="lazy" decoding="async">' : '🍽') + '</span><span>' + esc(k.name) + '</span></button>'; }).join('') + '</div>';
       html += '<div class="bar"><button class="btn sm" data-new-invite="' + m.id + '">Invite a truck not in your list</button></div>' +
         '<p class="small dim" style="margin:6px 0 0">They type their truck’s name, and it’s added to your Food vendors.</p>';
       if (known && known.length) html += '<p class="small dim" style="margin:14px 0 6px">Trucks with their own Online Kitchen (one tap, they accept in their app):</p><div class="bar">' +
@@ -394,15 +416,17 @@
       '<div class="grid2"><div><label for="mStart">Starts</label><input id="mStart" type="time" required value="' + esc(m.start || '19:00') + '"></div><div><label for="mEnd">Ends</label><input id="mEnd" type="time" required value="' + esc(m.end || '22:00') + '"></div></div>' +
       '<label for="mPlace">Spot</label><input id="mPlace" maxlength="80" required placeholder="Dunlap shopping center, back lot" value="' + esc(m.place || '') + '">' +
       '<label for="mAddr">Street address (for directions)</label><input id="mAddr" maxlength="160" placeholder="3500 W Dunlap Ave, Phoenix, AZ" value="' + esc(m.address || '') + '">' +
-      '<label for="mVenue">At a business? (optional)</label><select id="mVenue"><option value="">No</option>' + (venues || []).map(function (v) { return '<option value="' + v.id + '"' + (m.venueId === v.id ? ' selected' : '') + '>' + esc(v.name) + '</option>'; }).join('') + '</select>' +
-      (venues && venues.length ? '' : '<p class="small dim" style="margin:4px 0 0">Add businesses in Settings › Venues.</p>') +
+      '<label for="mVenue">Saved location or business (optional)</label><select id="mVenue"><option value="">No</option>' + (venues || []).map(function (v) { return '<option value="' + v.id + '"' + (m.venueId === v.id ? ' selected' : '') + '>' + esc((v.hasLot ? '📍 ' : '') + v.name) + '</option>'; }).join('') + '</select>' +
+      '<p class="small dim" style="margin:4px 0 0">' + (venues && venues.length ? 'One with a saved parking layout starts this meet’s map from it.' : 'Save a location from any meet’s parking map, or add businesses in Settings › Venues.') + '</p>' +
       '<label for="mTitle">Name for this one (optional)</label><input id="mTitle" maxlength="80" placeholder="JDM night" value="' + esc(m.title || '') + '">' +
+      (me.namesOn ? '<label for="mName">Page address</label><div class="suffix"><input id="mName" maxlength="40" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="' + esc(m.pageName || 'made from the name') + '" value="' + esc(m.pageName || '') + '"><span>.' + esc(me.siteDomain) + '</span></div>' +
+        '<p class="small dim" style="margin:4px 0 0">Every week of this meet lives here. Left blank, it’s made from the name (or yours).</p>' : '') +
       '<label for="mNotes">Notes (optional)</label><textarea id="mNotes" maxlength="300" placeholder="Enter from 35th Ave. Overflow parking on the north side.">' + esc(m.notes || '') + '</textarea>' +
       (me.alertsOn ? '<div class="checks"><label><input type="checkbox" id="mTell"' + (m.id ? '' : ' checked') + '> ' + (m.id ? 'If the time or place changed, email the alert list' : 'Email the alert list') + '</label></div>' : '') +
       '<div class="bar"><button class="btn go" type="submit">' + (m.id ? 'Save' : 'Post meet') + '</button><button class="btn" type="button" data-close-form>Cancel</button></div>' +
       '<div class="msg" id="meetMsg" role="status"></div></form></div>';
   }
-  var venues = [];
+  var venues = [], alertLater = '';
   function drawMeets() {
     // The venues first, so the meet form can offer them.
     api('GET', '/kit').then(function (k) { venues = k.ok ? (k.d.logos || []).filter(function (l) { return l.kind === 'venue'; }) : []; return api('GET', '/meets'); }).then(function (r) {
@@ -419,6 +443,7 @@
         return '<div class="rowx"><div><div><b>' + esc(m.label) + '</b></div><div class="tag">' + esc(m.place) + (m.title ? ' · ' + esc(m.title) : '') + (m.status === 'canceled' ? ' · canceled' : '') + '</div></div><button class="btn sm" data-open="' + m.id + '">Open</button></div>';
       }).join('') : '<p class="dim">Nothing coming up.</p>');
       view(html);
+      if (detail && alertLater) { var w = document.createElement('p'); w.className = 'msg bad'; w.textContent = alertLater; alertLater = ''; var c0 = document.querySelector('.card'); if (c0) c0.appendChild(w); }
       if (detail) api('GET', '/meets/' + detail.id + '/trucks').then(function (t) { if (t.ok && $('trucksBox')) $('trucksBox').innerHTML = trucksHtml(detail, t.d.trucks, t.d.known, t.d.vendors); });
       if (detail) drawKitVendors(detail);
       if (detail) drawLot(detail);
@@ -426,8 +451,10 @@
       if (form) form.onsubmit = function (e) {
         e.preventDefault();
         var body = { day: $('mDay').value, start: $('mStart').value, end: $('mEnd').value, place: $('mPlace').value.trim(), address: $('mAddr').value.trim(), title: $('mTitle').value.trim(), notes: $('mNotes').value.trim(), venueId: $('mVenue').value ? +$('mVenue').value : null, tellAlerts: !!($('mTell') && $('mTell').checked) };
+        if ($('mName') && $('mName').value.trim()) body.pageName = $('mName').value.trim().toLowerCase();
         api(editing.id ? 'PUT' : 'POST', editing.id ? '/meets/' + editing.id : '/meets', body).then(function (r2) {
           if (!r2.ok) return say($('meetMsg'), r2.d.error);
+          if (r2.d.warning) alertLater = r2.d.warning;
           openMeet = { id: r2.d.meet.id }; drawMeets();
         });
       };
@@ -536,7 +563,7 @@
       ['listVendors', 'listOthers', 'listClubs', 'listVenues'].forEach(function (id) { $(id).onclick = listClick; $(id).onchange = listChange; });
     });
   }
-  function face(l) { return l.url ? '<img src="' + esc(l.url) + '" alt="">' : '<span>' + (l.kind === 'group' ? '🚗' : '🍽') + '</span>'; }
+  function face(l) { return l.url ? '<img src="' + esc(l.thumb || l.url) + '" alt="" loading="lazy" decoding="async">' : '<span>' + (l.kind === 'group' ? '🚗' : '🍽') + '</span>'; }
   function listCard(kind, title, sub, list) {
     var club = kind === 'group' || kind === 'venue' || kind === 'sponsor';
     var unnamed = list.filter(function (l) { return l.url && /^(logo|vendor|club)\s*\d*$/i.test(l.name); });

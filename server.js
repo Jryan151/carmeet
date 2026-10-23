@@ -10,6 +10,7 @@ const U = require('./util');
 const V = require('./views');
 const K = require('./kitchen');
 const mail = require('./mail');
+const N = require('./names');
 const { run, get, all } = D;
 
 const PORT = parseInt(process.env.PORT, 10) || 4100;
@@ -79,7 +80,7 @@ app.get('/caddy/ask', async (req, res) => {
   if (!/^[a-z0-9.-]{1,253}$/.test(d)) return res.status(404).end();
   if (d === SITE_DOMAIN || d === 'www.' + SITE_DOMAIN) return res.status(200).end();
   const sub = U.subOf(d);
-  if (sub) return (await pageBySlug(sub)) ? res.status(200).end() : res.status(404).end();
+  if (sub) return (await pageBySlug(sub)) || (await N.hostOfName(sub)) ? res.status(200).end() : res.status(404).end();
   return (await get('SELECT 1 AS x FROM hosts WHERE custom_domain = ?', [d.replace(/^www\./, '')])) ? res.status(200).end() : res.status(404).end();
 });
 
@@ -97,6 +98,14 @@ app.use(async (req, res, next) => {
   const h = String(req.hostname || '').toLowerCase();
   req.own = null; req.vendorSub = null;
   const sub = U.subOf(h);
+  const named = sub && U.subdomainsOn() ? await N.hostOfName(sub) : null;
+  if (named) {
+    // A meet name's own address (fuel-friday.<domain>): its next meet at "/", a week at "/<date>", everything a meet
+    // page needs. The portal and the rest of the site are on the main address.
+    if (/^\/(host|api\/host|v|@)(\/|$)/.test(req.path)) return res.redirect(302, `${SCHEME}://${SITE_DOMAIN}${req.originalUrl}`);
+    req.own = named; req.meetName = sub;
+    return next();
+  }
   if (sub) {
     // A vendor's own address (<truck>.<site domain>) shows their profile at "/" and the files it needs. Their menu
     // comes through /meet/* above. Anything else belongs to the site itself, so it goes there.
@@ -136,17 +145,35 @@ const baseOf = (req, host) => (req.own && req.own.id === host.id ? '' : '/' + ho
 // The "Page by" line: not on a host's own domain, and not when the site itself opens on this host.
 const badgeOf = (host, req) => !host.domain_on && !(req && req.isMain);
 const truckCache = new Map(); // meet ref → { at, list }: the public page asks at most once a minute
+/* The trucks in a meet, from the food side. A page never waits on it for long: with a list from the last few minutes
+   it shows that one and refreshes it behind the scenes (once a minute at most); with none, it waits up to 2 seconds
+   and then shows the page without trucks. The portal asks fresh. */
+const truckLoads = new Map(); // meet ref → the request on its way
 async function trucksFor(m, { fresh } = {}) {
   const c = truckCache.get(m.ref);
   if (!fresh && c && Date.now() - c.at < 60000) return c.list;
+  if (fresh) return loadTrucks(m);
+  const p = truckLoads.get(m.ref) || loadTrucks(m);
+  if (c && Date.now() - c.at < 10 * 60000) return c.list;
+  return Promise.race([p, new Promise((ok) => setTimeout(() => ok(c ? c.list : []), 2000))]);
+}
+function loadTrucks(m) {
+  const p = loadTrucks_(m).finally(() => truckLoads.delete(m.ref));
+  truckLoads.set(m.ref, p);
+  return p;
+}
+async function loadTrucks_(m) {
+  const c = truckCache.get(m.ref);
   const r = await K.meetVendors(m.ref);
   const list = r.ok ? (r.data.vendors || []) : (c ? c.list : []);
   truckCache.set(m.ref, { at: Date.now(), list });
   if (r.ok) {
     // A truck that came in on a plain invite (it typed its name) joins the host's Food vendors, tied to its profile.
-    for (const v of list.filter((x) => x.hostProfile && x.slug && x.name)) {
+    // Only trucks still in the meet, and never one the host deleted.
+    for (const v of list.filter((x) => x.hostProfile && x.slug && x.name && ['in', 'invited'].includes(x.status))) {
       const have = await get('SELECT id FROM kit_logos WHERE host_id = ? AND truck_slug = ?', [m.host_id, v.slug]);
-      if (!have) await run("INSERT INTO kit_logos (host_id, kind, name, file, truck_slug, created_at) VALUES (?, 'vendor', ?, '', ?, ?)", [m.host_id, v.name, v.slug, Date.now()]).catch(() => {});
+      const gone = !have && await get('SELECT 1 AS x FROM kit_gone WHERE host_id = ? AND truck_slug = ?', [m.host_id, v.slug]);
+      if (!have && !gone) await run("INSERT INTO kit_logos (host_id, kind, name, file, truck_slug, created_at) VALUES (?, 'vendor', ?, '', ?, ?)", [m.host_id, v.name, v.slug, Date.now()]).catch(() => {});
     }
     for (const v of list.filter((x) => x.status === 'in' && x.slug)) {
       // The meets a Food vendor served at, for "At 6 meets" on their profile.
@@ -183,7 +210,9 @@ async function renderMeet(req, res, host, m, isHome) {
     all('SELECT k.id, k.kind, k.name, k.file, k.instagram, k.truck_slug, k.page_slug, k.page_on, v.truck_slug AS meet_truck FROM meet_kit_vendors v JOIN kit_logos k ON k.id = v.kit_id WHERE v.meet_id = ? AND k.host_id = ? ORDER BY v.created_at, v.kit_id', [m.id, host.id]),
     all("SELECT id, kind, name, file, instagram, truck_slug, page_slug, page_on FROM kit_logos WHERE host_id = ? AND kind IN ('vendor', 'sponsor')", [host.id])]);
   const venue = m.venue_id ? await get("SELECT name, file, instagram, note FROM kit_logos WHERE id = ? AND host_id = ? AND kind = 'venue'", [m.venue_id, host.id]) : null;
-  res.set('Cache-Control', 'no-cache').type('html').send(V.meetPage(host, m, { tz: tzOf(host), base: baseOf(req, host), trucks: trucks.map(truckFace), kitVendors, kitAll, last, recap, upcoming, isHome, venue, badge: badgeOf(host, req), meetMode: MEET_MODE(), origin: `${SCHEME}://${req.get('host')}` }));
+  // The other weeks listed: on a meet name's address, only that meet's; on the host's page, their own.
+  const ups = req.meetName ? upcoming.filter((x) => x.page_name === req.meetName) : upcoming.filter((x) => !N.onName(host, x) || x.page_name === m.page_name || N.homeNames(host).has(x.page_name));
+  res.set('Cache-Control', 'no-cache').type('html').send(V.meetPage(host, m, { tz: tzOf(host), base: baseOf(req, host), trucks: trucks.map(truckFace), kitVendors, kitAll, last, recap, upcoming: ups, isHome, venue, badge: badgeOf(host, req), meetMode: MEET_MODE(), origin: `${SCHEME}://${req.get('host')}` }));
 }
 const notFound = (req, res, host) => res.status(404).type('html').send(V.message(host || null, { title: 'Nothing here', text: 'The link may be old, or the address may have a typo.', href: host ? baseOf(req, host) || '/' : '/', cta: host ? 'See the next meet' : 'Go to the main page' }));
 
@@ -219,17 +248,37 @@ async function renderDemo(req, res, host) {
 
 async function hostHome(req, res, host) {
   if (req.query.demo === '1' && (await signedInHost(req)) === host.id) return renderDemo(req, res, host);
-  const up = await upcomingOf(host);
+  let up = await upcomingOf(host);
+  if (req.meetName) {
+    // A meet name's address: only that meet's weeks (the last one once they're all over).
+    up = up.filter((m) => m.page_name === req.meetName);
+    if (!up.length) { const last = await get('SELECT * FROM meets WHERE host_id = ? AND page_name = ? ORDER BY day DESC LIMIT 1', [host.id, req.meetName]); if (last) up = [last]; }
+  } else {
+    // The host's own page: their own meets first, not one that has its own address (Fuel Friday on Tasty Tuesday's).
+    const home = N.homeNames(host);
+    const mine = up.filter((m) => !N.onName(host, m) || home.has(m.page_name));
+    if (mine.length) up = mine;
+  }
   const next = up.find((m) => m.status === 'on') || up[0];
   if (!next) return res.set('Cache-Control', 'no-cache').type('html').send(V.hostEmpty(host, { base: baseOf(req, host), badge: badgeOf(host, req) }));
   return renderMeet(req, res, host, next, true);
 }
-async function meetOn(host, day) {
+async function meetOn(host, day, name) {
   if (!U.validDate(day)) return null;
-  return get('SELECT * FROM meets WHERE host_id = ? AND day = ?', [host.id, day]);
+  if (name) return get('SELECT * FROM meets WHERE host_id = ? AND day = ? AND page_name = ?', [host.id, day, name]);
+  // More than one that night: the host's own one first (a meet with its own address is reached there).
+  const rows = await all('SELECT * FROM meets WHERE host_id = ? AND day = ? ORDER BY id', [host.id, day]);
+  const home = N.homeNames(host);
+  return rows.find((m) => !N.onName(host, m)) || rows.find((m) => home.has(m.page_name)) || rows[0] || null;
+}
+/** A meet that lives at its name's address, asked for anywhere else: send the visitor there (old links keep working). */
+function toName(req, res, host, m, rest) {
+  if (req.meetName || !N.onName(host, m)) return false;
+  res.redirect(301, N.meetUrl(host, m) + (rest || ''));
+  return true;
 }
 async function foodPage(req, res, host, day, truckSlug) {
-  const m = await meetOn(host, day);
+  const m = await meetOn(host, day, req.meetName);
   if (!m) return notFound(req, res, host);
   const trucks = await trucksFor(m);
   const t = trucks.find((v) => v.slug === truckSlug && v.status === 'in');
@@ -504,7 +553,11 @@ app.get('/', async (req, res) => {
   res.set('Cache-Control', 'no-cache').type('html').send(V.home(list, await get('SELECT * FROM site WHERE id = 1')));
 });
 app.get('/:a', async (req, res, next) => {
-  if (req.own) { const m = await meetOn(req.own, req.params.a); return m ? renderMeet(req, res, req.own, m, false) : notFound(req, res, req.own); }
+  if (req.own) {
+    const m = await meetOn(req.own, req.params.a, req.meetName);
+    if (m && toName(req, res, req.own, m)) return;
+    return m ? renderMeet(req, res, req.own, m, false) : notFound(req, res, req.own);
+  }
   if (U.RESERVED.has(req.params.a)) return next();
   const host = await get('SELECT * FROM hosts WHERE slug = ?', [String(req.params.a).toLowerCase()]);
   if (!host) return notFound(req, res, null);
@@ -518,6 +571,7 @@ app.get('/:a/:b', async (req, res, next) => {
   if (!host) return notFound(req, res, null);
   if (host.domain_on && host.custom_domain) return res.redirect(301, `${SCHEME}://${host.custom_domain}/${encodeURIComponent(req.params.b)}`);
   const m = await meetOn(host, req.params.b);
+  if (m && toName(req, res, host, m)) return;
   return m ? renderMeet(req, res, host, m, false) : notFound(req, res, host);
 });
 app.get('/:a/food/:truck', async (req, res, next) => (req.own ? foodPage(req, res, req.own, req.params.a, req.params.truck) : next()));
@@ -545,6 +599,7 @@ app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
  *   The old file stays, so a page cached somewhere still shows it.
  */
 async function tidyAtStart() {
+  await nameMeets().catch((e) => console.error('meet names:', e.message));
   const Vid = require('./video');
   for (const t of ['hosts', 'meets', 'site', 'host_portal', 'kit_logos']) {
     await D.run(`UPDATE ${t} SET video_status = 'failed', video_error = ? WHERE video_status = 'processing'`,
@@ -573,4 +628,15 @@ if (require.main === module) {
     tidyAtStart().catch((e) => console.error('startup tidy:', e.message));
   }).catch((e) => { console.error('Startup failed:', e); process.exit(1); });
 }
-module.exports = { app, orderMail, tidyAtStart, ready: () => D.ensureSchema() };
+/** Meets saved before meet names had addresses get theirs (from the title, or the host's name); the food side is told
+    the new page link. */
+async function nameMeets() {
+  const rows = await all('SELECT * FROM meets WHERE page_name IS NULL ORDER BY day DESC');
+  for (const m of rows) {
+    const h = await get('SELECT * FROM hosts WHERE id = ?', [m.host_id]);
+    if (!h) continue;
+    await N.ensure(h, m);
+    if (m.status === 'on' && U.meetTimes(m, tzOf(h)).endsAt > Date.now() && N.onName(h, m)) await K.syncMeet(h, m, N.meetUrl(h, m)).catch(() => {});
+  }
+}
+module.exports = { app, orderMail, tidyAtStart, nameMeets, ready: () => D.ensureSchema() };

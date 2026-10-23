@@ -110,6 +110,8 @@
   <section id="signin">
     <h1 style="font-size:40px;margin-bottom:8px">Your meets, one page</h1>
     <p class="dim">Post your next meet, bring in food trucks, and let people know. Sign in with your email: we send a code, no password.</p>
+    <form id="fPass" hidden><label for="pass">Password</label><input id="pass" type="password" autocomplete="current-password" required maxlength="120">
+      <p style="margin-top:12px"><button class="btn go" type="submit">Open my workspace</button> <button class="link" type="button" id="useEmail">Sign in with email instead</button></p></form>
     <form id="fEmail"><label for="email">Email</label><input id="email" type="email" autocomplete="email" required maxlength="120">
       <p style="margin-top:12px"><button class="btn go" type="submit">Send my code</button></p></form>
     <form id="fCode" hidden><label for="code">6-digit code</label><input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required>

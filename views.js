@@ -238,7 +238,7 @@ function meetPage(host, m, ctx) {
 <section class="hero${vid ? ' has-video' : ''}${m.flyer ? ' with-flyer' : ''}${round ? ' has-avatar' : ''}">
   ${heroBg(vid)}
   ${round ? avatar(host, m) : ''}
-  ${m.flyer ? `<figure class="flyer"><img src="${esc(small(m.flyer, 1080))}" alt="${esc(host.name)} flyer for ${esc(U.dayLong(t.startsAt, tz))}"></figure>` : '<div class="showcase" aria-hidden="true"></div>'}
+  ${m.flyer ? `<figure class="flyer"><img src="${esc(small(m.flyer, 1080))}" alt="${esc(m.title || host.name)} flyer for ${esc(U.dayLong(t.startsAt, tz))}"></figure>` : '<div class="showcase" aria-hidden="true"></div>'}
   ${ctx.isHome ? '' : `<p class="small dim" style="text-align:center"><a href="${esc(base || '/')}">Next meet</a></p>`}
   ${over ? '<p class="dim" style="text-align:center">This meet is over.</p>' : m.status === 'canceled' ? '<p class="soon-line">This meet is canceled.</p>' : ''}
   ${!over && m.status === 'on' ? `<div class="actions">
@@ -274,6 +274,14 @@ function meetPage(host, m, ctx) {
     return { img: k && k.file ? small(k.file, 256) : v.logo || null, emoji: v.emoji, name: v.name, href: page || href || ig(k && k.instagram) || ig(v.instagram),
       tag: href ? (live && anyPreorder && takes(v) ? 'Order' : 'Menu') : null, can: !!(href && live && anyPreorder && takes(v)), open: !!(live && v.openNow), profile: !!page };
   });
+  // A Food vendor the host sent a link to shows right away (their Order button comes once they've set up).
+  for (const v of (ctx.trucks || []).filter((x) => x.status === 'invited' && x.slug)) {
+    const k = all.find((x) => x.kind === 'vendor' && x.truck_slug === v.slug);
+    if (!k || used.has(k.id)) continue;
+    used.add(k.id);
+    const page = profileHref(k);
+    items.push({ img: k.file ? small(k.file, 256) : v.logo || null, emoji: v.emoji, name: k.name, href: page || ig(k.instagram), tag: null, external: !page && !!k.instagram, profile: !!page });
+  }
   for (const k of picked) {
     if (used.has(k.id)) continue;
     const page = profileHref(k);

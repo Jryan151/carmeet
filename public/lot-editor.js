@@ -23,7 +23,7 @@
     var sel = null, turn = null; // the zone picked (to turn, copy, move or remove), and where it started before turning
     var imp = null; // a marked-up picture being lined up over the map: { src, iw, ih, found, cx, cy, scale, angle }
     var draft = []; // corners of the zone being drawn, as { lat, lng }
-    var results = null, past = null, msg = '', msgOk = true, saveTimer = null, note = null;
+    var results = null, past = null, saved = null, msg = '', msgOk = true, saveTimer = null, note = null;
 
     function say(t, ok) { msg = t || ''; msgOk = ok !== false; var el = box.querySelector('[data-ed-msg]'); if (el) { el.className = 'msg ' + (msgOk ? 'ok' : 'bad'); el.textContent = msg; } }
     function save(now) {
@@ -295,15 +295,26 @@
         '<button class="btn sm" type="submit">Find</button></form>' +
         (results ? (results.length ? '<div class="ed-results">' + results.map(function (r, i) { return '<button type="button" data-ed-pick="' + i + '">' + esc(r.label) + '</button>'; }).join('') + '</div>' : '<p class="small dim">No match. Try the street address with the city.</p>') : '');
     }
+    /** Keep this layout as a saved location: pick that location for any meet and its map starts from here. */
+    function saveAsHtml() {
+      var v = (o.venues || []).filter(function (x) { return x.id === meet.venueId; })[0];
+      var name = box.dataset.locname != null ? box.dataset.locname : (v ? v.name : (meet.place || ''));
+      return '<details class="ed-save"><summary class="small">📍 Save this layout as a location</summary>' +
+        '<form data-ed-saveas class="row" style="margin-top:8px"><input name="name" maxlength="60" placeholder="In-N-Out Tempe" value="' + esc(name) + '" aria-label="Location name">' +
+        '<button class="btn sm go" type="submit">Save</button></form>' +
+        '<p class="small dim" style="margin:4px 0 0">Same name as a saved one replaces its layout. It’s in Settings › Venues, and picking it for a meet starts the map from it.</p></details>';
+    }
     function draw() {
       var html = '<div class="card" id="lotCard"><h3>Parking map</h3><p class="small dim">The satellite view of the spot, with where each club parks, where the trucks go, overflow and the entrances.</p>';
       if (!lot) {
         html += searchHtml();
+        if (saved && saved.length) html += '<p class="small dim" style="margin:14px 0 6px">Your saved locations:</p>' + saved.map(function (x, i) {
+          return '<button class="btn sm go" type="button" data-ed-saved="' + i + '" style="margin:0 6px 6px 0">📍 ' + esc(x.name) + ' · ' + x.zones + ' zone' + (x.zones === 1 ? '' : 's') + '</button>'; }).join('');
         if (past && past.length) html += '<p class="small dim" style="margin:14px 0 6px">Or start from one you made:</p>' + past.map(function (x, i) {
           return '<button class="btn sm" type="button" data-ed-past="' + i + '" style="margin:0 6px 6px 0">' + esc(x.place) + ' · ' + x.zones + ' zone' + (x.zones === 1 ? '' : 's') + '</button>'; }).join('');
       } else {
         html += '<details class="ed-where"' + (results ? ' open' : '') + '><summary class="small">' + esc(lot.address || 'The spot') + ' · change</summary>' + searchHtml() + '</details>' +
-          mapHtml() + toolsHtml() + sheetHtml() + listHtml() +
+          mapHtml() + toolsHtml() + sheetHtml() + listHtml() + saveAsHtml() +
           '<div class="bar"><a class="btn sm" href="' + esc(meet.url) + '#parking" target="_blank" rel="noopener">See it on the page</a><button class="btn sm" type="button" data-ed-drop>Remove map</button></div>';
       }
       html += '<div class="' + (msg ? 'msg ' + (msgOk ? 'ok' : 'bad') : 'msg') + '" data-ed-msg role="status">' + esc(msg) + '</div></div>';
@@ -508,6 +519,7 @@
         else lot = { lat: r.lat, lng: r.lng, zoom: 18, address: label, zones: [], pins: [] };
         results = null; delete box.dataset.q; mode = 'select'; shapes = null; draw(); save(true); loadShapes(true);
       }
+      else if (b.hasAttribute('data-ed-saved')) { lot = JSON.parse(JSON.stringify(saved[+a('data-ed-saved')].lot)); mode = 'select'; shapes = null; note = 'Started from ' + saved[+a('data-ed-saved')].name + '.'; draw(); save(true); loadShapes(true); }
       else if (b.hasAttribute('data-ed-past')) { lot = JSON.parse(JSON.stringify(past[+a('data-ed-past')].lot)); mode = 'select'; shapes = null; draw(); save(true); loadShapes(true); }
       else if (b.hasAttribute('data-ed-drop')) {
         if (!confirm('Remove the parking map from this meet?')) return;
@@ -542,6 +554,22 @@
       if (t.hasAttribute('data-ed-pname')) { lot.pins[+t.getAttribute('data-ed-pname')].label = t.value.trim(); draw(); save(); }
     });
     box.addEventListener('submit', function (e) {
+      if (e.target.hasAttribute('data-ed-saveas')) {
+        e.preventDefault();
+        var nm = e.target.elements.name.value.trim(); box.dataset.locname = nm;
+        if (!nm) return say('Name the location.', false);
+        clearTimeout(saveTimer);
+        // The latest layout first, then keep it.
+        api('PUT', '/meets/' + meet.id + '/lot', { lot: lot }).then(function (r0) {
+          if (!r0.ok) return say(r0.d.error, false);
+          return api('POST', '/locations', { meetId: meet.id, name: nm }).then(function (r) {
+            if (!r.ok) return say(r.d.error, false);
+            meet.venueId = r.d.meet.venueId; delete box.dataset.locname;
+            say('Saved as ' + r.d.venue.name + '. Pick it for any meet and the map starts from it.');
+          });
+        });
+        return;
+      }
       if (e.target.hasAttribute('data-ed-club-other')) {
         e.preventDefault();
         var nm = e.target.elements.club.value.trim(); if (nm) assign('club', nm);
@@ -556,7 +584,7 @@
         results = r.d.results || []; msg = ''; draw();
       });
     });
-    function loadPast() { api('GET', '/lots').then(function (r) { past = r.ok ? r.d.lots.filter(function (x) { return x.meetId !== meet.id; }) : []; if (!lot) draw(); }); }
+    function loadPast() { api('GET', '/lots').then(function (r) { past = r.ok ? r.d.lots.filter(function (x) { return x.meetId !== meet.id; }) : []; saved = r.ok ? r.d.saved || [] : []; if (!lot) draw(); }); }
     draw();
     if (!lot) loadPast(); else loadShapes();
   }

@@ -302,3 +302,6 @@ main > section.v-about { padding: 18px; }
 .venue .mini { flex: none; width: 52px; height: 52px; }
 .venue .v-info { flex: 1; min-width: 0; line-height: 1.35; }
 .venue .v-title { font: 600 17px/1.3 var(--body); }
+.art .gone{display:block;padding:6px;text-align:center;font-size:12px;line-height:1.3}
+.suffix{display:flex;align-items:center;gap:6px}.suffix input{flex:1;min-width:0}.suffix span{opacity:.7;font-size:14px;white-space:nowrap}
+.ed-save{margin:14px 0 4px}.ed-save summary{cursor:pointer}

@@ -39,8 +39,8 @@ test('a meet: posted, sent to the food side, on the page with nothing from the o
   assert.equal(r.json.meet.synced, true);
   const put = k().calls.find((c) => c.method === 'PUT');
   assert.deepEqual([put.body.day, put.body.start, put.body.place, put.body.hostName, put.body.closeMinutes], [day, '19:00', 'Dunlap lot', 'Tasty Tuesday', 120]);
-  r = await request(ctx, 'POST', SITE, '/api/host/meets', { cookie: C, body: { day, start: '18:00', end: '20:00', place: 'Elsewhere' } });
-  assert.equal(r.status, 409, 'one meet a day');
+  r = await request(ctx, 'POST', SITE, '/api/host/meets', { cookie: C, body: { day, start: '18:00', end: '20:00', place: 'Elsewhere', title: 'jdm night' } });
+  assert.equal(r.status, 409, 'the same meet once a day');
   r = await request(ctx, 'POST', SITE, '/api/host/meets', { cookie: C, body: { day: ymd(-3), start: '18:00', end: '20:00', place: 'Elsewhere' } });
   assert.equal(r.status, 400, 'not in the past');
 

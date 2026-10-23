@@ -135,6 +135,13 @@ async function ensureSchema() {
   await exec('CREATE TABLE IF NOT EXISTS geocache (q TEXT PRIMARY KEY, json TEXT NOT NULL, at INTEGER NOT NULL)');
   // The host portal's own background video (one row per host, id = the host's id).
   await exec('CREATE TABLE IF NOT EXISTS host_portal (id INTEGER PRIMARY KEY)');
+  // A saved location's parking layout (a Venue): picking it for a meet starts the meet's map from it.
+  await addColumn('kit_logos', 'lot', 'TEXT');
+  // A meet name's own address (fuel-friday → fuel-friday.<site domain>), shared by every week of that meet. See names.js.
+  await addColumn('meets', 'page_name', 'TEXT');
+  await exec('CREATE INDEX IF NOT EXISTS idx_meets_page_name ON meets (page_name)');
+  // A Food vendor the host deleted: its truck isn't put back in the lists from an old invite on the food side.
+  await exec('CREATE TABLE IF NOT EXISTS kit_gone (host_id INTEGER NOT NULL, truck_slug TEXT NOT NULL, PRIMARY KEY (host_id, truck_slug))');
   for (const t of ['hosts', 'meets', 'site', 'host_portal', 'kit_logos']) {
     await addColumn(t, 'video', 'TEXT');
     await addColumn(t, 'video_poster', 'TEXT');
