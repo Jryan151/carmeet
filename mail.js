@@ -11,7 +11,7 @@ const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&':
 
 /** The one look every email has: plain, readable, the host's name on top, an unsubscribe line when there is one. */
 function shell({ from, title, html, footer }) {
-  return `<!doctype html><html><body style="margin:0;background:#f3f1ec;font-family:Barlow,Helvetica,Arial,sans-serif;color:#1d1f24">
+  return `<!doctype html><html><body style="margin:0;background:#f3f1ec;font-family:Helvetica,Arial,sans-serif;color:#1d1f24">
 <div style="max-width:520px;margin:0 auto;padding:28px 20px">
 <div style="font-size:13px;color:#6b6e75;margin-bottom:10px">${esc(from)}</div>
 <div style="background:#fff;border-radius:10px;padding:24px;border-top:6px solid #f2a33a">

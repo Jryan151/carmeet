@@ -53,6 +53,6 @@ function videoUrl(s) {
   const u = clean(s, 300);
   try { const x = new URL(u); return x.protocol === 'https:' && /(^|\.)(youtube\.com|youtu\.be|instagram\.com|tiktok\.com|vimeo\.com)$/i.test(x.hostname) ? x.href : ''; } catch (e) { return ''; }
 }
-const ACCENTS = ['#f2a33a', '#e8e4d8', '#5fb3d9', '#e0574f', '#7cc47f', '#c792ea'];
+const ACCENTS = ['#c9adff', '#f2a33a', '#e8e4d8', '#5fb3d9', '#e0574f', '#7cc47f', '#c792ea'];
 
 module.exports = { DATE_RE, TIME_RE, SLUG_RE, EMAIL_RE, RESERVED, zone, parts, zonedTime, dayKey, addDays, validDate, meetTimes, time12, dayLong, dayShort, fmt, clean, cleanBlock, esc, handle, videoUrl, ACCENTS };
