@@ -254,7 +254,9 @@ main > section.v-about { padding: 18px; }
 .lot-stage:active { cursor: grabbing; }
 .lot-plane { position: absolute; left: 50%; top: 50%; width: min(82%, calc(var(--lot-h) * .98)); transform-origin: 50% 50%; transform-style: preserve-3d;
   transform: translate(-50%, -50%) rotateX(var(--tilt)) rotateZ(var(--spin)); transition: transform .6s cubic-bezier(.2, .7, .2, 1), width .6s; }
-.lot.flat .lot-plane { width: min(94%, calc(var(--lot-h) * .94)); }
+.lot.flat .lot-plane { width: 100%; position: relative; left: auto; top: auto; transform: none; }
+/* Flat: the map is just the square, full width, nothing to turn. */
+.lot.flat .lot-stage { height: auto; perspective: none; overflow: visible; border: 0; background: none; cursor: default; touch-action: auto; }
 .lot.dragging .lot-plane { transition: none; }
 /* The satellite square: its tiles and zones (cut to the square), then the labels standing off it. */
 .lot-map { position: relative; aspect-ratio: 1; transform-style: preserve-3d; }
@@ -267,7 +269,7 @@ main > section.v-about { padding: 18px; }
 .zones polygon { fill: color-mix(in srgb, var(--z) 42%, transparent); stroke: var(--z); stroke-width: 3; stroke-linejoin: round; }
 .zones polygon.no { fill: color-mix(in srgb, var(--z) 22%, transparent); stroke-dasharray: 10 7; }
 .pin.zone::before { display: none; }
-.pin.zone b { transform: rotateZ(calc(-1 * var(--spin))) rotateX(calc(-1 * var(--tilt))) translate(-50%, -50%); }
+.pin.zone b { bottom: auto; top: 0; transform: rotateZ(calc(-1 * var(--spin))) rotateX(calc(-1 * var(--tilt))) translate(-50%, -50%); }
 .pin.zone b::after { display: none; }
 .lot-credit { font-size: 11px; color: var(--faint); }
 /* A pin stands up off the map and always faces you, whichever way it's turned. */

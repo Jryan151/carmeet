@@ -65,13 +65,17 @@ Settings › **Venues**: businesses that let you use their lot (name, logo, Inst
 
 Meets › open a meet › **Parking map**. Type the address and pick the match: the satellite view opens on the spot.
 Frame the lot (drag to slide, − and + to zoom), then:
-- **Draw a zone**: pick what it's for (Club parking, Vendors, Parking, Car show, Overflow, No parking), name it (a
-  club's name; your Clubs are suggested), pick a color, tap each corner, Finish.
-- **Drop a pin**: Enter, Exit, Food, The meet or Info, with an optional label.
+- **From a picture**: the marked-up lot picture you already post. Rows painted green become Parking, blue become
+  Overflow, yellow ENTER tags become entrances (a legend on a roof is skipped). Slide, size and turn the picture until
+  it sits on the satellite, then Use these. Name the club rows after.
+- **Box**: drag across a row of spaces. Tap a box to pick it: turn it to match an angled row, drag it, Copy it for the
+  next row, or remove it. Pick what it's for (Club parking, Vendors, Parking, Car show, Overflow, No parking), a name
+  (your Clubs are suggested) and a color first.
+- **Shape**: tap each corner, for odd shapes.
+- **Pin**: Enter, Exit, Food, The meet or Info, with an optional label.
 
-Everything saves as you go. On the meet page it shows under The spot as "Where to park": the satellite square tilted
-like pulling into the lot, zones in their colors, labels and pins standing off it, a key, Flat to read it, and
-Open in Maps. "Repeat next week" brings the layout along, and a new meet can start from one you made before.
+Everything saves as you go. On the meet page it shows under The spot as "Where to park": the satellite square, flat and
+north up, zones in their colors (named ones labeled), pins, a key, and Open in Maps. "Repeat next week" brings the layout along, and a new meet can start from one you made before.
 
 Settings (`.env`):
 - `MAP_TILES`: where the satellite pictures come from, a tile address with `{z}`, `{x}` and `{y}`. Empty: Esri's World

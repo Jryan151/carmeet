@@ -70,7 +70,10 @@ test('a layout is checked when saved, and shown tilted on the page over the tile
   assert.match(r.text, /src="https:\/\/tiles\.example\/18\/\d+\/\d+\.jpg"/);
   assert.match(r.text, /<polygon points="[\d., ]+" style="--z:#c084fc"\/>/);
   assert.match(r.text, /<b>Unforsaken<\/b>/);
-  assert.match(r.text, /<b>Vendors<\/b>/, 'no name: the kind’s name');
+  assert.ok(!/<b>Vendors<\/b>/.test(r.text), 'no name: no label on the map (the key says what the color is)');
+  assert.match(r.text, /<span style="--pin:#f472b6">Vendors<\/span>/, 'the key names the kind');
+  assert.ok(!/data-lot-flat|Drag to turn/.test(r.text), 'flat: nothing to turn');
+  assert.match(r.text, /class="lot flat"/);
   assert.match(r.text, /<b>Side gate b<\/b>/, 'no markup in labels');
   assert.match(r.text, /Imagery © Example/);
   assert.match(r.text, /maps\/search\/\?api=1&amp;query=33\.58053,-112\.17112/);

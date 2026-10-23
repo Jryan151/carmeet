@@ -120,7 +120,8 @@ async function main() {
     await D.run('UPDATE meets SET synced_at = ?, sync_error = ? WHERE id = ?', [s.ok ? Date.now() : null, s.ok ? null : (s.data.error || 'not sent'), m.id]);
     if (!s.ok) log(`The food side didn’t take the meet yet (${s.data.error}); saving it once in the portal sends it again`);
   }
-  console.log(`\nDone. ${pageUrl}\n\nStill to do in the portal:\n- Check the time (set to ${m.start_time}–${m.end_time})\n- Parking map: draw the club zones, the trucks' spot, overflow and the two entrances\n- Instagram for México en un Vaso, Slow Traffic AZ and Unforsaken (Settings › Food vendors / Clubs)\n- Swap in clean logo files when you have them (these are cut from the flyer)`);
+  console.log(`\nDone. ${pageUrl}\n\nStill to do in the portal:\n- Check the time (set to ${m.start_time}–${m.end_time})\n- Parking map: Move › From a picture › scripts/fuel-friday/parking.jpg (the marked-up lot): line it up on the
+  satellite, Use these. That's every row and both entrances; then name the club rows in the list\n- Instagram for México en un Vaso, Slow Traffic AZ and Unforsaken (Settings › Food vendors / Clubs)\n- Swap in clean logo files when you have them (these are cut from the flyer)`);
 }
 
 main().then(() => process.exit(0)).catch((e) => { console.error('\n' + e.message); process.exit(1); });

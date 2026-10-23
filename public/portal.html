@@ -71,6 +71,17 @@
   .ed-layer polygon.no { stroke-dasharray: 10 7; fill: color-mix(in srgb, var(--z) 20%, transparent); }
   .ed-layer polyline.draft { fill: color-mix(in srgb, var(--z) 25%, transparent); stroke: var(--z); stroke-width: 3; stroke-dasharray: 8 6; }
   .ed-layer circle { fill: var(--z); stroke: #0b0a10; stroke-width: 2; }
+  .ed-layer polygon.sel { stroke: #fff; stroke-width: 4; stroke-dasharray: 10 6; }
+  .ed-layer polygon.boxdraft { fill: color-mix(in srgb, var(--z, #fff) 30%, transparent); stroke: var(--z, #fff); stroke-width: 3; stroke-dasharray: 8 6; }
+  .ed-map.mode-box { cursor: crosshair; } .ed-map.mode-import { cursor: move; }
+  .ed-imp { position: absolute; transform-origin: 50% 50%; pointer-events: none; }
+  .ed-imp img { position: absolute; inset: 0; width: 100%; height: 100%; opacity: .5; border: 2px solid #fff; box-sizing: border-box; }
+  .ed-imp svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .ed-imp polygon { fill: none; stroke: var(--z); stroke-width: 6; vector-effect: non-scaling-stroke; }
+  .ed-imp circle { fill: var(--z); stroke: #0b0a10; stroke-width: 3; }
+  .ed-frompic { display: inline-flex; margin: 0 6px 6px 0; cursor: pointer; }
+  .ed-picked { margin: 8px 0 4px; padding: 10px 12px; border: 1px solid var(--accent); border-radius: 12px; background: var(--lot-2); }
+  .ed-picked input[type=range] { width: 100%; min-height: 32px; padding: 0; accent-color: var(--accent); }
   .ed-tag, .ed-pin b { position: absolute; transform: translate(-50%, -50%); white-space: nowrap; padding: 2px 7px; border-radius: 6px; font: 700 11px/1.3 var(--body);
     color: #0b0a10; background: var(--pin); box-shadow: 0 2px 8px rgba(0, 0, 0, .5); pointer-events: none; }
   .ed-pin { position: absolute; width: 0; height: 0; pointer-events: none; }
@@ -127,6 +138,7 @@
 </main>
 <script src="/static/flyer.js?v=4" defer></script>
 <script src="/static/lotmap.js?v=6" defer></script>
+<script src="/static/lot-detect.js?v=6" defer></script>
 <script src="/static/lot-editor.js?v=6" defer></script>
 <script src="/static/portal.js?v=6" defer></script>
 </body>

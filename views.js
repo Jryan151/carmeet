@@ -133,9 +133,8 @@ function when(m, tz, { live } = {}) {
 </div>`;
 }
 
-/** The parking map: the satellite view of the spot with the host's zones (club parking, vendors, overflow...) drawn
-    on it, laid back like the lot seen while pulling in, with labels and pins standing off it. Written here, so it
-    shows with no script; site.js adds drag-to-turn and Flat. */
+/** The parking map: the satellite view of the spot, flat and north up, with the host's zones (club parking, vendors,
+    overflow...) and pins drawn on it and a key. Written here, so it shows with no script. */
 function parkingMap(m) {
   const lot = LotMap.clean(m.lot);
   if (!lot) return '';
@@ -146,7 +145,7 @@ function parkingMap(m) {
   const zones = lot.zones.map((z) => ({ z, pts: z.pts.map((p) => LotMap.inFrame(lot, f, p.lat, p.lng)) }));
   const svg = `<svg class="zones" viewBox="0 0 ${LotMap.FRAME} ${LotMap.FRAME}" aria-hidden="true">${zones.map(({ z, pts }) =>
     `<polygon points="${pts.map((p) => p.x.toFixed(1) + ',' + p.y.toFixed(1)).join(' ')}" style="--z:${z.color}"${z.kind === 'nopark' ? ' class="no"' : ''}/>`).join('')}</svg>`;
-  const tags = zones.map(({ z, pts }) => {
+  const tags = zones.filter(({ z }) => z.label).map(({ z, pts }) => {
     const c = LotMap.middle(pts);
     return `<span class="pin zone" style="left:${pc(c.x)};top:${pc(c.y)};--pin:${z.color}"><b>${esc(z.label || LotMap.ZONES[z.kind])}</b></span>`;
   }).join('') + lot.pins.map((p) => {
@@ -158,13 +157,12 @@ function parkingMap(m) {
   for (const z of lot.zones) { const n = z.label || LotMap.ZONES[z.kind]; if (!seen.has(n + z.color)) { seen.add(n + z.color); key.push([n, z.color]); } }
   for (const k of [...new Set(lot.pins.map((p) => p.kind))]) key.push([LotMap.PINS[k], LotMap.PIN_COLOR[k]]);
   const there = `https://www.google.com/maps/search/?api=1&query=${lot.lat},${lot.lng}`;
-  return `<div class="lot" data-lot>
+  return `<div class="lot flat">
   <div class="lot-stage"><div class="lot-plane"><div class="lot-map"><div class="lot-img">${tiles}${svg}</div>${tags}</div></div></div>
   <div class="lot-bar">
     ${key.length ? `<div class="lot-key">${key.slice(0, 12).map(([n, c]) => `<span style="--pin:${c}">${esc(n)}</span>`).join('')}</div>` : '<span></span>'}
-    <button class="btn sm" type="button" data-lot-flat aria-pressed="false">Flat</button>
   </div>
-  <p class="small dim lot-hint">Drag to turn it. <a href="${esc(there)}" target="_blank" rel="noopener">Open in Maps</a>${geo.credit() ? ` · <span class="lot-credit">${esc(geo.credit())}</span>` : ''}</p>
+  <p class="small dim lot-hint"><a href="${esc(there)}" target="_blank" rel="noopener">Open in Maps</a>${geo.credit() ? ` · <span class="lot-credit">${esc(geo.credit())}</span>` : ''}</p>
 </div>`;
 }
 
