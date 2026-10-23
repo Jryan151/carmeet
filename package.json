@@ -1,0 +1,19 @@
+{
+  "name": "carmeet",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Car meet pages for hosts: the next meet, food pre-orders, alerts, recaps, and a simple host portal.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test \"test/**/*.test.js\""
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "dotenv": "^18.0.7",
+    "express": "^5.3.0",
+    "sqlite3": "^6.0.1"
+  }
+}

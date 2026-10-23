@@ -1,0 +1,204 @@
+'use strict';
+/* The car meet site end to end, with a stand-in for the food side: a host signs up and posts a meet (sent to the
+   food side), the page shows it with no trace of the ordering system, a truck invite link, pre-orders, the signed
+   notice and the customer's order page, alerts with one-tap confirm and unsubscribe, vendor requests, turnout and
+   history, settings, a host's own domain. */
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { startSite, request, host, sign } = require('./helpers');
+
+const ctx = startSite(test);
+let C, meetId, day;
+const SITE = 'meets.test';
+const ymd = (n) => new Date(Date.now() + n * 864e5).toISOString().slice(0, 10);
+const k = () => ctx.kitchen.state;
+
+test.before(async () => { C = await host(ctx); });
+
+test('signing in needs the right code; a new host picks a free address', async () => {
+  let r = await request(ctx, 'POST', SITE, '/api/host/code', { body: { email: 'other@example.com' } });
+  assert.equal(r.json.known, false);
+  r = await request(ctx, 'POST', SITE, '/api/host/login', { body: { email: 'other@example.com', code: '000000' } });
+  assert.equal(r.status, 400);
+  const code = (await request(ctx, 'POST', SITE, '/api/host/code', { body: { email: 'other@example.com' } })).json.devCode;
+  r = await request(ctx, 'POST', SITE, '/api/host/login', { body: { email: 'other@example.com', code, name: 'Other', slug: 'tasty-tuesday' } });
+  assert.equal(r.status, 409, 'address taken');
+  r = await request(ctx, 'POST', SITE, '/api/host/login', { body: { email: 'other@example.com', code, name: 'Other', slug: 'host' } });
+  assert.equal(r.status, 400, 'reserved address');
+  r = await request(ctx, 'GET', SITE, '/api/host/me');
+  assert.equal(r.status, 401);
+  r = await request(ctx, 'GET', SITE, '/api/host/me', { cookie: C });
+  assert.equal(r.json.host.slug, 'tasty-tuesday');
+});
+
+test('a meet: posted, sent to the food side, on the page with nothing from the ordering system', async () => {
+  day = ymd(4);
+  let r = await request(ctx, 'POST', SITE, '/api/host/meets', { cookie: C, body: { day, start: '19:00', end: '22:00', place: 'Dunlap lot', address: '3500 W Dunlap Ave, Phoenix, AZ', title: 'JDM night' } });
+  assert.equal(r.status, 201, r.text);
+  meetId = r.json.meet.id;
+  assert.equal(r.json.meet.synced, true);
+  const put = k().calls.find((c) => c.method === 'PUT');
+  assert.deepEqual([put.body.day, put.body.start, put.body.place, put.body.hostName, put.body.closeMinutes], [day, '19:00', 'Dunlap lot', 'Tasty Tuesday', 120]);
+  r = await request(ctx, 'POST', SITE, '/api/host/meets', { cookie: C, body: { day, start: '18:00', end: '20:00', place: 'Elsewhere' } });
+  assert.equal(r.status, 409, 'one meet a day');
+  r = await request(ctx, 'POST', SITE, '/api/host/meets', { cookie: C, body: { day: ymd(-3), start: '18:00', end: '20:00', place: 'Elsewhere' } });
+  assert.equal(r.status, 400, 'not in the past');
+
+  r = await request(ctx, 'GET', SITE, '/tasty-tuesday');
+  assert.equal(r.status, 200);
+  assert.match(r.text, /Dunlap lot/);
+  assert.match(r.text, /JDM night/);
+  assert.match(r.text, /Get alerts/);
+  assert.ok(!/online ?kitchen|127\.0\.0\.1/i.test(r.text), 'no link or name from the ordering system');
+  r = await request(ctx, 'GET', SITE, '/tasty-tuesday/' + day);
+  assert.equal(r.status, 200);
+  r = await request(ctx, 'GET', SITE, '/tasty-tuesday/2020-01-01');
+  assert.equal(r.status, 404);
+  r = await request(ctx, 'GET', SITE, '/');
+  assert.match(r.text, /Tasty Tuesday/);
+});
+
+test('trucks: an invite link to text, then a truck that takes cards shows Pre-order', async () => {
+  let r = await request(ctx, 'POST', SITE, `/api/host/meets/${meetId}/invite`, { cookie: C, body: {} });
+  assert.equal(r.status, 201, r.text);
+  assert.match(r.json.text, /Dunlap lot/);
+  assert.ok(r.json.text.includes(r.json.url));
+  // The truck accepts on the food side and takes cards.
+  const ref = Object.keys(k().meets)[0];
+  Object.assign(k().meets[ref].vendors[0], { status: 'in', slug: 'birria-bros', name: 'Birria Bros', cardReady: true, preorders: 3 });
+  r = await request(ctx, 'GET', SITE, `/api/host/meets/${meetId}/trucks`, { cookie: C });
+  assert.equal(r.json.trucks[0].preorders, 3);
+  assert.ok(!('total' in r.json.trucks[0]) && !('sales' in r.json.trucks[0]), 'counts only');
+  r = await request(ctx, 'GET', SITE, '/api/host/dashboard', { cookie: C });
+  assert.equal(r.json.preorders, 3);
+  r = await request(ctx, 'GET', SITE, `/tasty-tuesday/${day}`);
+  assert.match(r.text, /Birria Bros/);
+  assert.ok(r.text.includes(`/tasty-tuesday/${day}/food/birria-bros`));
+  r = await request(ctx, 'GET', SITE, `/tasty-tuesday/${day}/food/birria-bros`);
+  assert.equal(r.status, 200);
+  r = await request(ctx, 'GET', SITE, `/tasty-tuesday/${day}/food/nobody`);
+  assert.equal(r.status, 404);
+  // A truck the host has had before shows as one tap on the next meet.
+  r = await request(ctx, 'POST', SITE, '/api/host/meets', { cookie: C, body: { day: ymd(11), start: '19:00', end: '22:00', place: 'Dunlap lot' } });
+  const next = r.json.meet.id;
+  r = await request(ctx, 'GET', SITE, `/api/host/meets/${next}/trucks`, { cookie: C });
+  assert.ok(r.json.known.find((x) => x.slug === 'birria-bros'));
+  r = await request(ctx, 'POST', SITE, `/api/host/meets/${next}/trucks`, { cookie: C, body: { slug: 'birria-bros' } });
+  assert.equal(r.status, 201);
+  r = await request(ctx, 'POST', SITE, `/api/host/meets/${next}/trucks`, { cookie: C, body: { slug: 'never-had' } });
+  assert.equal(r.status, 404);
+});
+
+test('a pre-order: the menu comes through this site, the card page returns here, the notice is checked', async () => {
+  let r = await request(ctx, 'GET', SITE, `/api/meets/${meetId}/food/birria-bros`);
+  assert.equal(r.status, 200);
+  assert.equal(r.json.menu[0].photo, '/food-photo/_/uploads/birria.jpg', 'photos come through this site, with no address from the food side');
+  assert.ok(!/127\.0\.0\.1/.test(JSON.stringify(r.json)));
+  r = await request(ctx, 'POST', SITE, `/api/meets/${meetId}/food/birria-bros/order`, { body: { name: 'Ana', email: 'nope', items: [{ id: 1, qty: 1 }], pickupAt: 1900000000000, clientKey: 'abcdefgh12' } });
+  assert.equal(r.status, 400, 'needs an email');
+  r = await request(ctx, 'POST', SITE, `/api/meets/${meetId}/food/birria-bros/order`, { body: { name: 'Ana', email: 'ana@example.com', items: [{ id: 1, qty: 2 }], pickupAt: 1900000000000, clientKey: 'abcdefgh12', device: 'device-0123456789abcd' } });
+  assert.equal(r.status, 201, r.text);
+  assert.ok(r.json.checkoutUrl.startsWith('https://checkout.stripe.test/'));
+  const token = r.json.token;
+  const sent = k().lastOrderBody;
+  assert.equal(sent.returnUrl, 'http://meets.test/o', 'the card page comes back here');
+  assert.ok(!sent.email, 'the email stays on this site');
+  assert.match(sent.device, /^[a-f0-9]{32}$/, 'the device id goes hashed');
+
+  // Back from the card page.
+  r = await request(ctx, 'GET', SITE, '/o?paid=' + token);
+  assert.equal(r.status, 303);
+  assert.equal(r.headers.location, `/o/${token}?paid=1`);
+  r = await request(ctx, 'GET', SITE, '/o/' + token);
+  assert.equal(r.status, 200);
+  assert.ok(!/online ?kitchen/i.test(r.text));
+
+  // The food side's notice: wrong signature refused; right one updates the order.
+  const body = JSON.stringify({ type: 'order', token, status: 'Preparing', payment: 'paid', ticket: 101 });
+  r = await request(ctx, 'POST', SITE, '/hooks/kitchen', { raw: { buf: Buffer.from(body), type: 'application/json' }, headers: { 'x-meet-sig': 'bad' } });
+  assert.equal(r.status, 401);
+  k().orders[token].status = 'Preparing'; k().orders[token].payment = 'paid';
+  r = await request(ctx, 'POST', SITE, '/hooks/kitchen', { raw: { buf: Buffer.from(body), type: 'application/json' }, headers: { 'x-meet-sig': sign(body) } });
+  assert.equal(r.status, 200);
+  r = await request(ctx, 'GET', SITE, `/api/orders/${token}`);
+  assert.deepEqual([r.json.status, r.json.payment, r.json.ticket, r.json.vendor], ['Preparing', 'paid', 101, 'Birria Bros']);
+});
+
+test('alerts: confirm by link, an update reaches them, a signed link turns them off', async () => {
+  let r = await request(ctx, 'POST', SITE, '/api/alerts', { body: { host: 'tasty-tuesday', email: 'fan@example.com' } });
+  assert.equal(r.status, 200);
+  const link = new URL(r.json.devLink);
+  r = await request(ctx, 'GET', SITE, '/api/host/updates', { cookie: C });
+  assert.equal(r.json.subscribers, 0, 'not until confirmed');
+  r = await request(ctx, 'GET', SITE, link.pathname + link.search);
+  assert.match(r.text, /on the list/);
+  r = await request(ctx, 'GET', SITE, '/api/host/updates', { cookie: C });
+  assert.equal(r.json.subscribers, 1);
+  r = await request(ctx, 'POST', SITE, '/api/host/updates', { cookie: C, body: { message: 'Moving to the north lot.', toAlerts: true, toVendors: true, meetId } });
+  assert.equal(r.status, 200, r.text);
+  assert.equal(k().notices.length, 1, 'the trucks hear it too');
+  r = await request(ctx, 'GET', SITE, '/alerts/off?s=1.0000000000000000000000000000000');
+  assert.equal(r.status, 404, 'a forged link does nothing');
+  r = await request(ctx, 'GET', SITE, '/api/host/updates', { cookie: C });
+  assert.equal(r.json.updates[0].subject.includes('Tasty Tuesday'), true);
+});
+
+test('a food vendor asks for a spot; the host sees it', async () => {
+  let r = await request(ctx, 'POST', SITE, '/api/vendor-request', { body: { host: 'tasty-tuesday', name: 'Lemon Stand', contact: '602-555-0100', food: 'Lemonade' } });
+  assert.equal(r.status, 200);
+  r = await request(ctx, 'GET', SITE, '/api/host/requests', { cookie: C });
+  assert.equal(r.json.requests[0].name, 'Lemon Stand');
+  r = await request(ctx, 'PUT', SITE, '/api/host/requests/' + r.json.requests[0].id, { cookie: C, body: { status: 'dismissed' } });
+  r = await request(ctx, 'GET', SITE, '/api/host/requests', { cookie: C });
+  assert.equal(r.json.requests.length, 0);
+});
+
+test('turnout: only once a meet has started; history averages by spot', async () => {
+  let r = await request(ctx, 'POST', SITE, `/api/host/meets/${meetId}/turnout`, { cookie: C, body: { people: 40, cars: 20 } });
+  assert.equal(r.status, 400, 'not before it starts');
+  // A past meet, written straight to the database (the portal won't post one in the past).
+  const D = (() => { process.env.DB_FILE = ctx.dbFile; return require('../db'); })();
+  const now = Date.now();
+  for (const [d, people] of [[ymd(-14), 30], [ymd(-7), 50]]) {
+    await D.run("INSERT INTO meets (host_id, ref, day, start_time, end_time, place, created_at, updated_at) VALUES (1, ?, ?, '19:00', '22:00', 'Dunlap lot', ?, ?)", ['mpast' + people, d, now, now]);
+    const id = (await D.get('SELECT id FROM meets WHERE ref = ?', ['mpast' + people])).id;
+    r = await request(ctx, 'POST', SITE, `/api/host/meets/${id}/turnout`, { cookie: C, body: { people, cars: people / 2 } });
+    assert.equal(r.status, 200, r.text);
+  }
+  r = await request(ctx, 'GET', SITE, '/api/host/history', { cookie: C });
+  assert.deepEqual(r.json.spots[0], { place: 'Dunlap lot', meets: 2, avgPeople: 40, avgCars: 20 });
+  r = await request(ctx, 'GET', SITE, '/tasty-tuesday');
+  assert.match(r.text, /Last meet: about 50 people, 25 cars/);
+});
+
+test('settings, and a host’s own domain once it’s turned on', async () => {
+  let r = await request(ctx, 'PUT', SITE, '/api/host/settings', { cookie: C, body: { accent: '#5fb3d9', instagram: '@tastytuesday', closeMinutes: 60, customDomain: 'https://www.TastyTuesday.com/' } });
+  assert.equal(r.status, 200, r.text);
+  assert.deepEqual([r.json.host.accent, r.json.host.instagram, r.json.host.closeMinutes, r.json.host.customDomain, r.json.host.domainOn], ['#5fb3d9', 'tastytuesday', 60, 'tastytuesday.com', false]);
+  assert.equal(k().calls.filter((c) => c.method === 'PUT').slice(-1)[0].body.closeMinutes, 60, 'the food side hears the new cutoff');
+  r = await request(ctx, 'GET', 'tastytuesday.com', '/');
+  assert.match(r.text, /Nothing here|Car meets/, 'not live until turned on');
+  r = await request(ctx, 'POST', SITE, '/api/host/admin/domain', { body: { slug: 'tasty-tuesday' }, headers: { 'x-admin-token': 'wrong-wrong-wrong-wrong-xx' } });
+  assert.equal(r.status, 404);
+  r = await request(ctx, 'POST', SITE, '/api/host/admin/domain', { body: { slug: 'tasty-tuesday' }, headers: { 'x-admin-token': 'test-admin-token-0123456789' } });
+  assert.equal(r.status, 200);
+  r = await request(ctx, 'GET', 'tastytuesday.com', '/');
+  assert.match(r.text, /Dunlap lot/);
+  assert.ok(!/Page by/.test(r.text), 'no site line on their own domain');
+  r = await request(ctx, 'GET', SITE, '/tasty-tuesday');
+  assert.equal(r.status, 301);
+  assert.equal(r.headers.location, 'http://tastytuesday.com/');
+});
+
+test('photos lose their hidden location data', () => {
+  const { stripJpeg, stripPng } = require('../host');
+  const seg = (m, data) => { const b = Buffer.alloc(4 + data.length); b[0] = 0xff; b[1] = m; b.writeUInt16BE(data.length + 2, 2); data.copy(b, 4); return b; };
+  const jpeg = Buffer.concat([Buffer.from([0xff, 0xd8]), seg(0xe0, Buffer.from('JFIF\0')), seg(0xe1, Buffer.from('Exif\0\0GPS-HERE')), seg(0xdb, Buffer.alloc(8)), Buffer.from([0xff, 0xda, 0, 2, 1, 2, 3, 0xff, 0xd9])]);
+  const out = stripJpeg(jpeg);
+  assert.ok(out && !out.includes(Buffer.from('GPS-HERE')) && out.includes(Buffer.from('JFIF')));
+  assert.equal(stripJpeg(Buffer.from('not a jpeg')), null);
+  const chunk = (type, data) => { const b = Buffer.alloc(12 + data.length); b.writeUInt32BE(data.length, 0); b.write(type, 4, 'latin1'); data.copy(b, 8); return b; };
+  const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', Buffer.alloc(13)), chunk('eXIf', Buffer.from('GPS-HERE')), chunk('IDAT', Buffer.alloc(4)), chunk('IEND', Buffer.alloc(0))]);
+  const p = stripPng(png);
+  assert.ok(p && !p.includes(Buffer.from('GPS-HERE')) && p.includes(Buffer.from('IDAT')));
+});

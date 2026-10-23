@@ -1,0 +1,205 @@
+'use strict';
+/* views.js — the public pages, written on the server (fast on a phone, and link previews show the meet). */
+const U = require('./util');
+const { esc } = U;
+
+const SITE = () => process.env.SITE_NAME || 'Meet Night';
+const ver = () => process.env.ASSET_VERSION || '1';
+
+function layout({ title, description, host, body, scripts = [], noindex, image }) {
+  const accent = host && /^#[0-9a-f]{6}$/i.test(host.accent || '') ? host.accent : null;
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(title)}</title>
+${description ? `<meta name="description" content="${esc(description)}">` : ''}
+<meta property="og:title" content="${esc(title)}">
+${description ? `<meta property="og:description" content="${esc(description)}">` : ''}
+${image ? `<meta property="og:image" content="${esc(image)}">` : ''}
+${noindex ? '<meta name="robots" content="noindex">' : ''}
+<meta name="theme-color" content="#17191e">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/static/site.css?v=${ver()}">
+${accent ? `<style>:root{--accent:${accent}}</style>` : ''}
+</head>
+<body>
+${body}
+${scripts.map((s) => `<script src="/static/${s}?v=${ver()}" defer></script>`).join('\n')}
+</body>
+</html>`;
+}
+
+function top(host, base) {
+  return `<header class="wrap top">
+  ${host.logo ? `<img src="${esc(host.logo)}" alt="">` : ''}
+  <div><a class="who" href="${esc(base || '/')}" style="text-decoration:none">${esc(host.name)}</a>${host.city ? `<div class="city">${esc(host.city)}</div>` : ''}</div>
+</header>`;
+}
+
+function footer(host, base, { badge }) {
+  const s = [];
+  if (host.instagram) s.push(`<a href="https://instagram.com/${esc(host.instagram)}" rel="noopener">Instagram</a>`);
+  if (host.tiktok) s.push(`<a href="https://tiktok.com/@${esc(host.tiktok)}" rel="noopener">TikTok</a>`);
+  if (host.youtube) s.push(`<a href="https://youtube.com/@${esc(host.youtube)}" rel="noopener">YouTube</a>`);
+  return `<footer><div class="wrap">
+  ${s.length ? `<div class="social">${s.join('')}</div>` : ''}
+  <details class="ask" id="spot">
+    <summary>Food vendor? Ask for a spot</summary>
+    <form data-form="vendor" data-host="${esc(host.slug)}">
+      <label for="vrName">Business name</label><input id="vrName" name="name" maxlength="60" required>
+      <label for="vrContact">Phone or email</label><input id="vrContact" name="contact" maxlength="80" required>
+      <label for="vrFood">What you serve</label><input id="vrFood" name="food" maxlength="80" placeholder="Birria tacos, lemonade">
+      <label for="vrNote">Anything else (optional)</label><textarea id="vrNote" name="note" maxlength="400"></textarea>
+      <input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
+      <p style="margin-top:12px"><button class="btn" type="submit">Send to ${esc(host.name)}</button></p>
+      <div class="msg" role="status"></div>
+    </form>
+  </details>
+  ${badge ? `<p style="margin-top:20px">Page by <a href="/">${esc(SITE())}</a></p>` : ''}
+</div></footer>`;
+}
+
+/** The meet in its parking space: day, date, time, spot, and how soon. */
+function stall(m, tz, { live } = {}) {
+  const t = U.meetTimes(m, tz);
+  const off = m.status === 'canceled';
+  const date = U.fmt(t.startsAt, tz, { month: 'short', day: 'numeric' });
+  const dow = U.fmt(t.startsAt, tz, { weekday: 'long' });
+  const maps = m.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(m.address)}` : null;
+  return `<div class="stall${off ? ' off' : ''}">
+  <div class="dow">${esc(dow)}${m.title ? ` · ${esc(m.title)}` : ''}</div>
+  <div class="date">${esc(date)}</div>
+  <div class="time">${esc(U.time12(t.startsAt, tz))}–${esc(U.time12(t.endsAt, tz))}</div>
+  <div class="where">${esc(m.place)}${maps ? ` · <a href="${esc(maps)}" rel="noopener">Directions</a>` : ''}</div>
+  ${off ? '<div class="soon">Canceled</div>' : live ? `<div class="soon" data-countdown="${t.startsAt}" data-ends="${t.endsAt}"></div>` : ''}
+</div>`;
+}
+
+/** A host's page for one meet (their home page shows the next one). */
+function meetPage(host, m, ctx) {
+  const tz = ctx.tz;
+  const base = ctx.base;
+  const t = U.meetTimes(m, tz);
+  const over = t.endsAt < Date.now();
+  const trucks = (ctx.trucks || []).filter((v) => v.status === 'in');
+  const anyPreorder = !over && m.status === 'on' && trucks.some((v) => v.cardReady);
+  const mpath = `${base}/${m.day}`;
+  const rules = String(host.rules || '').split('\n').map((s) => s.trim()).filter(Boolean);
+  const desc = `${U.dayLong(t.startsAt, tz)}, ${U.time12(t.startsAt, tz)} at ${m.place}.${trucks.length ? ' Food: ' + trucks.map((v) => v.name).join(', ') + '.' : ''}`;
+  let body = top(host, base) + `<main class="wrap">
+<section>
+  ${ctx.isHome ? '' : `<p class="small dim"><a href="${esc(base || '/')}">Next meet</a></p>`}
+  ${stall(m, tz, { live: !over })}
+  ${over ? '<p class="dim">This meet is over.</p>' : ''}
+  ${!over && m.status === 'on' ? `<div class="actions">
+    ${anyPreorder ? `<a class="btn go" href="#food">Pre-order food</a>` : ''}
+    <a class="btn${anyPreorder ? '' : ' go'}" href="#alerts">Get alerts</a>
+  </div>` : ''}
+  ${m.notes ? `<p class="dim" style="margin-top:10px">${esc(m.notes)}</p>` : ''}
+</section>`;
+  if (ctx.last && ctx.last.people) {
+    body += `<section><p class="turnout">Last meet: about ${ctx.last.people} people${ctx.last.cars ? `, ${ctx.last.cars} cars` : ''}</p>
+    <p class="small dim">${esc(U.dayShort(ctx.last.at, tz))}${ctx.last.place ? ` at ${esc(ctx.last.place)}` : ''}</p></section>`;
+  }
+  body += `<section id="food"><h2>Food</h2>`;
+  if (!trucks.length) body += `<p class="dim">${over ? 'No food trucks were listed for this meet.' : 'Food trucks will show here once they’re confirmed.'}</p>`;
+  for (const v of trucks) {
+    const can = anyPreorder && v.cardReady;
+    body += `<div class="truck"><div><div class="name">${esc(v.emoji ? v.emoji + ' ' : '')}${esc(v.name)}</div>
+      <div class="note">${can ? 'Pre-order, pay now, pick up at the meet' : 'Order at the truck'}</div></div>
+      ${can ? `<a class="btn go" href="${esc(mpath)}/food/${esc(v.slug)}">Pre-order</a>` : ''}</div>`;
+  }
+  body += `</section>`;
+  if (m.address || rules.length) {
+    body += `<section><h2>The spot</h2><p>${esc(m.place)}${m.address ? `<br><span class="dim">${esc(m.address)}</span>` : ''}</p>
+    ${rules.length ? `<h3 style="margin:16px 0 8px">House rules</h3><ul class="rules">${rules.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>` : ''}</section>`;
+  }
+  const rc = ctx.recap;
+  if (rc && (rc.video_url || (rc.photos && rc.photos.length))) {
+    body += `<section><h2>Recap</h2>
+    ${rc.video_url ? `<a class="video" href="${esc(rc.video_url)}" rel="noopener"><b>Watch the recap</b><span class="dim small">${esc(rc.caption || 'Video from the last meet')}</span></a>` : (rc.caption ? `<p>${esc(rc.caption)}</p>` : '')}
+    ${rc.photos && rc.photos.length ? `<div class="photos">${rc.photos.map((p) => `<img src="${esc(p)}" alt="" loading="lazy">`).join('')}</div>` : ''}</section>`;
+  }
+  body += `<section id="alerts"><h2>Get alerts</h2>
+  <p class="dim">An email when the next meet is posted or something changes. Nothing else.</p>
+  <form class="row" data-form="alerts" data-host="${esc(host.slug)}">
+    <input type="email" name="email" required maxlength="120" placeholder="you@email.com" aria-label="Your email">
+    <input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
+    <button class="btn go" type="submit">Join</button>
+  </form>
+  <div class="msg" role="status"></div></section>`;
+  if (ctx.upcoming && ctx.upcoming.length > 1) {
+    body += `<section><h2>Coming up</h2><div class="list-meets">${ctx.upcoming.filter((u) => u.id !== m.id).slice(0, 4).map((u) => {
+      const ut = U.meetTimes(u, tz);
+      return `<a href="${esc(base)}/${esc(u.day)}"><b>${esc(U.dayShort(ut.startsAt, tz))}</b> <span class="dim">${esc(U.time12(ut.startsAt, tz))} · ${esc(u.place)}${u.status === 'canceled' ? ' · canceled' : ''}</span></a>`;
+    }).join('')}</div></section>`;
+  }
+  body += `</main>` + footer(host, base, ctx);
+  return layout({ title: `${host.name}: ${U.dayShort(t.startsAt, tz)}${m.title ? ' · ' + m.title : ''}`, description: desc, host, body, scripts: ['site.js'] });
+}
+
+/** A host with nothing scheduled yet. */
+function hostEmpty(host, ctx) {
+  const body = top(host, ctx.base) + `<main class="wrap"><section>
+  <div class="stall off"><div class="dow">Next meet</div><div class="date">TBA</div><div class="time">Get an alert when it’s posted</div></div>
+  </section>
+  <section id="alerts"><h2>Get alerts</h2><p class="dim">An email when the next meet is posted. Nothing else.</p>
+  <form class="row" data-form="alerts" data-host="${esc(host.slug)}"><input type="email" name="email" required maxlength="120" placeholder="you@email.com" aria-label="Your email">
+  <input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true"><button class="btn go" type="submit">Join</button></form><div class="msg" role="status"></div></section></main>` + footer(host, ctx.base, ctx);
+  return layout({ title: host.name, description: `${host.name}: car meets${host.city ? ' in ' + host.city : ''}.`, host, body, scripts: ['site.js'] });
+}
+
+/** A truck's menu for a meet, with pickup times and the cart (site.js builds it from the menu data). */
+function foodPage(host, m, truck, ctx) {
+  const tz = ctx.tz;
+  const t = U.meetTimes(m, tz);
+  const body = top(host, ctx.base) + `<main class="wrap">
+<section>
+  <p class="small dim"><a href="${esc(ctx.base)}/${esc(m.day)}">${esc(U.dayShort(t.startsAt, tz))} at ${esc(m.place)}</a></p>
+  <h1 style="font-size:40px;margin:6px 0 4px">${esc(truck.emoji ? truck.emoji + ' ' : '')}${esc(truck.name)}</h1>
+  <p class="dim">Pay now, pick up at the meet. Your food is made to be ready at the time you pick.</p>
+</section>
+<div id="food-app" data-meet="${m.id}" data-truck="${esc(truck.slug)}"><p class="dim">Loading the menu…</p></div>
+</main>`;
+  return layout({ title: `${truck.name} at ${host.name}`, description: `Pre-order from ${truck.name} for ${U.dayShort(t.startsAt, tz)}.`, host, body, scripts: ['food.js'], noindex: true });
+}
+
+function orderPage(host, ctx) {
+  const body = (host ? top(host, ctx.base) : `<header class="wrap top"><a class="who" href="/" style="text-decoration:none">${esc(SITE())}</a></header>`) +
+    `<main class="wrap"><div id="order-app" data-token="${esc(ctx.token)}"><p class="dim">Loading your order…</p></div></main>`;
+  return layout({ title: 'Your order', host, body, scripts: ['order.js'], noindex: true });
+}
+
+function message(host, { title, text, href, cta }) {
+  const body = (host ? top(host, '') : `<header class="wrap top"><a class="who" href="/" style="text-decoration:none">${esc(SITE())}</a></header>`) +
+    `<main class="wrap"><section><h1 style="font-size:36px;margin-bottom:12px">${esc(title)}</h1><p class="dim">${esc(text)}</p>
+    ${href ? `<p><a class="btn" href="${esc(href)}">${esc(cta || 'Go back')}</a></p>` : ''}</section></main>`;
+  return layout({ title, host, body, noindex: true });
+}
+
+/** The site's own front page: the meets coming up, and how a host gets a page. */
+function home(list) {
+  const tz = process.env.TIMEZONE || 'America/Phoenix';
+  const body = `<header class="wrap top"><span class="who">${esc(SITE())}</span></header>
+<main class="wrap">
+<section>
+  <div class="stall"><div class="dow">Car meets</div><div class="date">${list.length ? 'Tonight & soon' : 'Soon'}</div><div class="time">Where they are, when, and what’s to eat</div></div>
+</section>
+<section><h2>Coming up</h2>
+${list.length ? `<div class="list-meets">${list.map((r) => {
+    const t = U.meetTimes(r, r.timezone || tz);
+    return `<a href="/${esc(r.slug)}/${esc(r.day)}"><b>${esc(r.host_name)}</b><span class="dim">${esc(U.dayShort(t.startsAt, r.timezone || tz))}, ${esc(U.time12(t.startsAt, r.timezone || tz))} · ${esc(r.place)}</span></a>`;
+  }).join('')}</div>` : '<p class="dim">Nothing posted yet.</p>'}
+</section>
+<section><h2>Run a meet?</h2>
+<p class="dim">Get a page for your meets: the next date and spot, food trucks people can pre-order from, and alerts when you post. Free.</p>
+<p><a class="btn go" href="/host">Make your page</a></p></section>
+</main>
+<footer><div class="wrap">${esc(SITE())}</div></footer>`;
+  return layout({ title: `${SITE()}: car meets`, description: 'Car meets: where, when, and food you can pre-order.', body });
+}
+
+module.exports = { layout, meetPage, hostEmpty, foodPage, orderPage, message, home };

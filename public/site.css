@@ -1,0 +1,127 @@
+/* site.css — the car meet pages. Night by default (meets happen after dark), day when the phone asks for it.
+   The one bold thing is the parking space: the meet's date painted between two stripes, like a numbered stall.
+   Everything else stays quiet. The host's own color (--accent) replaces the sodium-lamp amber when they set one. */
+:root {
+  --asphalt: #17191e; --lot: #1f2229; --lot-2: #262a32; --line: #323741;
+  --ink: #f1efe8; --dim: #a8abb2; --faint: #7d818a; --paint: #ece8dc; --accent: #f2a33a; --on-accent: #17191e;
+  --ok: #7cc47f; --warn: #f2a33a; --bad: #e8736b;
+  --radius: 10px; --gutter: 16px;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --asphalt: #efede7; --lot: #ffffff; --lot-2: #f6f4ef; --line: #dad6cb;
+    --ink: #1c1e23; --dim: #565961; --faint: #6c6f77; --paint: #1c1e23; --on-accent: #1c1e23;
+    --ok: #2f7d34; --warn: #8a5208; --bad: #b2332b;
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --asphalt: #efede7; --lot: #ffffff; --lot-2: #f6f4ef; --line: #dad6cb;
+  --ink: #1c1e23; --dim: #565961; --faint: #6c6f77; --paint: #1c1e23; --on-accent: #1c1e23;
+  --ok: #2f7d34; --warn: #8a5208; --bad: #b2332b; color-scheme: light;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--asphalt); color: var(--ink); font: 400 16px/1.55 "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif; }
+a { color: inherit; text-underline-offset: 3px; }
+img { max-width: 100%; display: block; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
+
+.wrap { max-width: 640px; margin: 0 auto; padding: 0 var(--gutter); }
+.top { display: flex; align-items: center; gap: 10px; padding-top: 18px; padding-bottom: 8px; }
+.top img { width: 36px; height: 36px; border-radius: 8px; object-fit: cover; }
+.top .who { font: 600 18px/1.2 "Barlow Condensed", "Barlow", sans-serif; letter-spacing: .01em; }
+.top .city { color: var(--dim); font-size: 14px; }
+
+h1, h2, h3 { font-family: "Barlow Condensed", "Barlow", sans-serif; font-weight: 600; line-height: 1.1; margin: 0; }
+h2 { font-size: 26px; margin: 0 0 12px; }
+h3 { font-size: 20px; }
+p { margin: 0 0 12px; }
+.dim { color: var(--dim); }
+.small { font-size: 14px; }
+
+/* The parking space: the date painted between two stripes, a curb stop at the bottom. */
+.stall { position: relative; margin: 18px 0 8px; padding: 22px 22px 30px; border-left: 7px solid var(--paint); border-right: 7px solid var(--paint); }
+.stall::after { content: ""; position: absolute; left: 22%; right: 22%; bottom: 0; height: 10px; border-radius: 3px; background: var(--accent); }
+.stall .dow { font: 600 22px/1 "Barlow Condensed", sans-serif; color: var(--dim); }
+.stall .date { font: 700 clamp(64px, 19vw, 112px)/.92 "Barlow Condensed", sans-serif; letter-spacing: -.01em; margin: 6px 0 10px; }
+.stall .time { font: 600 26px/1.15 "Barlow Condensed", sans-serif; }
+.stall .where { margin-top: 6px; font-size: 17px; }
+.stall .soon { margin-top: 10px; font-weight: 600; }
+.stall.off { border-color: var(--line); }
+.stall.off .date { text-decoration: line-through; text-decoration-thickness: 4px; color: var(--dim); }
+
+.actions { display: flex; gap: 10px; flex-wrap: wrap; margin: 16px 0 6px; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 46px; padding: 0 18px; border-radius: var(--radius);
+  font: 600 16px/1 "Barlow", sans-serif; text-decoration: none; cursor: pointer; border: 1.5px solid var(--line); background: transparent; color: var(--ink); }
+.btn.go { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.btn.wide { width: 100%; }
+.btn[disabled] { opacity: .5; cursor: default; }
+.link { background: none; border: 0; padding: 0; color: var(--dim); font: inherit; text-decoration: underline; cursor: pointer; }
+
+section { padding: 26px 0; border-top: 1px solid var(--line); }
+section:first-of-type { border-top: 0; }
+.turnout { font: 600 22px/1.2 "Barlow Condensed", sans-serif; }
+
+.truck { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+.truck:last-child { border-bottom: 0; }
+.truck .name { font-weight: 600; font-size: 18px; }
+.truck .note { color: var(--dim); font-size: 14px; }
+
+.rules { margin: 0; padding-left: 20px; color: var(--dim); }
+.rules li { margin: 4px 0; }
+
+.video { display: block; padding: 14px 16px; border: 1.5px solid var(--line); border-radius: var(--radius); text-decoration: none; margin-bottom: 12px; }
+.video b { display: block; font-size: 17px; }
+.photos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.photos img { aspect-ratio: 1; object-fit: cover; border-radius: 6px; width: 100%; }
+
+form.row { display: flex; gap: 8px; }
+input, select, textarea { width: 100%; min-height: 46px; padding: 10px 12px; border-radius: var(--radius); border: 1.5px solid var(--line); background: var(--lot); color: var(--ink); font: 400 16px/1.3 "Barlow", sans-serif; }
+textarea { min-height: 90px; resize: vertical; }
+label { display: block; font-size: 14px; color: var(--dim); margin: 12px 0 6px; }
+.msg { min-height: 1.4em; font-size: 14px; margin-top: 8px; }
+.msg.ok { color: var(--ok); } .msg.bad { color: var(--bad); }
+.hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+
+details.ask { border: 1.5px solid var(--line); border-radius: var(--radius); padding: 0 14px; }
+details.ask summary { cursor: pointer; padding: 14px 0; font-weight: 600; }
+
+footer { padding: 28px 0 40px; color: var(--faint); font-size: 14px; border-top: 1px solid var(--line); }
+footer .social { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 14px; }
+footer .social a { color: var(--dim); }
+
+/* Food: a truck's menu and the cart */
+.menu-item { display: grid; grid-template-columns: 1fr auto; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+.menu-item.has-photo { grid-template-columns: 72px 1fr auto; }
+.menu-item img { width: 72px; height: 72px; border-radius: 8px; object-fit: cover; }
+.menu-item .n { font-weight: 600; }
+.menu-item .d { color: var(--dim); font-size: 14px; }
+.menu-item .p { white-space: nowrap; font-weight: 600; }
+.menu-item.out { opacity: .5; }
+.qty { display: inline-flex; align-items: center; gap: 4px; margin-top: 6px; }
+.qty button { width: 40px; height: 40px; border-radius: 8px; border: 1.5px solid var(--line); background: var(--lot); color: var(--ink); font-size: 20px; cursor: pointer; }
+.qty span { min-width: 26px; text-align: center; font-weight: 600; }
+.choices { margin-top: 8px; display: grid; gap: 6px; }
+.choices fieldset { border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px 8px; margin: 0; }
+.choices legend { font-size: 13px; color: var(--dim); padding: 0 4px; }
+.choices label { display: flex; gap: 8px; align-items: center; margin: 4px 0; color: var(--ink); font-size: 15px; }
+.choices input { width: auto; min-height: 0; }
+.cartbar { padding: 16px 0 8px; margin-top: 16px; border-top: 1px solid var(--line); }
+.slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; }
+.slots button { min-height: 44px; border-radius: 8px; border: 1.5px solid var(--line); background: var(--lot); color: var(--ink); font: 600 15px "Barlow", sans-serif; cursor: pointer; }
+.slots button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
+.slots button[disabled] { opacity: .4; text-decoration: line-through; cursor: default; }
+.tips { display: flex; gap: 8px; flex-wrap: wrap; }
+.tips button { min-height: 42px; padding: 0 14px; border-radius: 8px; border: 1.5px solid var(--line); background: var(--lot); color: var(--ink); font: 600 15px "Barlow", sans-serif; cursor: pointer; }
+.tips button[aria-pressed="true"] { border-color: var(--accent); }
+.lines { width: 100%; border-collapse: collapse; font-size: 15px; }
+.lines td { padding: 6px 0; border-bottom: 1px solid var(--line); }
+.lines td:last-child { text-align: right; }
+.ticket { font: 700 72px/1 "Barlow Condensed", sans-serif; margin: 8px 0; }
+.status-ready { color: var(--ok); }
+.list-meets a { display: block; padding: 14px 0; border-bottom: 1px solid var(--line); text-decoration: none; }
+.list-meets b { font-size: 18px; display: block; }
