@@ -101,7 +101,6 @@ function stall(m, tz, { live, logo } = {}) {
   const dow = U.fmt(t.startsAt, tz, { weekday: 'long' });
   const maps = m.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(m.address)}` : null;
   return `<div class="stall${off ? ' off' : ''}">
-  <div class="halo" aria-hidden="true"></div>
   ${logo ? `<img class="mark" src="${esc(logo)}" alt="">` : ''}
   <div class="dow">${esc(dow)}${m.title ? ` · ${esc(m.title)}` : ''}</div>
   <div class="date">${esc(date)}</div>
@@ -192,7 +191,7 @@ function hostEmpty(host, ctx) {
   const body = (host.logo ? '' : top(host, ctx.base)) + `<main class="wrap"><section class="hero${vid ? ' has-video' : ''}${host.logo ? ' has-avatar' : ''}">
   ${heroBg(vid)}
   ${avatar(host)}
-  <div class="stall"><div class="halo" aria-hidden="true"></div><div class="dow">Next meet</div><div class="date">Soon</div><div class="time">Get an alert when it’s posted</div></div>
+  <div class="stall"><div class="dow">Next meet</div><div class="date">Soon</div><div class="time">Get an alert when it’s posted</div></div>
   <div class="actions"><a class="btn go" href="#alerts">Get alerts</a></div>
   </section>
   <section id="alerts"><h2>Get alerts</h2><p class="dim">An email when the next meet is posted. Nothing else.</p>
@@ -251,7 +250,7 @@ function home(list, site) {
 <main class="wrap">
 <section class="hero${site && site.video && site.video_status === 'ready' ? ' has-video' : ''}">
   ${heroBg(site && site.video && site.video_status === 'ready' ? site : null)}
-  <div class="stall"><div class="halo" aria-hidden="true"></div><div class="dow">Car meets</div><div class="date word">${esc(SITE())}</div><div class="time">Where they are, when, and what’s to eat</div></div>
+  <div class="stall"><div class="dow">Car meets</div><div class="date word">${esc(SITE())}</div><div class="time">Where they are, when, and what’s to eat</div></div>
 </section>
 <section><h2>Coming up</h2>
 ${list.length ? `<div class="list-meets">${list.map((r) => {

@@ -46,6 +46,11 @@ test('the logo keeps the whole crest, not a strip from the middle', { skip: !ffm
   const [w, h] = sizeOf(png);
   assert.ok(w >= 340 && w <= 380, `width ${w}`);
   assert.ok(h >= 260 && h <= 300, `height ${h}`);
+  // The black around the crest is see-through (no black box on the footage); the crest itself isn't.
+  const f = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'png-')), 'l.png'); fs.writeFileSync(f, png);
+  const px = (x, y) => spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-i', f, '-vf', `crop=1:1:${x}:${y},format=rgba`, '-f', 'rawvideo', '-']).stdout;
+  assert.equal(px(0, 0)[3], 0, 'corner is see-through');
+  assert.equal(px(Math.round(w / 2), h - 30)[3], 255, 'crest is solid');
 });
 
 test('the site opens on the host: round logo, no header, every truck linked to its menu', async () => {

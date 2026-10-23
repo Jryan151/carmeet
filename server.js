@@ -384,10 +384,40 @@ app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
   res.status(500).type('html').send(V.message(null, { title: 'Something went wrong', text: 'Try again in a minute.', href: '/', cta: 'Go to the main page' }));
 });
 
+/**
+ * Once at startup:
+ * - A video that was processing when the server stopped never finishes (the work was in memory), and a new upload
+ *   is refused while one is processing. Those are marked failed so the host can upload again.
+ * - Logos saved before logos were made see-through get the same treatment now (trimmed, black made see-through).
+ *   The old file stays, so a page cached somewhere still shows it.
+ */
+async function tidyAtStart() {
+  const Vid = require('./video');
+  for (const t of ['hosts', 'meets', 'site']) {
+    await D.run(`UPDATE ${t} SET video_status = 'failed', video_error = ? WHERE video_status = 'processing'`,
+      ['The server restarted while this video was processing. Upload it again.']).catch(() => {});
+  }
+  if (!Vid.ffmpegOk()) return;
+  const redo = async (file) => {
+    const f = path.basename(String(file || ''));
+    if (!f || Vid.TRIMMED.test(f) || !fs.existsSync(path.join(UPLOAD_DIR, f))) return null;
+    return Vid.trimLogo(path.join(UPLOAD_DIR, f), UPLOAD_DIR);
+  };
+  for (const h of await D.all("SELECT id, logo FROM hosts WHERE logo LIKE '/uploads/%'")) {
+    const n = await redo(h.logo);
+    if (n) await D.run('UPDATE hosts SET logo = ? WHERE id = ?', ['/uploads/' + n, h.id]);
+  }
+  for (const k of await D.all('SELECT id, file FROM kit_logos')) {
+    const n = await redo(k.file);
+    if (n) await D.run('UPDATE kit_logos SET file = ? WHERE id = ?', [n, k.id]);
+  }
+}
+
 if (require.main === module) {
   D.ensureSchema().then(() => {
     app.listen(PORT, () => console.log(`Car meet site on port ${PORT} (${SITE_DOMAIN})${K.on() ? '' : ' · food side not connected (KITCHEN_API, MEET_PARTNER_KEY)'}`));
     mail.start();
+    tidyAtStart().catch((e) => console.error('startup tidy:', e.message));
   }).catch((e) => { console.error('Startup failed:', e); process.exit(1); });
 }
-module.exports = { app, orderMail, ready: () => D.ensureSchema() };
+module.exports = { app, orderMail, tidyAtStart, ready: () => D.ensureSchema() };
