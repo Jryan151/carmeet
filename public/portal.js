@@ -123,6 +123,61 @@
   // While a video processes, look again every 8 seconds (each redraw sets the next look only if it's still processing).
   function poll(redraw) { clearTimeout(pollTimer); var t = tab; pollTimer = setTimeout(function () { if (tab === t) redraw(); }, 8000); }
 
+  /* ---------- the parking map: their marked-up satellite screenshot, then tap to drop pins ---------- */
+  var PIN_NAMES = { enter: 'Enter', parking: 'Parking', overflow: 'Overflow', food: 'Food', exit: 'Exit', nopark: 'No parking', spot: 'The meet' };
+  var PIN_COLORS = { enter: '#ffd23f', parking: '#4ade80', overflow: '#60a5fa', food: '#f9a8d4', exit: '#fb923c', nopark: '#f87171', spot: 'var(--accent)' };
+  var pinKind = 'enter';
+  function parkingCard(m) {
+    var pins = m.parkingPins || [];
+    return '<div class="card" id="parkingCard"><h3>Parking map</h3><p class="small dim">The marked-up satellite screenshot you already post. On the page it’s shown tilted, like pulling into the lot, and people can turn it. Then tap it here to drop pins.</p>' +
+      (m.parking ? '<div class="small" style="margin:8px 0 6px">Tap the map to drop a pin:</div><div class="pinkinds">' + Object.keys(PIN_NAMES).map(function (k) {
+        return '<button type="button" data-pin-kind="' + k + '" aria-pressed="' + (k === pinKind) + '"><i style="background:' + PIN_COLORS[k] + '"></i>' + PIN_NAMES[k] + '</button>'; }).join('') + '</div>' +
+        '<div class="pinmap" data-pin-map="' + m.id + '"><img src="' + esc(m.parking) + '" alt="" draggable="false">' + pins.map(function (p, i) {
+          return '<span class="pdot" style="left:' + (p.x * 100) + '%;top:' + (p.y * 100) + '%;background:' + PIN_COLORS[p.kind] + '">' + (i + 1) + '</span>'; }).join('') + '</div>' +
+        (pins.length ? pins.map(function (p, i) {
+          return '<div class="rowx"><div style="display:flex;gap:8px;align-items:center;flex:1;min-width:0"><span class="pdot static" style="background:' + PIN_COLORS[p.kind] + '">' + (i + 1) + '</span>' +
+            '<input data-pin-label="' + i + '" maxlength="24" placeholder="' + PIN_NAMES[p.kind] + '" value="' + esc(p.label) + '" aria-label="Label"></div><button class="btn sm" type="button" data-pin-del="' + i + '">Remove</button></div>'; }).join('') : '') : '') +
+      '<label for="parkingFile">' + (m.parking ? 'Use a different picture (its pins are cleared)' : 'Upload the map') + '</label><input type="file" id="parkingFile" data-id="' + m.id + '" accept="image/jpeg,image/png">' +
+      '<div class="msg" id="parkingMsg" role="status"></div>' +
+      (m.parking ? '<div class="bar"><a class="btn sm" href="' + esc(m.url) + '#parking" target="_blank" rel="noopener">See it on the page</a><button class="btn sm" type="button" data-parking-drop="' + m.id + '">Remove map</button></div>' : '') + '</div>';
+  }
+  // Pins are saved as they change (each tap, label or removal), so nothing is lost if the phone locks.
+  function parkingWire(m, redraw) {
+    var card = $('parkingCard'); if (!card) return;
+    var pins = (m.parkingPins || []).slice();
+    var save = function (again) {
+      api('PUT', '/meets/' + m.id + '/parking', { pins: pins }).then(function (r) {
+        if (!r.ok) return say($('parkingMsg'), r.d.error);
+        m.parkingPins = r.d.meet.parkingPins;
+        if (again) redraw(); else say($('parkingMsg'), 'Saved.', true);
+      });
+    };
+    card.onclick = function (e) {
+      var b;
+      if ((b = e.target.closest('[data-pin-kind]'))) { pinKind = b.getAttribute('data-pin-kind'); Array.prototype.forEach.call(card.querySelectorAll('[data-pin-kind]'), function (x) { x.setAttribute('aria-pressed', String(x === b)); }); return; }
+      if ((b = e.target.closest('[data-pin-map]'))) {
+        if (pins.length >= 16) return say($('parkingMsg'), '16 pins max. Remove one first.');
+        var img = b.querySelector('img').getBoundingClientRect();
+        var x = (e.clientX - img.left) / img.width, y = (e.clientY - img.top) / img.height;
+        if (x < 0 || x > 1 || y < 0 || y > 1) return;
+        pins.push({ x: x, y: y, kind: pinKind, label: '' }); save(true); return;
+      }
+      if ((b = e.target.closest('[data-pin-del]'))) { pins.splice(+b.getAttribute('data-pin-del'), 1); save(true); return; }
+      if ((b = e.target.closest('[data-parking-drop]'))) { if (confirm('Remove the parking map and its pins?')) api('DELETE', '/meets/' + m.id + '/parking').then(redraw); }
+    };
+    card.onchange = function (e) {
+      var t = e.target;
+      if (t.hasAttribute('data-pin-label')) { var p = pins[+t.getAttribute('data-pin-label')]; if (p) { p.label = t.value.trim(); save(false); } return; }
+      if (t.id === 'parkingFile') {
+        var f = t.files[0]; if (!f) return;
+        if (f.size > 12 * 1024 * 1024) return say($('parkingMsg'), 'That picture is over 12 MB. A screenshot of it works.');
+        if (m.parking && pins.length && !confirm('A new picture clears its ' + pins.length + ' pin' + (pins.length === 1 ? '' : 's') + '. Go ahead?')) { t.value = ''; return; }
+        say($('parkingMsg'), 'Uploading…', true);
+        api('POST', '/meets/' + m.id + '/parking', null, f).then(function (r) { if (!r.ok) return say($('parkingMsg'), r.d.error); redraw(); });
+      }
+    };
+  }
+
   /* ---------- the meet's flyer ---------- */
   function flyerCard(m) {
     return '<div class="card"><h3>Flyer</h3><p class="small dim">The one you post on Instagram. It becomes the main picture on this meet’s page, over your background video, and the preview when the link is shared.</p>' +
@@ -391,13 +446,14 @@
       if (editing) html += meetForm(editing);
       else if (detail) html += '<p class="small"><button class="link" data-back>All meets</button></p><div class="card"><h3>' + esc(detail.title || detail.label) + '</h3><p class="dim">' + esc(detail.label) + ' · ' + esc(detail.place) + (detail.status === 'canceled' ? ' · canceled' : '') + '</p>' +
         '<div class="bar"><button class="btn sm" data-edit="' + detail.id + '">Edit</button><button class="btn sm" data-again="' + detail.id + '">Repeat next week</button>' +
-        (detail.status === 'canceled' ? '<button class="btn sm" data-uncancel="' + detail.id + '">Put it back on</button>' : '<button class="btn sm" data-cancel="' + detail.id + '">Cancel meet</button>') + '</div></div>' + flyerCard(detail) + '<div id="trucksBox"></div><div id="kitVendorsBox"></div>' + videoCard(detail.video, 'meet', detail.id);
+        (detail.status === 'canceled' ? '<button class="btn sm" data-uncancel="' + detail.id + '">Put it back on</button>' : '<button class="btn sm" data-cancel="' + detail.id + '">Cancel meet</button>') + '</div></div>' + flyerCard(detail) + parkingCard(detail) + '<div id="trucksBox"></div><div id="kitVendorsBox"></div>' + videoCard(detail.video, 'meet', detail.id);
       else html += '<div class="bar" style="margin:16px 0"><button class="btn go" data-new>Post a meet</button></div>' + (list.length ? list.map(function (m) {
         return '<div class="rowx"><div><div><b>' + esc(m.label) + '</b></div><div class="tag">' + esc(m.place) + (m.title ? ' · ' + esc(m.title) : '') + (m.status === 'canceled' ? ' · canceled' : '') + '</div></div><button class="btn sm" data-open="' + m.id + '">Open</button></div>';
       }).join('') : '<p class="dim">Nothing coming up.</p>');
       view(html);
       if (detail) api('GET', '/meets/' + detail.id + '/trucks').then(function (t) { if (t.ok && $('trucksBox')) $('trucksBox').innerHTML = trucksHtml(detail, t.d.trucks, t.d.known, t.d.vendors); });
       if (detail) drawKitVendors(detail);
+      if (detail) parkingWire(detail, drawMeets);
       var form = $('meetForm');
       if (form) form.onsubmit = function (e) {
         e.preventDefault();

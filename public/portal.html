@@ -58,6 +58,17 @@
   .kit figure.editing input, .kit figure.editing select { width: 100%; margin-top: 4px; }
   .kit figure.editing .art { max-height: 140px; }
   .flyer-prev { width: 100%; max-width: 320px; border-radius: 10px; border: 1px solid var(--line); margin: 6px 0; }
+  .pinkinds { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .pinkinds button { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line);
+    background: var(--lot); color: var(--ink); font: 500 13px var(--body); cursor: pointer; }
+  .pinkinds button[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+  .pinkinds i { width: 10px; height: 10px; border-radius: 50%; }
+  .pinmap { position: relative; border-radius: 10px; overflow: hidden; cursor: crosshair; touch-action: manipulation; margin-bottom: 8px; }
+  .pinmap img { width: 100%; display: block; user-select: none; -webkit-user-select: none; }
+  .pdot { position: absolute; width: 24px; height: 24px; margin: -12px 0 0 -12px; border-radius: 50%; display: grid; place-items: center;
+    font: 700 12px/1 var(--body); color: #0b0a10; box-shadow: 0 0 0 2px rgba(0, 0, 0, .6), 0 4px 10px rgba(0, 0, 0, .5); pointer-events: none; }
+  .pdot.static { position: static; margin: 0; flex: none; }
+  .rowx input { min-height: 40px; }
   [hidden] { display: none !important; }
 </style>
 </head>

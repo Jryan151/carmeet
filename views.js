@@ -131,6 +131,26 @@ function when(m, tz, { live } = {}) {
 </div>`;
 }
 
+/** The parking map: the host's marked-up satellite picture laid back like the lot seen from a car on approach, with
+    pins standing up off it. Drag to turn it; "Flat" lays it down to read. site.js does the moving; without it, it's
+    just the tilted picture. */
+function parkingMap(m) {
+  if (!m.parking) return '';
+  const list = U.pins(m.parking_pins);
+  const kinds = [...new Set(list.map((p) => p.kind))];
+  return `<div class="lot" data-lot>
+  <div class="lot-stage"><div class="lot-plane">
+    <img src="/uploads/${esc(m.parking)}" alt="Parking map for ${esc(m.place)}" draggable="false">
+    ${list.map((p) => `<span class="pin k-${p.kind}" style="left:${(p.x * 100).toFixed(1)}%;top:${(p.y * 100).toFixed(1)}%"><b>${esc(p.label || U.PIN_KINDS[p.kind])}</b></span>`).join('')}
+  </div></div>
+  <div class="lot-bar">
+    ${kinds.length ? `<div class="lot-key">${kinds.map((k) => `<span class="k-${k}">${esc(U.PIN_KINDS[k])}</span>`).join('')}</div>` : '<span></span>'}
+    <button class="btn sm" type="button" data-lot-flat aria-pressed="false">Flat</button>
+  </div>
+  <p class="small dim lot-hint">Drag to turn it. <a href="/uploads/${esc(m.parking)}" target="_blank" rel="noopener">Open the full map</a></p>
+</div>`;
+}
+
 /** A host's page for one meet (their home page shows the next one). */
 function meetPage(host, m, ctx) {
   const tz = ctx.tz;
@@ -165,6 +185,7 @@ function meetPage(host, m, ctx) {
 </section>`;
   // When and where, right under the top.
   body += `<section id="spot"><h2>The spot</h2>${when(m, tz, { live: !over })}
+    ${m.parking && !over ? `<h3 style="margin:20px 0 10px" id="parking">Where to park</h3>${parkingMap(m)}` : ''}
     ${rules.length ? `<h3 style="margin:16px 0 8px">House rules</h3><ul class="rules">${rules.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>` : ''}</section>`;
   body += `<section id="food"><h2>Food</h2>`;
   // Everyone serving food, as little round logos (like profile pictures). Each truck in the meet uses the logo from

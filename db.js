@@ -122,6 +122,10 @@ async function ensureSchema() {
   await exec('CREATE TABLE IF NOT EXISTS kit_meets (kit_id INTEGER NOT NULL, meet_id INTEGER NOT NULL, PRIMARY KEY (kit_id, meet_id))');
   // A profile's old addresses, so a shared link still lands after a rename.
   await exec('CREATE TABLE IF NOT EXISTS kit_old_slugs (slug TEXT PRIMARY KEY, kit_id INTEGER NOT NULL, created_at INTEGER NOT NULL)');
+  // A meet's parking map: the host's marked-up satellite screenshot (shown tilted on the page) and the pins they tap
+  // onto it (entrances, parking, overflow, food...), as JSON [{ x, y, kind, label }] with x and y from 0 to 1.
+  await addColumn('meets', 'parking', 'TEXT');
+  await addColumn('meets', 'parking_pins', 'TEXT');
   // The host portal's own background video (one row per host, id = the host's id).
   await exec('CREATE TABLE IF NOT EXISTS host_portal (id INTEGER PRIMARY KEY)');
   for (const t of ['hosts', 'meets', 'site', 'host_portal', 'kit_logos']) {

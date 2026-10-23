@@ -28,6 +28,45 @@
   }
   tick(); setInterval(tick, 30000);
 
+  // The parking map: drag to turn it (and tilt it a little), "Flat" lays it down to read. It eases in with a small turn.
+  Array.prototype.forEach.call(document.querySelectorAll('[data-lot]'), function (lot) {
+    var stage = lot.querySelector('.lot-stage'), flatBtn = lot.querySelector('[data-lot-flat]');
+    var spin = 0, tilt = 52, start = null, img = lot.querySelector('img');
+    // The map's shape (tall or wide) sets how big it can be and still fit.
+    function shape() { if (img.naturalWidth) lot.style.setProperty('--lot-ratio', (img.naturalHeight / img.naturalWidth).toFixed(3)); }
+    if (img.complete) shape(); else img.addEventListener('load', shape);
+    function set() { lot.style.setProperty('--spin', spin + 'deg'); lot.style.setProperty('--tilt', tilt + 'deg'); }
+    var still = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!still && 'IntersectionObserver' in window) {
+      spin = -16; set();
+      var io = new IntersectionObserver(function (es) { if (es[0].isIntersecting) { io.disconnect(); setTimeout(function () { spin = 0; set(); }, 120); } }, { threshold: 0.4 });
+      io.observe(stage);
+    }
+    stage.addEventListener('pointerdown', function (e) {
+      if (lot.classList.contains('flat')) return;
+      start = { x: e.clientX, y: e.clientY, spin: spin, tilt: tilt, id: e.pointerId, moved: false };
+    });
+    stage.addEventListener('pointermove', function (e) {
+      if (!start || e.pointerId !== start.id) return;
+      var dx = e.clientX - start.x, dy = e.clientY - start.y;
+      // Mostly up and down on a phone means scrolling the page: leave it alone.
+      if (!start.moved && Math.abs(dy) > Math.abs(dx) && e.pointerType === 'touch') { start = null; return; }
+      if (!start.moved && Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
+      if (!start.moved) { start.moved = true; lot.classList.add('dragging'); try { stage.setPointerCapture(e.pointerId); } catch (x) {} }
+      spin = Math.max(-60, Math.min(60, start.spin + dx * 0.35));
+      tilt = e.pointerType === 'touch' ? tilt : Math.max(25, Math.min(62, start.tilt - dy * 0.15));
+      set();
+    });
+    function end() { if (!start) return; start = null; lot.classList.remove('dragging'); }
+    stage.addEventListener('pointerup', end); stage.addEventListener('pointercancel', end);
+    flatBtn.addEventListener('click', function () {
+      var flat = !lot.classList.contains('flat');
+      lot.classList.toggle('flat', flat);
+      flatBtn.setAttribute('aria-pressed', String(flat)); flatBtn.textContent = flat ? 'Tilt' : 'Flat';
+      if (flat) { lot.style.removeProperty('--spin'); lot.style.removeProperty('--tilt'); } else { spin = 0; tilt = 52; set(); }
+    });
+  });
+
   function wire(form, url, extra) {
     form.addEventListener('submit', function (e) {
       e.preventDefault();

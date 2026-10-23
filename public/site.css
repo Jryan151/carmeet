@@ -245,3 +245,38 @@ main > section.v-about { padding: 18px; }
 .v-logos { display: flex; flex-wrap: wrap; gap: 16px 14px; }
 .v-logos figure { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; width: 64px; }
 .v-logos figcaption { font-size: 12px; color: var(--dim); text-align: center; line-height: 1.2; }
+
+/* ---------- the parking map: the host's marked-up satellite picture, laid back, with pins standing off it ---------- */
+.lot { --tilt: 52deg; --spin: 0deg; --lot-h: clamp(320px, 100vw, 460px); margin: 4px 0 6px; }
+.lot-stage { position: relative; perspective: 1100px; perspective-origin: 50% 20%; height: var(--lot-h); overflow: hidden;
+  border-radius: var(--radius); border: 1px solid var(--line); touch-action: pan-y; cursor: grab; user-select: none; -webkit-user-select: none;
+  background: radial-gradient(120% 80% at 50% 0%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 70%), rgba(7, 6, 11, .7); }
+.lot-stage:active { cursor: grabbing; }
+/* Centered in the stage, sized so a tall map still fits when it's laid back (the near edge grows in perspective). */
+.lot-plane { position: absolute; left: 50%; top: 50%; width: min(84%, calc(var(--lot-h) * 1.0 / var(--lot-ratio, 1.2))); transform-origin: 50% 50%; transform-style: preserve-3d;
+  transform: translate(-50%, -50%) rotateX(var(--tilt)) rotateZ(var(--spin)); transition: transform .6s cubic-bezier(.2, .7, .2, 1), width .6s; }
+.lot.flat .lot-plane { width: min(94%, calc(var(--lot-h) * .94 / var(--lot-ratio, 1.2))); }
+.lot.dragging .lot-plane { transition: none; }
+.lot-plane img { width: 100%; height: auto; border-radius: 10px; box-shadow: 0 30px 60px rgba(0, 0, 0, .6), 0 0 0 1px rgba(255, 255, 255, .08); pointer-events: none; }
+/* A pin stands up off the map and always faces you, whichever way it's turned. */
+.pin { position: absolute; width: 0; height: 0; transform-style: preserve-3d; pointer-events: none; }
+.pin b { position: absolute; left: 0; bottom: 0; display: block; white-space: nowrap; padding: 4px 9px 5px; border-radius: 8px;
+  font: 700 12px/1.1 var(--body); letter-spacing: .06em; text-transform: uppercase; color: #0b0a10; background: var(--pin, #fff);
+  transform-origin: 0 100%; transform: rotateZ(calc(-1 * var(--spin))) rotateX(calc(-1 * var(--tilt))) translate(-50%, -14px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, .55); transition: transform .6s cubic-bezier(.2, .7, .2, 1); }
+.lot.dragging .pin b { transition: none; }
+/* The stem down to the spot, and the dot where it touches the lot. */
+.pin b::after { content: ""; position: absolute; left: 50%; top: 100%; width: 2px; height: 14px; margin-left: -1px; background: var(--pin, #fff); }
+.pin::before { content: ""; position: absolute; left: -5px; top: -5px; width: 10px; height: 10px; border-radius: 50%; background: var(--pin, #fff);
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, .35), 0 0 14px var(--pin, #fff); }
+.k-enter { --pin: #ffd23f; } .k-parking { --pin: #4ade80; } .k-overflow { --pin: #60a5fa; } .k-food { --pin: #f9a8d4; }
+.k-exit { --pin: #fb923c; } .k-nopark { --pin: #f87171; } .k-spot { --pin: var(--accent); }
+.lot.flat { --tilt: 0deg; --spin: 0deg; }
+.lot.flat .lot-stage { cursor: default; }
+.lot-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; }
+.lot-key { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 13px; color: var(--dim); }
+.lot-key span::before { content: ""; display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; background: var(--pin); vertical-align: 1px; }
+.btn.sm { min-height: 38px; padding: 0 14px; font-size: 14px; }
+.lot .btn[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.lot-hint { margin: 8px 0 0; }
+@media (prefers-reduced-motion: reduce) { .lot-plane, .pin b { transition: none; } }

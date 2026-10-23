@@ -120,7 +120,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     const tz = tzOf(h); const t = U.meetTimes(m, tz);
     return { id: m.id, ref: m.ref, title: m.title || '', day: m.day, start: m.start_time, end: m.end_time, place: m.place, address: m.address || '', notes: m.notes || '',
       status: m.status, startsAt: t.startsAt, endsAt: t.endsAt, label: `${U.dayShort(t.startsAt, tz)}, ${U.time12(t.startsAt, tz)}–${U.time12(t.endsAt, tz)}`,
-      over: t.endsAt < Date.now(), people: m.turnout_people, cars: m.turnout_cars, video: videoShape(m), flyer: m.flyer ? '/uploads/' + m.flyer : null, synced: !!m.synced_at && !m.sync_error, syncError: m.sync_error || '', url: `${pageUrl(h)}/${m.day}` };
+      over: t.endsAt < Date.now(), people: m.turnout_people, cars: m.turnout_cars, video: videoShape(m), flyer: m.flyer ? '/uploads/' + m.flyer : null, parking: m.parking ? '/uploads/' + m.parking : null, parkingPins: U.pins(m.parking_pins), synced: !!m.synced_at && !m.sync_error, syncError: m.sync_error || '', url: `${pageUrl(h)}/${m.day}` };
   }
   async function sync(h, m) {
     const s = await K.syncMeet(h, m, `${pageUrl(h)}/${m.day}`);
@@ -216,8 +216,15 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     while (day < today) day = U.addDays(day, 7);
     if (await get('SELECT 1 AS x FROM meets WHERE host_id = ? AND day = ?', [h.id, day])) return res.status(409).json({ error: `You already have a meet on ${day}.` });
     const now = Date.now();
-    const ins = await run('INSERT INTO meets (host_id, ref, title, day, start_time, end_time, place, address, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [h.id, 'm' + D.token(10), src.title, day, src.start_time, src.end_time, src.place, src.address, src.notes, now, now]);
+    // Same spot, same parking map: its own copy of the picture, so changing one week never touches another.
+    let parking = null;
+    if (src.parking) {
+      const ext = path.extname(src.parking) || '.png';
+      const name = D.token(12) + ext;
+      try { await fs.promises.copyFile(path.join(UPLOAD_DIR, path.basename(src.parking)), path.join(UPLOAD_DIR, name)); parking = name; } catch (e) { parking = null; }
+    }
+    const ins = await run('INSERT INTO meets (host_id, ref, title, day, start_time, end_time, place, address, notes, parking, parking_pins, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [h.id, 'm' + D.token(10), src.title, day, src.start_time, src.end_time, src.place, src.address, src.notes, parking, parking ? src.parking_pins : null, now, now]);
     const row = await get('SELECT * FROM meets WHERE id = ?', [ins.lastID]);
     await sync(h, row);
     res.status(201).json({ meet: meetShape(await get('SELECT * FROM meets WHERE id = ?', [row.id]), h) });
@@ -456,6 +463,33 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     if (!m) return res.status(404).json({ error: 'That meet is gone.' });
     if (m.flyer) fs.promises.unlink(path.join(UPLOAD_DIR, path.basename(m.flyer))).catch(() => {});
     await run('UPDATE meets SET flyer = NULL, updated_at = ? WHERE id = ?', [Date.now(), m.id]);
+    res.json({ meet: meetShape(await get('SELECT * FROM meets WHERE id = ?', [m.id]), req.me) });
+  });
+
+  /* ---------- the parking map: their marked-up satellite screenshot, plus pins tapped onto it ---------- */
+  r.post('/meets/:id/parking', signedIn, rawFlyer, async (req, res) => {
+    const m = await own(req, req.params.id);
+    if (!m) return res.status(404).json({ error: 'That meet is gone.' });
+    const name = Buffer.isBuffer(req.body) ? await saveImage(req.body) : null;
+    if (!name) return res.status(400).json({ error: 'Use a JPEG or PNG (a screenshot of the map works).' });
+    if (m.parking) fs.promises.unlink(path.join(UPLOAD_DIR, path.basename(m.parking))).catch(() => {});
+    // A new picture: the old pins likely don't line up, so they go.
+    await run('UPDATE meets SET parking = ?, parking_pins = NULL, updated_at = ? WHERE id = ?', [name, Date.now(), m.id]);
+    res.json({ meet: meetShape(await get('SELECT * FROM meets WHERE id = ?', [m.id]), req.me) });
+  });
+  r.put('/meets/:id/parking', signedIn, async (req, res) => {
+    const m = await own(req, req.params.id);
+    if (!m) return res.status(404).json({ error: 'That meet is gone.' });
+    if (!m.parking) return res.status(400).json({ error: 'Add the parking map picture first.' });
+    const list = U.pins((req.body || {}).pins);
+    await run('UPDATE meets SET parking_pins = ?, updated_at = ? WHERE id = ?', [list.length ? JSON.stringify(list) : null, Date.now(), m.id]);
+    res.json({ meet: meetShape(await get('SELECT * FROM meets WHERE id = ?', [m.id]), req.me) });
+  });
+  r.delete('/meets/:id/parking', signedIn, async (req, res) => {
+    const m = await own(req, req.params.id);
+    if (!m) return res.status(404).json({ error: 'That meet is gone.' });
+    if (m.parking) fs.promises.unlink(path.join(UPLOAD_DIR, path.basename(m.parking))).catch(() => {});
+    await run('UPDATE meets SET parking = NULL, parking_pins = NULL, updated_at = ? WHERE id = ?', [Date.now(), m.id]);
     res.json({ meet: meetShape(await get('SELECT * FROM meets WHERE id = ?', [m.id]), req.me) });
   });
 

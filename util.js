@@ -55,6 +55,18 @@ function videoUrl(s) {
 }
 const ACCENTS = ['#c9adff', '#f2a33a', '#e8e4d8', '#5fb3d9', '#e0574f', '#7cc47f', '#c792ea'];
 
+/* ---------- a meet's parking map pins ---------- */
+const PIN_KINDS = { enter: 'Enter', parking: 'Parking', overflow: 'Overflow', food: 'Food', exit: 'Exit', nopark: 'No parking', spot: 'The meet' };
+/** The pins as saved: at most 16, each inside the picture, a known kind, a short label. Anything else is dropped. */
+function pins(list) {
+  if (typeof list === 'string') { try { list = JSON.parse(list); } catch (e) { list = []; } }
+  return (Array.isArray(list) ? list : []).slice(0, 16).map((p) => {
+    const x = Number(p && p.x), y = Number(p && p.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x > 1 || y < 0 || y > 1 || !PIN_KINDS[p.kind]) return null;
+    return { x: Math.round(x * 1000) / 1000, y: Math.round(y * 1000) / 1000, kind: p.kind, label: clean(p.label, 24) };
+  }).filter(Boolean);
+}
+
 /* ---------- a Food vendor's profile address: /v/<slug> on the site, or <slug>.<site domain> ---------- */
 // Names a vendor's address can never be: the site's own paths, and subdomains a server or mail setup uses.
 const PAGE_RESERVED = new Set([...RESERVED, 'v', 'www', 'mail', 'email', 'smtp', 'imap', 'pop', 'ftp', 'ns1', 'ns2', 'mx', 'cdn', 'assets', 'img',
@@ -83,4 +95,4 @@ function subOf(hostname) {
   return sub && sub !== 'www' && SLUG_RE.test(sub) ? sub : null;
 }
 
-module.exports = { PAGE_RESERVED, pageSlugOk, pageSlugFrom, vendorUrl, subOf, subdomainsOn, DATE_RE, TIME_RE, SLUG_RE, EMAIL_RE, RESERVED, zone, parts, zonedTime, dayKey, addDays, validDate, meetTimes, time12, dayLong, dayShort, fmt, clean, cleanBlock, esc, handle, videoUrl, ACCENTS };
+module.exports = { PIN_KINDS, pins, PAGE_RESERVED, pageSlugOk, pageSlugFrom, vendorUrl, subOf, subdomainsOn, DATE_RE, TIME_RE, SLUG_RE, EMAIL_RE, RESERVED, zone, parts, zonedTime, dayKey, addDays, validDate, meetTimes, time12, dayLong, dayShort, fmt, clean, cleanBlock, esc, handle, videoUrl, ACCENTS };
