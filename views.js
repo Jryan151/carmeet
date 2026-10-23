@@ -42,7 +42,7 @@ ${accent ? `<style>:root{--accent:${accent}}</style>` : ''}
 </head>
 <body>
 ${body}
-${scripts.map((s) => `<script src="/static/${s}?v=${ver()}" defer></script>`).join('\n')}
+${(body.includes('class="page-bg"') ? ['bgloop.js'] : []).concat(scripts).map((s) => `<script src="/static/${s}?v=${ver()}" defer></script>`).join('\n')}
 </body>
 </html>`;
 }
@@ -106,8 +106,9 @@ function minis(list) {
   }).join('')}</div>`;
 }
 /** The host's logo as a round profile picture: the top of their main page, no words. */
-function avatar(host) {
-  return host.logo ? `<div class="avatar"><img src="${esc(host.logo)}" alt="${esc(host.name)}"></div>` : '';
+function avatar(host, m) {
+  const logo = (m && m.logo ? '/uploads/' + m.logo : '') || host.logo;
+  return logo ? `<div class="avatar"><img src="${esc(logo)}" alt="${esc((m && m.title) || host.name)}"></div>` : '';
 }
 /** Where a truck's menu opens: the food side's own page through this site (meet mode), or the old page here. */
 function menuLink(v, m, mpath, ctx, canOrder) {
@@ -189,17 +190,17 @@ function meetPage(host, m, ctx) {
   const anyPreorder = !over && m.status === 'on' && trucks.some(takes);
   const mpath = `${base}/${m.day}`;
   const rules = String(host.rules || '').split('\n').map((s) => s.trim()).filter(Boolean);
-  const foodNames = trucks.map((v) => v.name).concat((ctx.kitVendors || []).filter((k) => k.kind !== 'group').map((k) => k.name)).filter((n, i, a) => n && a.indexOf(n) === i);
+  const foodNames = trucks.map((v) => v.name).concat((ctx.kitVendors || []).filter((k) => k.kind === 'vendor').map((k) => k.name)).filter((n, i, a) => n && a.indexOf(n) === i);
   const desc = `${U.dayLong(t.startsAt, tz)}, ${U.time12(t.startsAt, tz)} at ${ctx.venue ? ctx.venue.name + ', ' : ''}${m.place}.${foodNames.length ? ' Food: ' + foodNames.join(', ') + '.' : ''}`;
   // The background loop: this meet's own clip, or the host's usual one.
   const vid = m.video && m.video_status === 'ready' ? m : host.video && host.video_status === 'ready' ? host : null;
   // The top of the page: the host's logo (or name), the flyer, and the buttons. When and where are under "The spot".
-  const round = !!host.logo;
+  const round = !!(m.logo || host.logo); // the meet's own header logo, else the host's usual one
   let body = (ctx.demo ? `<div class="demo-bar" role="note"><b>Demo mode</b> · sample trucks and every logo in your kit. Only you see this. <a href="/host">Back to the portal</a></div>` : '') +
     (round ? '' : top(host, base)) + `<main class="wrap">
 <section class="hero${vid ? ' has-video' : ''}${m.flyer ? ' with-flyer' : ''}${round ? ' has-avatar' : ''}">
   ${heroBg(vid)}
-  ${round ? avatar(host) : ''}
+  ${round ? avatar(host, m) : ''}
   ${m.flyer ? `<figure class="flyer"><img src="/uploads/${esc(m.flyer)}" alt="${esc(host.name)} flyer for ${esc(U.dayLong(t.startsAt, tz))}"></figure>` : '<div class="showcase" aria-hidden="true"></div>'}
   ${ctx.isHome ? '' : `<p class="small dim" style="text-align:center"><a href="${esc(base || '/')}">Next meet</a></p>`}
   ${over ? '<p class="dim" style="text-align:center">This meet is over.</p>' : m.status === 'canceled' ? '<p class="soon-line">This meet is canceled.</p>' : ''}
@@ -223,9 +224,9 @@ function meetPage(host, m, ctx) {
   const ig = (h) => (h ? `https://instagram.com/${encodeURIComponent(h)}` : null);
   const live = !over && m.status === 'on';
   const hrefOf = (v) => (live ? menuLink(v, m, mpath, ctx, anyPreorder && takes(v)) : null);
-  const picked = (ctx.kitVendors || []).filter((k) => k.kind !== 'group');
-  const kitOf = (v) => all.find((k) => k.kind !== 'group' && k.truck_slug === v.slug) || picked.find((k) => k.meet_truck === v.slug) ||
-    all.find((k) => k.kind !== 'group' && !k.truck_slug && norm(k.name) === norm(v.name));
+  const picked = (ctx.kitVendors || []).filter((k) => k.kind === 'vendor');
+  const kitOf = (v) => all.find((k) => k.kind === 'vendor' && k.truck_slug === v.slug) || picked.find((k) => k.meet_truck === v.slug) ||
+    all.find((k) => k.kind === 'vendor' && !k.truck_slug && norm(k.name) === norm(v.name));
   const used = new Set();
   const profileHref = (k) => (k && k.page_on && k.page_slug && !ctx.demo ? U.vendorUrl(k.page_slug) : null);
   const items = trucks.map((v) => {
@@ -242,11 +243,14 @@ function meetPage(host, m, ctx) {
     items.push({ img: k.file ? '/uploads/' + k.file : null, name: k.name, href: page || ig(k.instagram), tag: null, external: !page && !!k.instagram, profile: !!page });
   }
   const clubs = (ctx.kitVendors || []).filter((k) => k.kind === 'group');
+  const others = (ctx.kitVendors || []).filter((k) => k.kind === 'sponsor');
   if (!items.length) body += `<p class="dim">${over ? 'No food trucks were listed for this meet.' : 'Food trucks will show here once they’re confirmed.'}</p>`;
   else body += minis(items);
   body += `</section>`;
   // The car clubs coming out, the same little round logos; each opens the club's Instagram.
   if (clubs.length) body += `<section id="clubs"><h2>Clubs</h2>${minis(clubs.map((k) => ({ img: k.file ? '/uploads/' + k.file : null, emoji: '🚗', name: k.name, href: ig(k.instagram), external: !!k.instagram })))}</section>`;
+  // Other vendors (shops, merch, sponsors): their own row, each opening its Instagram.
+  if (others.length) body += `<section id="vendors"><h2>Vendors</h2>${minis(others.map((k) => ({ img: k.file ? '/uploads/' + k.file : null, emoji: '🛍', name: k.name, href: ig(k.instagram), external: !!k.instagram })))}</section>`;
   if (ctx.last && ctx.last.people) {
     body += `<section><p class="turnout">Last meet: about ${ctx.last.people} people${ctx.last.cars ? `, ${ctx.last.cars} cars` : ''}</p>
     <p class="small dim">${esc(U.dayShort(ctx.last.at, tz))}${ctx.last.place ? ` at ${esc(ctx.last.place)}` : ''}</p></section>`;

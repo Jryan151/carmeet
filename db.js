@@ -127,6 +127,8 @@ async function ensureSchema() {
   await addColumn('meets', 'lot', 'TEXT');
   // Where a meet is at, when it's a business that lets them use its lot (a Venue in the host's lists, in kit_logos).
   await addColumn('meets', 'venue_id', 'INTEGER');
+  // A meet's own header logo (a host who runs more than one meet name: Tasty Tuesday, Fuel Friday...), over their usual one.
+  await addColumn('meets', 'logo', 'TEXT');
   // Addresses already looked up, so the map search doesn't ask the geocoder twice for the same one.
   await exec('CREATE TABLE IF NOT EXISTS geocache (q TEXT PRIMARY KEY, json TEXT NOT NULL, at INTEGER NOT NULL)');
   // The host portal's own background video (one row per host, id = the host's id).

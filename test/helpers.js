@@ -33,6 +33,12 @@ function fakeKitchen() {
         if (p[2] === 'cancel' && o.status === 'Pending') { o.status = 'Canceled'; o.payment = 'expired'; }
         return send(res, 200, o);
       }
+      // The logo reader: names and kinds in turn from this list, one per logo sent.
+      if (p[0] === 'logo-read') {
+        const seen = [{ name: 'Unforsaken', kind: 'club' }, { name: 'México en un Vaso', kind: 'food' }, { name: 'LV Smoke Shop', kind: 'vendor' }, { name: '', kind: 'unknown' }];
+        state.logoReads = (state.logoReads || 0) + 1;
+        return send(res, 200, { logos: (body.files || []).map((_, i) => seen[i % seen.length]) });
+      }
       // Truck profiles the host keeps (no email or phone): name, Instagram, menu.
       state.profiles = state.profiles || [];
       if (String(p[0] || '').split('?')[0] === 'profiles') {

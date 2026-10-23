@@ -132,6 +132,15 @@
     });
   }
 
+  /* ---------- a meet's own header logo (over the usual one in Settings) ---------- */
+  function logoCard(m) {
+    return '<div class="card"><h3>Header logo</h3><p class="small dim">The logo at the top of this meet’s page. Running more than one meet (Tasty Tuesday, Fuel Friday)? Give each its own. Without one, your usual logo from Settings shows.</p>' +
+      '<div style="display:flex;gap:12px;align-items:center;margin:8px 0">' + ((m.logo || me.logo) ? '<img src="' + esc(m.logo || me.logo) + '" alt="" style="width:72px;height:72px;object-fit:contain;border-radius:10px;background:#000">' : '') +
+      '<span class="small dim">' + (m.logo ? 'This meet’s own logo' : me.logo ? 'Your usual logo' : 'No logo yet') + '</span></div>' +
+      '<label for="meetLogoFile">' + (m.logo ? 'Change it' : 'Use a different logo for this meet') + '</label><input type="file" id="meetLogoFile" data-id="' + m.id + '" accept="image/jpeg,image/png">' +
+      '<div class="msg" id="meetLogoMsg" role="status"></div>' + (m.logo ? '<div class="bar"><button class="btn sm" type="button" data-meet-logo-drop="' + m.id + '">Use my usual logo</button></div>' : '') + '</div>';
+  }
+
   /* ---------- the meet's flyer ---------- */
   function flyerCard(m) {
     return '<div class="card"><h3>Flyer</h3><p class="small dim">The one you post on Instagram. It becomes the main picture on this meet’s page, over your background video, and the preview when the link is shared.</p>' +
@@ -142,15 +151,15 @@
   }
 
   /* ---------- flyer kit: logos to paste onto each week's flyer ---------- */
-  var KIND_NAMES = { title: 'Meet title logos', vendor: 'Food vendors', group: 'Car groups', sponsor: 'Sponsors' };
+  var KIND_NAMES = { title: 'Meet title logos', vendor: 'Food vendors', group: 'Clubs', sponsor: 'Vendors (not food)' };
   function drawKit() {
     api('GET', '/kit').then(function (r) {
       if (!r.ok) return view('<p class="msg bad">' + esc(r.d.error) + '</p>');
       var logos = r.d.logos;
       var byId = {}; logos.forEach(function (l) { byId[l.id] = l; });
-      var html = '<div id="splitBox"></div><div class="card"><h3>Add a logo</h3><p class="small dim">Keep every vendor’s and car group’s logo here. When you make this week’s flyer, copy the ones you need and paste them in. A PNG with a see-through background works best; a black square around a logo is trimmed off.</p>' +
+      var html = '<div id="splitBox"></div><div class="card"><h3>Add a logo</h3><p class="small dim">Keep every vendor’s and club’s logo here. When you make this week’s flyer, copy the ones you need and paste them in. A PNG with a see-through background works best; a black square around a logo is trimmed off.</p>' +
         '<form id="kitForm"><label for="kName">Name</label><input id="kName" maxlength="60" placeholder="Taqueria Obregon" required>' +
-        '<label for="kKind">Type</label><select id="kKind"><option value="vendor">Food vendor</option><option value="group">Car group</option><option value="sponsor">Sponsor</option><option value="title">Meet title (like the Tasty Tuesday logo)</option></select>' +
+        '<label for="kKind">Type</label><select id="kKind"><option value="vendor">Food vendor</option><option value="group">Club</option><option value="sponsor">Vendor (not food)</option><option value="title">Meet title (like the Tasty Tuesday logo)</option></select>' +
         '<label for="kFile">Logo</label><input id="kFile" type="file" accept="image/png,image/jpeg" required>' +
         '<div class="bar"><button class="btn go" type="submit">Add to kit</button></div><div class="msg" id="kitMsg" role="status"></div></form></div>';
       ['title', 'vendor', 'group', 'sponsor'].forEach(function (k) {
@@ -162,7 +171,7 @@
             '<button class="link small" data-kit-edit="' + l.id + '">Edit</button></figure>';
         }).join('') + '</div>';
       });
-      if (!logos.length) html += '<p class="dim">No logos yet. Add the vendors and car groups that show up on your flyers.</p>';
+      if (!logos.length) html += '<p class="dim">No logos yet. Add the vendors and clubs that show up on your flyers.</p>';
       view(html);
       if (window.Flyer) Flyer.splitter($('splitBox'), api, drawKit);
       $('kitForm').onsubmit = function (e) {
@@ -196,7 +205,7 @@
   // One logo's details, edited in place: its name, its type, a new picture, or delete it.
   function editKit(fig, l) {
     if (!fig || !l) return;
-    var ONE = { vendor: 'Food vendor', group: 'Car group', sponsor: 'Sponsor', title: 'Meet title' };
+    var ONE = { vendor: 'Food vendor', group: 'Club', sponsor: 'Vendor (not food)', title: 'Meet title' };
     var opts = ['vendor', 'group', 'sponsor', 'title'].map(function (k) { return '<option value="' + k + '"' + (l.kind === k ? ' selected' : '') + '>' + ONE[k] + '</option>'; }).join('');
     fig.classList.add('editing');
     fig.innerHTML = '<div class="art"><img src="' + esc(l.url) + '" alt=""></div>' +
@@ -235,7 +244,7 @@
           return '<button type="button" data-kv="' + l.id + '" aria-pressed="' + (on.indexOf(l.id) >= 0) + '"><span class="art"><img src="' + esc(l.url) + '" alt=""></span><span>' + esc(l.name) + '</span></button>';
         }).join('') + '</div>' : '<p class="small dim">' + none + '</p>';
       };
-      var food = logos.filter(function (l) { return l.kind === 'vendor' || l.kind === 'sponsor'; });
+      var food = logos.filter(function (l) { return l.kind === 'vendor'; });
       var shown = food.filter(function (l) { return on.indexOf(l.id) >= 0; });
       // A logo on the page can open a truck's menu (its pre-orders, or its night kit's temporary menu).
       var linkRows = shown.length && trucks.length ? '<p class="small" style="margin:14px 0 6px">Tap a logo to open a truck’s menu</p>' + shown.map(function (l) {
@@ -245,8 +254,9 @@
       }).join('') : '';
       box.innerHTML = '<div class="card"><h3>Logos on the meet’s page</h3><p class="small dim">Tap a logo to show it on the meet’s page as a little round logo. Tap again to take it off. ' +
         'Trucks that take pre-orders are added with Invite a truck above; their logos open their menu.</p>' +
-        '<p class="small" style="margin:12px 0 6px">Food (under Food)</p>' + tiles(food, 'No vendor logos yet. Add them in the Flyer kit tab.') + linkRows +
-        '<p class="small" style="margin:14px 0 6px">Clubs (their own section)</p>' + tiles(logos.filter(function (l) { return l.kind === 'group'; }), 'No car club logos yet. Add them in the Flyer kit tab as Car group.') +
+        '<p class="small" style="margin:12px 0 6px">Food</p>' + tiles(food, 'No food vendor logos yet. Add them in Settings or the Flyer kit tab.') + linkRows +
+        '<p class="small" style="margin:14px 0 6px">Clubs</p>' + tiles(logos.filter(function (l) { return l.kind === 'group'; }), 'No club logos yet. Add them in Settings › Clubs.') +
+        '<p class="small" style="margin:14px 0 6px">Vendors (not food)</p>' + tiles(logos.filter(function (l) { return l.kind === 'sponsor'; }), 'No other vendors yet. Add them in Settings › Vendors.') +
         '<div class="msg" id="kvMsg" role="status"></div></div>';
       box.onclick = function (e) {
         var b = e.target.closest('[data-kv]'); if (!b) return;
@@ -404,7 +414,7 @@
       if (editing) html += meetForm(editing);
       else if (detail) html += '<p class="small"><button class="link" data-back>All meets</button></p><div class="card"><h3>' + esc(detail.title || detail.label) + '</h3><p class="dim">' + esc(detail.label) + ' · ' + esc(detail.place) + (detail.status === 'canceled' ? ' · canceled' : '') + '</p>' +
         '<div class="bar"><button class="btn sm" data-edit="' + detail.id + '">Edit</button><button class="btn sm" data-again="' + detail.id + '">Repeat next week</button>' +
-        (detail.status === 'canceled' ? '<button class="btn sm" data-uncancel="' + detail.id + '">Put it back on</button>' : '<button class="btn sm" data-cancel="' + detail.id + '">Cancel meet</button>') + '</div></div>' + flyerCard(detail) + '<div id="lotBox"></div><div id="trucksBox"></div><div id="kitVendorsBox"></div>' + videoCard(detail.video, 'meet', detail.id);
+        (detail.status === 'canceled' ? '<button class="btn sm" data-uncancel="' + detail.id + '">Put it back on</button>' : '<button class="btn sm" data-cancel="' + detail.id + '">Cancel meet</button>') + '</div></div>' + logoCard(detail) + flyerCard(detail) + '<div id="lotBox"></div><div id="trucksBox"></div><div id="kitVendorsBox"></div>' + videoCard(detail.video, 'meet', detail.id);
       else html += '<div class="bar" style="margin:16px 0"><button class="btn go" data-new>Post a meet</button></div>' + (list.length ? list.map(function (m) {
         return '<div class="rowx"><div><div><b>' + esc(m.label) + '</b></div><div class="tag">' + esc(m.place) + (m.title ? ' · ' + esc(m.title) : '') + (m.status === 'canceled' ? ' · canceled' : '') + '</div></div><button class="btn sm" data-open="' + m.id + '">Open</button></div>';
       }).join('') : '<p class="dim">Nothing coming up.</p>');
@@ -422,6 +432,13 @@
         });
       };
       Array.prototype.forEach.call(document.querySelectorAll('[data-video-file]'), function (inp) { inp.onchange = function () { uploadVideo(inp, drawMeets); }; });
+      var lf = document.getElementById('meetLogoFile');
+      if (lf) lf.onchange = function () {
+        var f = lf.files[0]; if (!f) return;
+        if (f.size > 6 * 1024 * 1024) return say($('meetLogoMsg'), 'That image is over 6 MB.');
+        say($('meetLogoMsg'), 'Uploading…', true);
+        api('POST', '/meets/' + lf.getAttribute('data-id') + '/logo', null, f).then(function (r2) { if (!r2.ok) return say($('meetLogoMsg'), r2.d.error); drawMeets(); });
+      };
       var ff = document.getElementById('flyerFile');
       if (ff) ff.onchange = function () {
         var f = ff.files[0]; if (!f) return;
@@ -440,6 +457,8 @@
           Flyer.maker(box, { api: api, me: me, back: drawMeets, meet: Object.assign({}, detail, { flyerDate: parts.slice(0, 2).join(' '), flyerTime: parts.slice(2).join(', ') }) });
           return;
         }
+        var ld = e.target.closest('[data-meet-logo-drop]');
+        if (ld) { api('DELETE', '/meets/' + ld.getAttribute('data-meet-logo-drop') + '/logo').then(drawMeets); return; }
         var fd = e.target.closest('[data-flyer-drop]');
         if (fd) { api('DELETE', '/meets/' + fd.getAttribute('data-flyer-drop') + '/flyer').then(drawMeets); return; }
         var vd = e.target.closest('[data-video-drop]');
@@ -509,21 +528,27 @@
       if (!r.ok || !$('listVendors') || !$('listClubs')) return;
       var logos = r.d.logos || [];
       $('listVendors').innerHTML = listCard('vendor', 'Food vendors', 'Trucks you work with. For a meet, each gets its own link (no email or phone): it opens straight to their truck, with their menu ready. Their logo shows under Food on your page.',
-        logos.filter(function (l) { return l.kind === 'vendor' || l.kind === 'sponsor'; }));
+        logos.filter(function (l) { return l.kind === 'vendor'; }));
+      $('listOthers').innerHTML = listCard('sponsor', 'Vendors (not food)', 'Shops, merch, detailers, sponsors. Their logos show under Vendors on your page and open their Instagram.', logos.filter(function (l) { return l.kind === 'sponsor'; }));
       $('listClubs').innerHTML = listCard('group', 'Clubs', 'Car clubs that come out. Their logos show under Clubs on your page and open their Instagram.', logos.filter(function (l) { return l.kind === 'group'; }));
       $('listVenues').innerHTML = listCard('venue', 'Venues', 'Businesses that let you use their lot. Pick one on a meet and it shows under The spot: “At LV Smoke Shop”, with their logo and Instagram.', logos.filter(function (l) { return l.kind === 'venue'; }));
       if (listOpen && menuDraft === null) { var k = logos.filter(function (l) { return l.id === listOpen; })[0]; if (k && k.kind !== 'group') api('GET', '/kit/' + k.id + '/menu').then(function (m) { var el = document.querySelector('[data-menu-count="' + k.id + '"]'); if (el && m.ok) el.textContent = m.d.foodOn ? (m.d.items ? m.d.items + ' item' + (m.d.items === 1 ? '' : 's') + ' on their menu' : 'No menu yet') : ''; }); }
-      ['listVendors', 'listClubs', 'listVenues'].forEach(function (id) { $(id).onclick = listClick; $(id).onchange = listChange; });
+      ['listVendors', 'listOthers', 'listClubs', 'listVenues'].forEach(function (id) { $(id).onclick = listClick; $(id).onchange = listChange; });
     });
   }
   function face(l) { return l.url ? '<img src="' + esc(l.url) + '" alt="">' : '<span>' + (l.kind === 'group' ? '🚗' : '🍽') + '</span>'; }
   function listCard(kind, title, sub, list) {
-    var club = kind === 'group' || kind === 'venue';
+    var club = kind === 'group' || kind === 'venue' || kind === 'sponsor';
+    var unnamed = list.filter(function (l) { return l.url && /^(logo|vendor|club)\s*\d*$/i.test(l.name); });
     return '<div class="card"><h3>' + title + '</h3><p class="small dim">' + sub + '</p>' +
+      (unnamed.length ? '<div class="bar" style="margin:6px 0 10px"><button class="btn go sm" type="button" data-ent-read-all="' + unnamed.map(function (l) { return l.id; }).join(',') + '">Name ' + unnamed.length + ' from their logos</button></div>' : '') +
       (list.length ? list.map(function (l) {
         if (listOpen === l.id) {
           return '<div class="entry open"><div class="ent-face">' + face(l) + '</div><form data-ent-form="' + l.id + '" style="flex:1;min-width:0">' +
             '<label>Name</label><input name="name" maxlength="60" value="' + esc(l.name) + '">' +
+            '<label>Type</label><select name="kind">' + [['vendor', 'Food vendor'], ['group', 'Club'], ['sponsor', 'Vendor (not food)'], ['venue', 'Venue (a business you use the lot of)']].map(function (o) {
+              return '<option value="' + o[0] + '"' + (l.kind === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select>' +
+            (l.url ? '<button type="button" class="link small" data-ent-read="' + l.id + '" style="margin-top:6px">Fill in the name and type from the logo</button>' : '') +
             '<label>Instagram</label><input name="instagram" maxlength="60" placeholder="@handle" value="' + esc(l.instagram ? '@' + l.instagram : '') + '">' +
             (club ? '<label>A short line (optional)</label><input name="note" maxlength="80" value="' + esc(l.note) + '">' : '') +
             '<label>Logo</label><input type="file" accept="image/jpeg,image/png" data-ent-logo="' + l.id + '">' +
@@ -551,6 +576,28 @@
     var b, t = e.target;
     if ((b = t.closest('[data-ent-open]'))) { listOpen = +b.getAttribute('data-ent-open'); menuDraft = null; drawLists(); return; }
     if ((b = t.closest('[data-profile]'))) { drawProfile(+b.getAttribute('data-profile')); return; }
+    // Read one logo into its open form (nothing saved until Save), or name a whole list's unnamed logos at once.
+    if ((b = t.closest('[data-ent-read]'))) {
+      var rid = b.getAttribute('data-ent-read'), form = document.querySelector('[data-ent-form="' + rid + '"]'), rmsg = document.querySelector('[data-ent-msg="' + rid + '"]');
+      say(rmsg, 'Reading the logo…', true);
+      api('POST', '/kit/read', { ids: [+rid] }).then(function (r) {
+        var x = r.ok && r.d.read && r.d.read[0];
+        if (!x) return say(rmsg, (r.d && r.d.error) || 'Couldn’t read that one. Type the name.');
+        if (x.name) form.elements.namedItem('name').value = x.name;
+        if (x.kind && form.elements.namedItem('kind')) form.elements.namedItem('kind').value = x.kind;
+        say(rmsg, 'Filled in from the logo. Check it, then Save.', true);
+      });
+      return;
+    }
+    if ((b = t.closest('[data-ent-read-all]'))) {
+      var ids = b.getAttribute('data-ent-read-all').split(',').map(Number);
+      b.disabled = true; b.textContent = 'Reading ' + ids.length + ' logos…';
+      api('POST', '/kit/read', { ids: ids, apply: true }).then(function (r) {
+        if (!r.ok) { b.disabled = false; b.textContent = 'Try again'; return alert(r.d.error || 'Couldn’t read them. Type the names for now.'); }
+        drawLists();
+      });
+      return;
+    }
     if (t.closest('[data-ent-close]')) { listOpen = null; menuDraft = null; drawLists(); return; }
     if ((b = t.closest('[data-ent-del]'))) {
       if (!confirm('Remove this from your list? It comes off your pages too.')) return;
@@ -590,7 +637,7 @@
     if (f.hasAttribute && f.hasAttribute('data-ent-form')) {
       e.preventDefault();
       var id = f.getAttribute('data-ent-form');
-      api('PUT', '/kit/' + id, { name: f.elements.namedItem('name').value.trim(), instagram: f.elements.namedItem('instagram').value.trim(), note: f.elements.namedItem('note') ? f.elements.namedItem('note').value.trim() : undefined }).then(function (r) {
+      api('PUT', '/kit/' + id, { name: f.elements.namedItem('name').value.trim(), kind: f.elements.namedItem('kind') ? f.elements.namedItem('kind').value : undefined, instagram: f.elements.namedItem('instagram').value.trim(), note: f.elements.namedItem('note') ? f.elements.namedItem('note').value.trim() : undefined }).then(function (r) {
         if (!r.ok) return say(document.querySelector('[data-ent-msg="' + id + '"]'), r.d.error);
         listOpen = null; drawLists();
       });
@@ -705,7 +752,7 @@
         '<div class="bar"><button class="btn go" type="submit">Save</button></div><div class="msg" id="setMsg" role="status"></div></form></div>';
       html += '<div class="card"><h3>Logo</h3>' + (me.logo ? '<img src="' + esc(me.logo) + '" alt="" style="width:64px;height:64px;border-radius:10px;object-fit:cover;margin-bottom:8px">' : '') +
         '<input type="file" id="logoFile" accept="image/jpeg,image/png" aria-label="Logo image"><div class="msg" id="logoMsg" role="status"></div></div>';
-      html += '<div id="listVendors"></div><div id="listClubs"></div><div id="listVenues"></div>';
+      html += '<div id="listVendors"></div><div id="listClubs"></div><div id="listOthers"></div><div id="listVenues"></div>';
       html += videoCard(me.video, 'host');
       html += videoCard(portalVideo, 'portal');
       html += '<div class="card"><h3>Demo mode</h3><p class="small dim">See your page filled in: sample food trucks plus every vendor and club logo in your Flyer kit. Only you see it; nothing is saved or shown to anyone else.</p>' +

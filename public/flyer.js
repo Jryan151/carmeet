@@ -112,11 +112,31 @@
   }
 
   function splitter(el, api, done) {
-    el.innerHTML = '<div class="card"><h3>Split a logo sheet</h3><p class="small dim">One picture with lots of logos on black (like the sheet from your flyer designer). Each logo is cut out on its own; name them, then add them to the kit.</p>' +
+    el.innerHTML = '<div class="card"><h3>Split a logo sheet</h3><p class="small dim">One picture with lots of logos on black (like the sheet from your flyer designer). Each logo is cut out on its own, and its name and type are read for you. Fix any that came out wrong, then add them.</p>' +
       '<input type="file" id="sheetFile" accept="image/png,image/jpeg" aria-label="Logo sheet image">' +
       '<div class="checks"><label><input type="checkbox" id="sheetClear" checked> Make the black around each logo see-through</label></div>' +
       '<div class="msg" id="sheetMsg" role="status"></div><div id="sheetOut"></div></div>';
-    var img = null, boxes = [];
+    var img = null, boxes = [], names = [], kinds = [], reading = false;
+    var escA = function (t) { return String(t).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+    // What's typed or picked survives a redraw (ticking the see-through box redraws the cut-outs).
+    function keep() {
+      boxes.forEach(function (b, i) { var n = el.querySelector('[data-name="' + i + '"]'), k = el.querySelector('[data-kind="' + i + '"]'); if (n) names[i] = n.value; if (k) kinds[i] = k.value; });
+    }
+    /** Reads every cut-out's name and type (the food side's AI) and fills them in, without touching anything typed. */
+    function readNames() {
+      var clear = document.getElementById('sheetClear').checked, msg = document.getElementById('sheetMsg');
+      reading = true; draw();
+      Promise.all(boxes.slice(0, 16).map(function (b) {
+        return toBlob(cut(img, b, clear)).then(function (blob) {
+          return new Promise(function (ok) { var fr = new FileReader(); fr.onload = function () { ok({ type: 'image/png', data: String(fr.result).split(',')[1] }); }; fr.readAsDataURL(blob); });
+        });
+      })).then(function (files) { return api('POST', '/logo-read', { files: files }); }).then(function (r) {
+        reading = false; keep();
+        if (!r.ok) { draw(); msg.className = 'msg bad'; msg.textContent = (r.d.error || 'Couldn’t read the names') + ' Type them in.'; return; }
+        (r.d.logos || []).forEach(function (l, i) { if (!names[i] && l.name) names[i] = l.name; if (l.kind) kinds[i] = l.kind; });
+        draw(); msg.className = 'msg ok'; msg.textContent = 'Found ' + boxes.length + ' logos and read their names. Check them, fix any that are off, untick any that came out wrong.';
+      });
+    }
     function draw() {
       var clear = document.getElementById('sheetClear').checked;
       var out = document.getElementById('sheetOut');
@@ -124,8 +144,9 @@
       out.innerHTML = '<div class="kit" style="margin-top:12px">' + boxes.map(function (b, i) {
         return '<figure><div class="art" data-slot="' + i + '"></div>' +
           '<label class="checks" style="margin:0"><input type="checkbox" data-keep="' + i + '" checked> Keep</label>' +
-          '<input data-name="' + i + '" maxlength="60" placeholder="Name" aria-label="Logo name" style="min-height:40px">' +
-          '<select data-kind="' + i + '" aria-label="Type" style="min-height:40px"><option value="vendor">Food vendor</option><option value="group">Car group</option><option value="sponsor">Sponsor</option><option value="title">Meet title</option></select></figure>';
+          '<input data-name="' + i + '" maxlength="60" placeholder="' + (reading ? 'Reading…' : 'Name') + '" aria-label="Logo name" style="min-height:40px" value="' + escA(names[i] || '') + '">' +
+          '<select data-kind="' + i + '" aria-label="Type" style="min-height:40px">' + [['vendor', 'Food vendor'], ['group', 'Club'], ['sponsor', 'Vendor (not food)'], ['title', 'Meet title']].map(function (o) {
+            return '<option value="' + o[0] + '"' + ((kinds[i] || 'vendor') === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></figure>';
       }).join('') + '</div><div class="bar"><button class="btn go" id="sheetSave">Add to kit</button></div>';
       boxes.forEach(function (b, i) { var c = cut(img, b, clear); c.style.maxWidth = '100%'; c.style.maxHeight = '100%'; out.querySelector('[data-slot="' + i + '"]').appendChild(c); });
       document.getElementById('sheetSave').onclick = save;
@@ -152,13 +173,14 @@
       var f = this.files[0], msg = document.getElementById('sheetMsg'); if (!f) return;
       msg.className = 'msg ok'; msg.textContent = 'Finding the logos…';
       fileImage(f).then(function (i) {
-        img = i; boxes = findLogos(i);
+        img = i; boxes = findLogos(i); names = []; kinds = [];
         msg.className = 'msg ' + (boxes.length ? 'ok' : 'bad');
-        msg.textContent = boxes.length ? 'Found ' + boxes.length + ' logos. Untick any that came out wrong.' : 'No logos found. It works best with logos spread out on a black background.';
+        msg.textContent = boxes.length ? 'Found ' + boxes.length + ' logos. Reading their names…' : 'No logos found. It works best with logos spread out on a black background.';
         draw();
+        if (boxes.length) readNames();
       }, function () { msg.className = 'msg bad'; msg.textContent = 'That image didn’t open. Try a PNG or JPEG.'; });
     };
-    document.getElementById('sheetClear').onchange = draw;
+    document.getElementById('sheetClear').onchange = function () { keep(); draw(); };
   }
 
   /* ======================= flyer maker ======================= */

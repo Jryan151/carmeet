@@ -56,6 +56,20 @@ npm test
 A second verified domain in the same Resend account, with its own send-only key for that domain. Set
 `RESEND_API_KEY` and `MAIL_FROM` (an address on this domain). Emails go out "from" the host's name.
 
+## Logos: Food vendors, Clubs, Vendors
+
+Every logo has a type: Food vendor, Club, Vendor (not food: shops, merch, sponsors), Venue, or Meet title. The meet
+page shows Food, Clubs and Vendors as separate rows. Names and types are read from the logos by the food side's AI
+(Online Kitchen needs `ANTHROPIC_API_KEY`, the same one as menu import): the logo sheet splitter fills them in as it
+cuts, Settings has "Name N from their logos" for any still called "Logo 1", and each entry has "Fill in the name and
+type from the logo". Every guess can be changed before saving.
+
+Each meet can also have its own **header logo** (Meets › a meet › Header logo), so one host can run Tasty Tuesday
+and Fuel Friday with their own logos; without one, the usual logo from Settings shows.
+
+The background footage is watched while it plays: restarted at the end, nudged when it freezes, reloaded when it
+stalls (`public/bgloop.js`).
+
 ## Venues
 
 Settings › **Venues**: businesses that let you use their lot (name, logo, Instagram, a short line). Pick one on a meet
@@ -64,15 +78,15 @@ Settings › **Venues**: businesses that let you use their lot (name, logo, Inst
 ## Parking map
 
 Meets › open a meet › **Parking map**. Type the address and pick the match: the satellite view opens on the spot.
-Frame the lot (drag to slide, − and + to zoom), then:
-- **From a picture**: the marked-up lot picture you already post. Rows painted green become Parking, blue become
-  Overflow, yellow ENTER tags become entrances (a legend on a roof is skipped). Slide, size and turn the picture until
-  it sits on the satellite, then Use these. Name the club rows after.
-- **Box**: drag across a row of spaces. Tap a box to pick it: turn it to match an angled row, drag it, Copy it for the
-  next row, or remove it. Pick what it's for (Club parking, Vendors, Parking, Car show, Overflow, No parking), a name
-  (your Clubs are suggested) and a color first.
-- **Shape**: tap each corner, for odd shapes.
-- **Pin**: Enter, Exit, Food, The meet or Info, with an optional label.
+Parking already on OpenStreetMap (lots, single spaces, drive aisles) is outlined as soon as the map opens. Then:
+- **Select** (the default): tap a row or space, or swipe across several. A sheet comes up: Club parking (pick the
+  club), Vendors, Parking, Car show, Overflow, No parking. Single spaces side by side become one row. Tap a zone
+  already drawn to change it or remove it.
+- **Box**: drag across a row; it snaps to the mapped spaces under it. Tap a box to turn it, drag it, or copy it for
+  the next row. "Odd shape?" taps corners instead. A marked-up lot picture can also be read (From a picture).
+- **Pin**: Enter, Exit, Food, The meet or Info.
+- **Move**: drag to slide. Two fingers pinch to zoom and slide in any mode. **Undo** takes back the last change.
+No parking mapped for a spot: it says so and opens Box.
 
 Everything saves as you go. On the meet page it shows under The spot as "Where to park": the satellite square, flat and
 north up, zones in their colors (named ones labeled), pins, a key, and Open in Maps. "Repeat next week" brings the layout along, and a new meet can start from one you made before.
@@ -81,6 +95,8 @@ Settings (`.env`):
 - `MAP_TILES`: where the satellite pictures come from, a tile address with `{z}`, `{x}` and `{y}`. Empty: Esri's World
   Imagery, with its credit shown under the map. Check its terms for your use; another provider (Mapbox satellite with
   your token, MapTiler) works the same way, with its credit in `MAP_CREDIT`.
+- `OVERPASS_URL`: where the mapped parking comes from (OpenStreetMap's Overpass). Empty: the public Overpass API.
+  Each spot is asked once a week at most.
 - `GEOCODER_URL`: the address search, Nominatim-style. Empty: OpenStreetMap's public Nominatim (one search a second
   at most; `SITE_OWNER_EMAIL` is sent as the contact it asks for). Searches are remembered, so an address is looked
   up once. `GEOCODER_COUNTRIES=us` keeps matches in the US.

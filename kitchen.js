@@ -47,7 +47,7 @@ function themeOf(host, m) {
     siteName: host.name,
     accent: /^#[0-9a-f]{6}$/i.test(host.accent || '') ? host.accent : '#c9adff',
     videoUrl: vid ? up(vid.video) : '', posterUrl: vid ? up(vid.video_poster) : '',
-    logoUrl: host.logo || '',
+    logoUrl: m.logo ? '/uploads/' + m.logo : host.logo || '',
     backUrl: '/' + host.slug + '/' + m.day,
     fontsHref: 'https://fonts.googleapis.com/css2?family=Michroma&family=Instrument+Sans:wght@400;500;600&display=swap',
     fontDisplay: 'Michroma', fontBody: 'Instrument Sans',
@@ -61,6 +61,8 @@ const createProfile = (hostKey, name, timezone) => call('POST', '/profiles', { h
 const updateProfile = (hostKey, slug, fields) => call('PUT', '/profiles/' + encodeURIComponent(slug), Object.assign({ hostKey }, fields));
 const profileMenuRead = (hostKey, slug, files) => call('POST', '/profiles/' + encodeURIComponent(slug) + '/menu-read', { hostKey, files }, 90000);
 const profileMenu = (hostKey, slug, items) => call('PUT', '/profiles/' + encodeURIComponent(slug) + '/menu', { hostKey, items, mode: 'replace' });
+/* The names on logos, and what each one is (food, club, another vendor), read by the food side's AI. */
+const readLogos = (hostKey, files) => call('POST', '/logo-read', { hostKey, files }, 70000);
 const addKnown = (ref, slug) => call('POST', '/' + encodeURIComponent(ref) + '/vendors', { slug });
 const dropInvite = (ref, id) => call('DELETE', '/' + encodeURIComponent(ref) + '/invites/' + encodeURIComponent(id));
 const notice = (ref, subject, text) => call('POST', '/' + encodeURIComponent(ref) + '/notice', { subject, text });
@@ -95,4 +97,4 @@ function photoSource(sub, rest) {
   return `${k.protocol}//${sub === '_' ? '' : sub + '.'}${k.host}${rest}`;
 }
 
-module.exports = { themeOf, on, call, syncMeet, meetVendors, inviteLink, profiles, createProfile, updateProfile, profileMenuRead, profileMenu, addKnown, dropInvite, notice, menu, order, orderStatus, confirmOrder, cancelOrder, verify, photoPath, photoSource };
+module.exports = { readLogos, themeOf, on, call, syncMeet, meetVendors, inviteLink, profiles, createProfile, updateProfile, profileMenuRead, profileMenu, addKnown, dropInvite, notice, menu, order, orderStatus, confirmOrder, cancelOrder, verify, photoPath, photoSource };

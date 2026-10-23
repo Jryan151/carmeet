@@ -122,7 +122,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     const tz = tzOf(h); const t = U.meetTimes(m, tz);
     return { id: m.id, ref: m.ref, title: m.title || '', day: m.day, start: m.start_time, end: m.end_time, place: m.place, address: m.address || '', notes: m.notes || '',
       status: m.status, startsAt: t.startsAt, endsAt: t.endsAt, label: `${U.dayShort(t.startsAt, tz)}, ${U.time12(t.startsAt, tz)}–${U.time12(t.endsAt, tz)}`,
-      over: t.endsAt < Date.now(), people: m.turnout_people, cars: m.turnout_cars, video: videoShape(m), flyer: m.flyer ? '/uploads/' + m.flyer : null, lot: LotMap.clean(m.lot), venueId: m.venue_id || null, synced: !!m.synced_at && !m.sync_error, syncError: m.sync_error || '', url: `${pageUrl(h)}/${m.day}` };
+      over: t.endsAt < Date.now(), people: m.turnout_people, cars: m.turnout_cars, video: videoShape(m), flyer: m.flyer ? '/uploads/' + m.flyer : null, lot: LotMap.clean(m.lot), venueId: m.venue_id || null, logo: m.logo ? '/uploads/' + m.logo : null, synced: !!m.synced_at && !m.sync_error, syncError: m.sync_error || '', url: `${pageUrl(h)}/${m.day}` };
   }
   async function sync(h, m) {
     const s = await K.syncMeet(h, m, `${pageUrl(h)}/${m.day}`);
@@ -225,9 +225,14 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     while (day < today) day = U.addDays(day, 7);
     if (await get('SELECT 1 AS x FROM meets WHERE host_id = ? AND day = ?', [h.id, day])) return res.status(409).json({ error: `You already have a meet on ${day}.` });
     const now = Date.now();
-    // Same spot, same parking map.
-    const ins = await run('INSERT INTO meets (host_id, ref, title, day, start_time, end_time, place, address, notes, lot, venue_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [h.id, 'm' + D.token(10), src.title, day, src.start_time, src.end_time, src.place, src.address, src.notes, src.lot, src.venue_id, now, now]);
+    // Same spot, same parking map, same header logo (its own copy, so changing one week never touches another).
+    let logo = null;
+    if (src.logo) {
+      const name = D.token(12) + (path.extname(src.logo) || '.png');
+      try { await fs.promises.copyFile(path.join(UPLOAD_DIR, path.basename(src.logo)), path.join(UPLOAD_DIR, name)); logo = name; } catch (e) { logo = null; }
+    }
+    const ins = await run('INSERT INTO meets (host_id, ref, title, day, start_time, end_time, place, address, notes, lot, venue_id, logo, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [h.id, 'm' + D.token(10), src.title, day, src.start_time, src.end_time, src.place, src.address, src.notes, src.lot, src.venue_id, logo, now, now]);
     const row = await get('SELECT * FROM meets WHERE id = ?', [ins.lastID]);
     await sync(h, row);
     res.status(201).json({ meet: meetShape(await get('SELECT * FROM meets WHERE id = ?', [row.id]), h) });
@@ -479,6 +484,15 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     if (out.error) return res.status(502).json({ error: out.error });
     res.set('Cache-Control', 'no-store').json({ results: out.results });
   });
+  // Parking shapes already on the map around a spot (OpenStreetMap): lots, single spaces, drive aisles.
+  r.get('/lot-shapes', signedIn, async (req, res) => {
+    const lat = Number(req.query.lat), lng = Number(req.query.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 85 || Math.abs(lng) > 180) return res.status(400).json({ error: 'Find the spot first.' });
+    if (limited('osm:' + req.me.id, 40, 10 * 60000)) return res.status(429).json({ error: 'Too many lookups. Wait a few minutes.' });
+    const out = await geo.parking(lat, lng);
+    if (out.error) return res.status(502).json({ error: out.error });
+    res.set('Cache-Control', 'no-store').json({ shapes: out.shapes });
+  });
   r.put('/meets/:id/lot', signedIn, async (req, res) => {
     const m = await own(req, req.params.id);
     if (!m) return res.status(404).json({ error: 'That meet is gone.' });
@@ -508,7 +522,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
   });
 
   /* ---------- the flyer kit: vendor and car group logos, ready to paste onto a flyer ---------- */
-  const KINDS = ['vendor', 'group', 'sponsor', 'title', 'venue'];
+  const KINDS = ['vendor', 'group', 'sponsor', 'title', 'venue']; // food vendor, club, vendor (not food), meet title, venue
   const kitShape = (k) => ({ id: k.id, kind: k.kind, name: k.name, url: k.file ? '/uploads/' + k.file : '', instagram: k.instagram || '', note: k.note || '', truckSlug: k.truck_slug || null,
     pageSlug: k.page_slug || null, pageOn: !!k.page_on, pageUrl: k.page_slug ? U.vendorUrl(k.page_slug, { absolute: true }) : null });
   const hostKey = (h) => 'host_' + h.id;
@@ -521,6 +535,49 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     if (k.instagram) K.updateProfile(hostKey(h), r2.data.profile.slug, { instagram: k.instagram }).catch(() => {});
     return { slug: r2.data.profile.slug };
   }
+  // What the reader's answer means in the lists: food → Food vendors, club → Clubs, vendor → Vendors (non-food).
+  const KIND_OF = { food: 'vendor', club: 'group', vendor: 'sponsor' };
+  const PLACEHOLDER = /^(logo|vendor|club)\s*\d*$/i;
+  // Logo pictures (from the logo sheet splitter, before they're saved) → [{ name, kind }].
+  r.post('/logo-read', signedIn, express.json({ limit: '20mb' }), async (req, res) => {
+    const files = Array.isArray((req.body || {}).files) ? req.body.files.slice(0, 16) : [];
+    if (!files.length) return res.status(400).json({ error: 'Send at least one logo.' });
+    const r2 = await K.readLogos(hostKey(req.me), files.map((f) => ({ type: String(f && f.type || ''), data: String(f && f.data || '') })));
+    if (!r2.ok) return res.status(r2.status || 502).json({ error: r2.data.error || 'Reading the logos didn’t work. Type the names for now.' });
+    res.json({ logos: (r2.data.logos || []).map((l) => ({ name: U.clean(l.name, 60), kind: KIND_OF[l.kind] || null })) });
+  });
+  // Entries already in the lists: read their logos. With apply, a placeholder name ("Logo 3") takes the name read,
+  // and the entry moves to the list it belongs in; with all, every name is replaced. Returns what was read, by id.
+  r.post('/kit/read', signedIn, async (req, res) => {
+    const b = req.body || {};
+    const ids = (Array.isArray(b.ids) ? b.ids : []).map((x) => parseInt(x, 10)).filter(Boolean).slice(0, 16);
+    const rows = [];
+    for (const id of ids) {
+      const k = await get('SELECT * FROM kit_logos WHERE id = ? AND host_id = ?', [id, req.me.id]);
+      if (!k || !k.file) continue;
+      try {
+        const buf = await fs.promises.readFile(path.join(UPLOAD_DIR, path.basename(k.file)));
+        if (buf.length > 3 * 1024 * 1024) continue;
+        rows.push({ k, file: { type: /\.jpe?g$/i.test(k.file) ? 'image/jpeg' : 'image/png', data: buf.toString('base64') } });
+      } catch (e) { /* no file */ }
+    }
+    if (!rows.length) return res.status(400).json({ error: 'None of those have a logo to read yet.' });
+    const r2 = await K.readLogos(hostKey(req.me), rows.map((x) => x.file));
+    if (!r2.ok) return res.status(r2.status || 502).json({ error: r2.data.error || 'Reading the logos didn’t work. Type the names for now.' });
+    const out = [];
+    for (let i = 0; i < rows.length; i++) {
+      const k = rows[i].k, l = (r2.data.logos || [])[i] || {};
+      const name = U.clean(l.name, 60), kind = KIND_OF[l.kind] || null;
+      out.push({ id: k.id, name, kind });
+      if (!b.apply) continue;
+      const newName = name && (b.apply === 'all' || PLACEHOLDER.test(k.name)) ? name : k.name;
+      // A venue or a meet title stays what it is; vendors and clubs go where the reader says.
+      const newKind = kind && ['vendor', 'group', 'sponsor'].includes(k.kind) ? kind : k.kind;
+      await run('UPDATE kit_logos SET name = ?, kind = ? WHERE id = ?', [newName, newKind, k.id]);
+      if (k.truck_slug && newName !== k.name) K.updateProfile(hostKey(req.me), k.truck_slug, { name: newName }).catch(() => {});
+    }
+    res.json({ read: out, logos: b.apply ? (await all('SELECT * FROM kit_logos WHERE host_id = ? ORDER BY kind, name COLLATE NOCASE', [req.me.id])).map(kitShape) : undefined });
+  });
   const ownKit = (req, id) => get('SELECT * FROM kit_logos WHERE id = ? AND host_id = ?', [parseInt(id, 10) || 0, req.me.id]);
   r.get('/kit', signedIn, async (req, res) => {
     const rows = await all('SELECT * FROM kit_logos WHERE host_id = ? ORDER BY kind, name COLLATE NOCASE', [req.me.id]);
@@ -762,6 +819,29 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     res.json({ ok: true });
   });
 
+  // A meet's own header logo, over the host's usual one (trimmed the same way).
+  r.post('/meets/:id/logo', signedIn, rawImage, async (req, res) => {
+    const m = await own(req, req.params.id);
+    if (!m) return res.status(404).json({ error: 'That meet is gone.' });
+    let name = Buffer.isBuffer(req.body) ? await saveImage(req.body) : null;
+    if (!name) return res.status(400).json({ error: 'Use a JPEG or PNG image.' });
+    const trimmed = await V.trimLogo(path.join(UPLOAD_DIR, name), UPLOAD_DIR);
+    if (trimmed) { fs.promises.unlink(path.join(UPLOAD_DIR, name)).catch(() => {}); name = trimmed; }
+    if (m.logo) fs.promises.unlink(path.join(UPLOAD_DIR, path.basename(m.logo))).catch(() => {});
+    await run('UPDATE meets SET logo = ?, updated_at = ? WHERE id = ?', [name, Date.now(), m.id]);
+    const row = await get('SELECT * FROM meets WHERE id = ?', [m.id]);
+    sync(req.me, row).catch(() => {}); // the trucks' menus for this meet wear it too
+    res.json({ meet: meetShape(row, req.me) });
+  });
+  r.delete('/meets/:id/logo', signedIn, async (req, res) => {
+    const m = await own(req, req.params.id);
+    if (!m) return res.status(404).json({ error: 'That meet is gone.' });
+    if (m.logo) fs.promises.unlink(path.join(UPLOAD_DIR, path.basename(m.logo))).catch(() => {});
+    await run('UPDATE meets SET logo = NULL, updated_at = ? WHERE id = ?', [Date.now(), m.id]);
+    const row = await get('SELECT * FROM meets WHERE id = ?', [m.id]);
+    sync(req.me, row).catch(() => {});
+    res.json({ meet: meetShape(row, req.me) });
+  });
   r.post('/logo', signedIn, rawImage, async (req, res) => {
     let name = Buffer.isBuffer(req.body) ? await saveImage(req.body) : null;
     if (!name) return res.status(400).json({ error: 'Use a JPEG or PNG image.' });

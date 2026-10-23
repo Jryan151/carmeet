@@ -51,6 +51,69 @@
     return { x: cx / (3 * a), y: cy / (3 * a) };
   }
 
+  /** The smallest turned rectangle around some points ({ x, y }), from their convex hull: { pts, area }. */
+  function boxAround(points) {
+    var p = points.slice().sort(function (a, b) { return a.x - b.x || a.y - b.y; });
+    var cross = function (o, a, b) { return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x); };
+    var lo = [], hi = [], i;
+    for (i = 0; i < p.length; i++) { while (lo.length > 1 && cross(lo[lo.length - 2], lo[lo.length - 1], p[i]) <= 0) lo.pop(); lo.push(p[i]); }
+    for (i = p.length - 1; i >= 0; i--) { while (hi.length > 1 && cross(hi[hi.length - 2], hi[hi.length - 1], p[i]) <= 0) hi.pop(); hi.push(p[i]); }
+    var hull = lo.slice(0, -1).concat(hi.slice(0, -1)), best = null;
+    for (i = 0; i < hull.length; i++) {
+      var a = hull[i], b = hull[(i + 1) % hull.length], len = Math.hypot(b.x - a.x, b.y - a.y);
+      if (!len) continue;
+      var ux = (b.x - a.x) / len, uy = (b.y - a.y) / len, s0 = Infinity, s1 = -Infinity, t0 = Infinity, t1 = -Infinity;
+      hull.forEach(function (q) { var s = q.x * ux + q.y * uy, t = -q.x * uy + q.y * ux; if (s < s0) s0 = s; if (s > s1) s1 = s; if (t < t0) t0 = t; if (t > t1) t1 = t; });
+      var area = (s1 - s0) * (t1 - t0);
+      if (!best || area < best.area) {
+        var at = function (s, t) { return { x: s * ux - t * uy, y: s * uy + t * ux }; };
+        best = { area: area, pts: [at(s0, t0), at(s1, t0), at(s1, t1), at(s0, t1)] };
+      }
+    }
+    return best;
+  }
+  /** Fewer corners, same outline (an open or closed list of { x, y }), at most `max` (keeps loosening until it fits). */
+  function simplify(pts, eps, max) {
+    function rdp(list, e) {
+      if (list.length < 3) return list;
+      var a = list[0], b = list[list.length - 1], dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1, far = 0, at = 0;
+      for (var i = 1; i < list.length - 1; i++) {
+        var d = Math.abs(dy * list[i].x - dx * list[i].y + b.x * a.y - b.y * a.x) / len;
+        if (d > far) { far = d; at = i; }
+      }
+      if (far <= e) return [a, b];
+      return rdp(list.slice(0, at + 1), e).slice(0, -1).concat(rdp(list.slice(at), e));
+    }
+    var out = pts, e = eps;
+    while (true) { // split the loop in half so both halves simplify well
+      var h = Math.floor(pts.length / 2);
+      out = pts.length > 4 ? rdp(pts.slice(0, h + 1), e).slice(0, -1).concat(rdp(pts.slice(h).concat([pts[0]]), e).slice(0, -1)) : pts;
+      if (!max || out.length <= max || e > 1e6) return out;
+      e *= 1.6;
+    }
+  }
+  /** Groups shapes (lists of { x, y }) that touch: corners within `gap` of each other. Returns lists of indexes. */
+  function touching(shapes, gap) {
+    var parent = shapes.map(function (_, i) { return i; });
+    var root = function (i) { while (parent[i] !== i) i = parent[i] = parent[parent[i]]; return i; };
+    for (var i = 0; i < shapes.length; i++) for (var j = i + 1; j < shapes.length; j++) {
+      if (root(i) === root(j)) continue;
+      var near = shapes[i].some(function (a) { return shapes[j].some(function (b) { return Math.abs(a.x - b.x) <= gap && Math.abs(a.y - b.y) <= gap; }); });
+      if (near) parent[root(i)] = root(j);
+    }
+    var groups = {};
+    shapes.forEach(function (_, i) { (groups[root(i)] = groups[root(i)] || []).push(i); });
+    return Object.keys(groups).map(function (k) { return groups[k]; });
+  }
+  /** Whether a point is inside an outline ({ x, y } lists). */
+  function inside(pt, poly) {
+    for (var i = 0, j = poly.length - 1, c = false; i < poly.length; j = i++) {
+      var a = poly[i], b = poly[j];
+      if ((a.y > pt.y) !== (b.y > pt.y) && pt.x < (b.x - a.x) * (pt.y - a.y) / (b.y - a.y) + a.x) c = !c;
+    }
+    return c;
+  }
+
   var num = function (v) { return typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN; };
   var text = function (s, n) { return String(s == null ? '' : s).replace(/[\u0000-\u001f\u007f<>]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, n); };
   var near = function (lot, lat, lng) { return Math.abs(lat - lot.lat) < 0.05 && Math.abs(lng - lot.lng) < 0.05; }; // about 5 km
@@ -79,6 +142,7 @@
   }
 
   var api = { FRAME: FRAME, TILE: TILE, MIN_Z: MIN_Z, MAX_Z: MAX_Z, ZONES: ZONES, PINS: PINS, KIND_COLOR: KIND_COLOR, PALETTE: PALETTE, PIN_COLOR: PIN_COLOR,
-    toPx: toPx, toLatLng: toLatLng, frame: frame, inFrame: inFrame, tileUrl: tileUrl, middle: middle, clean: clean };
+    toPx: toPx, toLatLng: toLatLng, frame: frame, inFrame: inFrame, tileUrl: tileUrl, middle: middle, clean: clean,
+    boxAround: boxAround, simplify: simplify, touching: touching, inside: inside };
   if (typeof module === 'object' && module.exports) module.exports = api; else root.LotMap = api;
 })(this);
