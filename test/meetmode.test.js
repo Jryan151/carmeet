@@ -35,6 +35,7 @@ test.before(async () => {
   k().meets[ref].vendors = [
     { inviteId: 1, status: 'in', slug: 'birria-bros', name: 'Birria Bros', emoji: '🌮', cardReady: true, preorders: 0 },
     { inviteId: 2, status: 'in', slug: 'lemon-stand', name: 'Desert Lemonade', emoji: '🍋', cardReady: false, preorders: 0 },
+    { inviteId: 3, status: 'in', slug: 'night-birria', name: 'Night Birria', emoji: '', cardReady: false, payAtTruck: true, preorders: 0 },
   ];
 });
 
@@ -55,6 +56,7 @@ test('the site opens on the host: round logo, no header, every truck linked to i
   assert.ok(!/Run a meet|Page by/.test(r.text));
   assert.ok(r.text.includes(`href="/meet/${ref}/birria-bros/"`), 'card truck → its menu in meet mode');
   assert.ok(r.text.includes(`href="/meet/${ref}/lemon-stand/"`), 'every truck gets a menu link');
+  assert.match(r.text, /Night Birria<\/div><div class="note">Pre-order, pay at the truck/, 'a night-kit truck takes pre-orders paid at the truck');
   assert.ok(!/online ?kitchen|127\.0\.0\.1/i.test(r.text));
 });
 

@@ -206,7 +206,7 @@
     if (!me.foodOn) html += '<p class="small dim">Food pre-orders aren’t connected on this site yet.</p>';
     html += trucks.length ? trucks.map(function (v) {
       var name = v.name ? (v.emoji ? v.emoji + ' ' : '') + v.name : 'Invite ' + (v.code || '');
-      var st = v.status === 'in' ? '<span class="tag in">Confirmed · ' + v.preorders + ' pre-order' + (v.preorders === 1 ? '' : 's') + (v.plates !== null ? ' · ' + v.plates + ' plates sold' : '') + (v.cardReady ? '' : ' · order at the truck') + '</span>'
+      var st = v.status === 'in' ? '<span class="tag in">Confirmed · ' + v.preorders + ' pre-order' + (v.preorders === 1 ? '' : 's') + (v.plates !== null ? ' · ' + v.plates + ' plates sold' : '') + (v.cardReady ? '' : v.payAtTruck ? ' · paid at the truck' : ' · order at the truck') + (v.paused ? ' · paused' : '') + '</span>'
         : v.status === 'invited' ? '<span class="tag">Invited, waiting</span>' : '<span class="tag">' + esc(v.status === 'declined' ? 'Declined' : v.status === 'left' ? 'Not coming' : v.status) + '</span>';
       return '<div class="rowx"><div><div>' + esc(name) + '</div>' + st + '</div>' +
         (['in', 'invited'].indexOf(v.status) >= 0 && !m.over ? '<button class="btn sm" data-drop-truck="' + v.inviteId + '">Remove</button>' : '') + '</div>';

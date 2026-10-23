@@ -118,7 +118,9 @@ function meetPage(host, m, ctx) {
   const t = U.meetTimes(m, tz);
   const over = t.endsAt < Date.now();
   const trucks = (ctx.trucks || []).filter((v) => v.status === 'in');
-  const anyPreorder = !over && m.status === 'on' && trucks.some((v) => v.cardReady);
+  // Who takes pre-orders: card trucks, and in meet mode also trucks paid at the truck (the night kit), unless paused.
+  const takes = (v) => !v.paused && (v.cardReady || (ctx.meetMode && v.payAtTruck));
+  const anyPreorder = !over && m.status === 'on' && trucks.some(takes);
   const mpath = `${base}/${m.day}`;
   const rules = String(host.rules || '').split('\n').map((s) => s.trim()).filter(Boolean);
   const desc = `${U.dayLong(t.startsAt, tz)}, ${U.time12(t.startsAt, tz)} at ${m.place}.${trucks.length ? ' Food: ' + trucks.map((v) => v.name).join(', ') + '.' : ''}`;
@@ -143,9 +145,9 @@ function meetPage(host, m, ctx) {
   body += `<section id="food"><h2>Food</h2>`;
   if (!trucks.length) body += `<p class="dim">${over ? 'No food trucks were listed for this meet.' : 'Food trucks will show here once they’re confirmed.'}</p>`;
   for (const v of trucks) {
-    const can = anyPreorder && v.cardReady;
+    const can = anyPreorder && takes(v);
     const href = over || m.status !== 'on' ? null : menuLink(v, m, mpath, ctx, can);
-    const note = can ? 'Pre-order, pick up at the meet' : href ? 'See the menu' : 'Order at the truck';
+    const note = can ? (v.cardReady ? 'Pre-order, pick up at the meet' : 'Pre-order, pay at the truck') : href ? 'See the menu' : 'Order at the truck';
     const inner = `${v.logo ? `<img class="tlogo" src="${esc(v.logo)}" alt="" loading="lazy">` : `<span class="tlogo emoji" aria-hidden="true">${esc(v.emoji || '🍽')}</span>`}
       <div class="tinfo"><div class="name">${esc(v.name)}</div><div class="note">${note}</div></div>
       ${href ? `<span class="btn${can ? ' go' : ''}">${can ? 'Pre-order' : 'Menu'}</span>` : ''}`;
