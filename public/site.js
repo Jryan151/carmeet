@@ -31,10 +31,7 @@
   // The parking map: drag to turn it (and tilt it a little), "Flat" lays it down to read. It eases in with a small turn.
   Array.prototype.forEach.call(document.querySelectorAll('[data-lot]'), function (lot) {
     var stage = lot.querySelector('.lot-stage'), flatBtn = lot.querySelector('[data-lot-flat]');
-    var spin = 0, tilt = 52, start = null, img = lot.querySelector('img');
-    // The map's shape (tall or wide) sets how big it can be and still fit.
-    function shape() { if (img.naturalWidth) lot.style.setProperty('--lot-ratio', (img.naturalHeight / img.naturalWidth).toFixed(3)); }
-    if (img.complete) shape(); else img.addEventListener('load', shape);
+    var spin = 0, tilt = 50, start = null;
     function set() { lot.style.setProperty('--spin', spin + 'deg'); lot.style.setProperty('--tilt', tilt + 'deg'); }
     var still = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (!still && 'IntersectionObserver' in window) {
@@ -63,7 +60,7 @@
       var flat = !lot.classList.contains('flat');
       lot.classList.toggle('flat', flat);
       flatBtn.setAttribute('aria-pressed', String(flat)); flatBtn.textContent = flat ? 'Tilt' : 'Flat';
-      if (flat) { lot.style.removeProperty('--spin'); lot.style.removeProperty('--tilt'); } else { spin = 0; tilt = 52; set(); }
+      if (flat) { lot.style.removeProperty('--spin'); lot.style.removeProperty('--tilt'); } else { spin = 0; tilt = 50; set(); }
     });
   });
 

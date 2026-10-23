@@ -1,25 +1,35 @@
 'use strict';
-/* The parking map: the host's screenshot and the pins they tap on, checked and shown tilted on the meet page,
-   copied with "Repeat next week", and cleared with a new picture. */
+/* The parking map: find the spot by address, save a layout (zones and pins, checked), show it tilted on the meet
+   page over the satellite tiles, carry it to next week, and start a new meet from a past one. */
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const os = require('node:os');
-const path = require('node:path');
-const { spawnSync } = require('node:child_process');
+const http = require('node:http');
 const { startSite, request, host } = require('./helpers');
+const L = require('../public/lotmap');
 
-const ctx = startSite(test);
+// A stand-in for the address search (Nominatim's answer shape), counting how often it's asked.
+const geo = { asked: 0, port: 47000 + Math.floor(Math.random() * 900) };
+geo.srv = http.createServer((req, res) => {
+  geo.asked++;
+  const q = new URL(req.url, 'http://x').searchParams.get('q') || '';
+  res.writeHead(200, { 'content-type': 'application/json' });
+  res.end(JSON.stringify(/peoria/i.test(q) ? [{ lat: '33.58053', lon: '-112.17112', display_name: '5112 W Peoria Ave, Glendale, Maricopa County, Arizona, 85302, United States' }] : []));
+}).listen(geo.port, '127.0.0.1');
+test.after(() => geo.srv.close());
+
+const ctx = startSite(test, { MAP_TILES: 'https://tiles.example/{z}/{y}/{x}.jpg', MAP_CREDIT: 'Imagery © Example', GEOCODER_URL: `http://127.0.0.1:${geo.port}/search` });
 const SITE = 'meets.test';
 const ymd = (n) => new Date(Date.now() + n * 864e5).toISOString().slice(0, 10);
-const ffmpeg = spawnSync('ffmpeg', ['-version']).status === 0;
 let C, id;
 
-function png() {
-  const f = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'lot-')), 'l.png');
-  spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=0x2a2a30:s=300x360', '-frames:v', '1', f]);
-  return fs.readFileSync(f);
-}
+const at = (dx, dy) => ({ lat: 33.58053 + dy * 1e-4, lng: -112.17112 + dx * 1e-4 });
+const LOT = { lat: 33.58053, lng: -112.17112, zoom: 18, address: '5112 W Peoria Ave, Glendale', zones: [
+  { kind: 'club', label: 'Unforsaken', color: '#c084fc', pts: [at(0, 0), at(2, 0), at(2, 1), at(0, 1)] },
+  { kind: 'vendors', label: '', pts: [at(-2, 0), at(-1, 0), at(-1, -1)] },
+  { kind: 'helipad', pts: [at(0, 0), at(1, 0), at(1, 1)] },          // not a kind: dropped
+  { kind: 'show', pts: [at(0, 0), at(1, 1)] },                        // two corners: dropped
+  { kind: 'overflow', pts: [at(0, 0), { lat: 40, lng: -100 }, at(1, 1), at(0, 1)] }, // the far point goes, three stay
+], pins: [{ kind: 'enter', label: '', ...at(-3, 0) }, { kind: 'enter', label: 'Side gate <b>', ...at(-3, 2) }, { kind: 'teleport', ...at(0, 0) }] };
 
 test.before(async () => {
   C = await host(ctx, { email: 'fuel@example.com', name: 'Fuel Friday', slug: 'fuel-friday' });
@@ -28,43 +38,60 @@ test.before(async () => {
   id = r.json.meet.id;
 });
 
-test('pins need the picture first; then they are checked and shown on the page, tilted', { skip: !ffmpeg }, async () => {
-  let r = await request(ctx, 'PUT', SITE, `/api/host/meets/${id}/parking`, { cookie: C, body: { pins: [{ x: 0.1, y: 0.2, kind: 'enter' }] } });
+test('the address search answers with places, and asks only once per address', async () => {
+  let r = await request(ctx, 'GET', SITE, '/api/host/geocode?q=5112 W Peoria Ave Glendale', { cookie: C });
+  assert.equal(r.status, 200, r.text);
+  assert.deepEqual([r.json.results[0].lat, r.json.results[0].lng], [33.58053, -112.17112]);
+  assert.match(r.json.results[0].label, /Glendale/);
+  const before = geo.asked;
+  r = await request(ctx, 'GET', SITE, '/api/host/geocode?q=5112  w peoria AVE glendale', { cookie: C });
+  assert.equal(r.json.results.length, 1);
+  assert.equal(geo.asked, before, 'kept from last time');
+  r = await request(ctx, 'GET', SITE, '/api/host/geocode?q=ab', { cookie: C });
   assert.equal(r.status, 400);
-  r = await request(ctx, 'POST', SITE, `/api/host/meets/${id}/parking`, { cookie: C, raw: { buf: png(), type: 'image/png' } });
-  assert.equal(r.status, 200, r.text);
-  assert.match(r.json.meet.parking, /^\/uploads\//);
-  r = await request(ctx, 'PUT', SITE, `/api/host/meets/${id}/parking`, { cookie: C, body: { pins: [
-    { x: 0.07, y: 0.25, kind: 'enter', label: 'Enter' }, { x: 0.55, y: 0.43, kind: 'parking', label: 'Car show <b>' },
-    { x: 2, y: 0.5, kind: 'food' }, { x: 0.5, y: 0.5, kind: 'helipad' }, { x: 0.9, y: 0.2, kind: 'overflow' }] } });
-  assert.equal(r.status, 200, r.text);
-  assert.deepEqual(r.json.meet.parkingPins.map((p) => p.kind), ['enter', 'parking', 'overflow'], 'outside the picture and unknown kinds dropped');
-  r = await request(ctx, 'GET', SITE, '/fuel-friday');
-  assert.match(r.text, /Where to park/);
-  assert.match(r.text, /data-lot/);
-  assert.match(r.text, /class="pin k-enter" style="left:7\.0%;top:25\.0%"><b>Enter<\/b>/);
-  assert.match(r.text, /<b>Car show &lt;b&gt;<\/b>/, 'labels are escaped');
-  assert.match(r.text, /<b>Overflow<\/b>/, 'no label: the kind’s name');
-  assert.match(r.text, /class="lot-key"><span class="k-enter">Enter<\/span><span class="k-parking">Parking<\/span><span class="k-overflow">Overflow<\/span>/);
+  r = await request(ctx, 'GET', SITE, '/api/host/geocode?q=5112 W Peoria Ave');
+  assert.equal(r.status, 401, 'hosts only');
+  r = await request(ctx, 'GET', SITE, '/api/host/me', { cookie: C });
+  assert.equal(r.json.host.mapTiles, 'https://tiles.example/{z}/{y}/{x}.jpg');
 });
 
-test('repeat next week brings the map and pins along, as its own copy', { skip: !ffmpeg }, async () => {
+test('a layout is checked when saved, and shown tilted on the page over the tiles', async () => {
+  let r = await request(ctx, 'PUT', SITE, `/api/host/meets/${id}/lot`, { cookie: C, body: { lot: { lat: 'x' } } });
+  assert.equal(r.status, 400);
+  r = await request(ctx, 'PUT', SITE, `/api/host/meets/${id}/lot`, { cookie: C, body: { lot: LOT } });
+  assert.equal(r.status, 200, r.text);
+  const lot = r.json.meet.lot;
+  assert.deepEqual(lot.zones.map((z) => z.kind), ['club', 'vendors', 'overflow']);
+  assert.equal(lot.zones[1].color, L.KIND_COLOR.vendors, 'no color: the kind’s own');
+  assert.equal(lot.zones[2].pts.length, 3);
+  assert.deepEqual(lot.pins.map((p) => p.kind), ['enter', 'enter']);
+  r = await request(ctx, 'GET', SITE, '/fuel-friday');
+  assert.match(r.text, /Where to park/);
+  assert.match(r.text, /src="https:\/\/tiles\.example\/18\/\d+\/\d+\.jpg"/);
+  assert.match(r.text, /<polygon points="[\d., ]+" style="--z:#c084fc"\/>/);
+  assert.match(r.text, /<b>Unforsaken<\/b>/);
+  assert.match(r.text, /<b>Vendors<\/b>/, 'no name: the kind’s name');
+  assert.match(r.text, /<b>Side gate b<\/b>/, 'no markup in labels');
+  assert.match(r.text, /Imagery © Example/);
+  assert.match(r.text, /maps\/search\/\?api=1&amp;query=33\.58053,-112\.17112/);
+  // The tiles on the page cover the square, at the right zoom.
+  const f = L.frame(lot);
+  for (const t of f.tiles) assert.ok(r.text.includes(`/18/${t.y}/${t.x}.jpg`), `tile ${t.x},${t.y}`);
+});
+
+test('repeat next week brings the layout; a new meet can start from a past one', async () => {
   let r = await request(ctx, 'POST', SITE, `/api/host/meets/${id}/again`, { cookie: C, body: {} });
   assert.equal(r.status, 201, r.text);
-  const next = r.json.meet;
-  const first = (await request(ctx, 'GET', SITE, '/api/host/meets', { cookie: C })).json.meets.find((m) => m.id === id);
-  assert.ok(next.parking && next.parking !== first.parking, 'its own picture');
-  assert.equal(next.parkingPins.length, 3);
-  assert.equal((await request(ctx, 'GET', SITE, next.parking)).status, 200);
-  // A new picture clears that meet's pins only.
-  r = await request(ctx, 'POST', SITE, `/api/host/meets/${next.id}/parking`, { cookie: C, raw: { buf: png(), type: 'image/png' } });
-  assert.deepEqual(r.json.meet.parkingPins, []);
-  r = await request(ctx, 'DELETE', SITE, `/api/host/meets/${next.id}/parking`, { cookie: C });
-  assert.equal(r.json.meet.parking, null);
-  const still = (await request(ctx, 'GET', SITE, '/api/host/meets', { cookie: C })).json.meets.find((m) => m.id === id);
-  assert.equal(still.parkingPins.length, 3);
-  assert.equal((await request(ctx, 'GET', SITE, still.parking)).status, 200, 'the first week’s picture is untouched');
-  // Someone else's meet isn't theirs to change.
+  assert.equal(r.json.meet.lot.zones.length, 3);
+  const next = r.json.meet.id;
+  r = await request(ctx, 'DELETE', SITE, `/api/host/meets/${next}/lot`, { cookie: C });
+  assert.equal(r.json.meet.lot, null);
+  r = await request(ctx, 'GET', SITE, '/api/host/lots', { cookie: C });
+  assert.equal(r.json.lots.length, 1);
+  assert.equal(r.json.lots[0].meetId, id);
+  assert.equal(r.json.lots[0].zones, 3);
+  // Someone else's meet and layouts aren't theirs.
   const C2 = await host(ctx, { email: 'x@example.com', name: 'Other', slug: 'other-crew' });
-  assert.equal((await request(ctx, 'DELETE', SITE, `/api/host/meets/${id}/parking`, { cookie: C2 })).status, 404);
+  assert.equal((await request(ctx, 'PUT', SITE, `/api/host/meets/${id}/lot`, { cookie: C2, body: { lot: LOT } })).status, 404);
+  assert.equal((await request(ctx, 'GET', SITE, '/api/host/lots', { cookie: C2 })).json.lots.length, 0);
 });

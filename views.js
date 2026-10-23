@@ -1,6 +1,8 @@
 'use strict';
 /* views.js — the public pages, written on the server (fast on a phone, and link previews show the meet). */
 const U = require('./util');
+const LotMap = require('./public/lotmap');
+const geo = require('./geo');
 const { esc } = U;
 
 const SITE = () => process.env.SITE_NAME || 'Meet Night';
@@ -131,23 +133,38 @@ function when(m, tz, { live } = {}) {
 </div>`;
 }
 
-/** The parking map: the host's marked-up satellite picture laid back like the lot seen from a car on approach, with
-    pins standing up off it. Drag to turn it; "Flat" lays it down to read. site.js does the moving; without it, it's
-    just the tilted picture. */
+/** The parking map: the satellite view of the spot with the host's zones (club parking, vendors, overflow...) drawn
+    on it, laid back like the lot seen while pulling in, with labels and pins standing off it. Written here, so it
+    shows with no script; site.js adds drag-to-turn and Flat. */
 function parkingMap(m) {
-  if (!m.parking) return '';
-  const list = U.pins(m.parking_pins);
-  const kinds = [...new Set(list.map((p) => p.kind))];
+  const lot = LotMap.clean(m.lot);
+  if (!lot) return '';
+  const f = LotMap.frame(lot);
+  const pc = (v) => (v / LotMap.FRAME * 100).toFixed(3) + '%';
+  const tpl = geo.tiles();
+  const tiles = f.tiles.map((t) => `<img class="tile" src="${esc(LotMap.tileUrl(tpl, t))}" alt="" draggable="false" style="left:${pc(t.left)};top:${pc(t.top)}">`).join('');
+  const zones = lot.zones.map((z) => ({ z, pts: z.pts.map((p) => LotMap.inFrame(lot, f, p.lat, p.lng)) }));
+  const svg = `<svg class="zones" viewBox="0 0 ${LotMap.FRAME} ${LotMap.FRAME}" aria-hidden="true">${zones.map(({ z, pts }) =>
+    `<polygon points="${pts.map((p) => p.x.toFixed(1) + ',' + p.y.toFixed(1)).join(' ')}" style="--z:${z.color}"${z.kind === 'nopark' ? ' class="no"' : ''}/>`).join('')}</svg>`;
+  const tags = zones.map(({ z, pts }) => {
+    const c = LotMap.middle(pts);
+    return `<span class="pin zone" style="left:${pc(c.x)};top:${pc(c.y)};--pin:${z.color}"><b>${esc(z.label || LotMap.ZONES[z.kind])}</b></span>`;
+  }).join('') + lot.pins.map((p) => {
+    const c = LotMap.inFrame(lot, f, p.lat, p.lng);
+    return `<span class="pin" style="left:${pc(c.x)};top:${pc(c.y)};--pin:${LotMap.PIN_COLOR[p.kind]}"><b>${esc(p.label || LotMap.PINS[p.kind])}</b></span>`;
+  }).join('');
+  // The key: each zone once (by its name and color), then the kinds of pins.
+  const seen = new Set(); const key = [];
+  for (const z of lot.zones) { const n = z.label || LotMap.ZONES[z.kind]; if (!seen.has(n + z.color)) { seen.add(n + z.color); key.push([n, z.color]); } }
+  for (const k of [...new Set(lot.pins.map((p) => p.kind))]) key.push([LotMap.PINS[k], LotMap.PIN_COLOR[k]]);
+  const there = `https://www.google.com/maps/search/?api=1&query=${lot.lat},${lot.lng}`;
   return `<div class="lot" data-lot>
-  <div class="lot-stage"><div class="lot-plane">
-    <img src="/uploads/${esc(m.parking)}" alt="Parking map for ${esc(m.place)}" draggable="false">
-    ${list.map((p) => `<span class="pin k-${p.kind}" style="left:${(p.x * 100).toFixed(1)}%;top:${(p.y * 100).toFixed(1)}%"><b>${esc(p.label || U.PIN_KINDS[p.kind])}</b></span>`).join('')}
-  </div></div>
+  <div class="lot-stage"><div class="lot-plane"><div class="lot-map"><div class="lot-img">${tiles}${svg}</div>${tags}</div></div></div>
   <div class="lot-bar">
-    ${kinds.length ? `<div class="lot-key">${kinds.map((k) => `<span class="k-${k}">${esc(U.PIN_KINDS[k])}</span>`).join('')}</div>` : '<span></span>'}
+    ${key.length ? `<div class="lot-key">${key.slice(0, 12).map(([n, c]) => `<span style="--pin:${c}">${esc(n)}</span>`).join('')}</div>` : '<span></span>'}
     <button class="btn sm" type="button" data-lot-flat aria-pressed="false">Flat</button>
   </div>
-  <p class="small dim lot-hint">Drag to turn it. <a href="/uploads/${esc(m.parking)}" target="_blank" rel="noopener">Open the full map</a></p>
+  <p class="small dim lot-hint">Drag to turn it. <a href="${esc(there)}" target="_blank" rel="noopener">Open in Maps</a>${geo.credit() ? ` · <span class="lot-credit">${esc(geo.credit())}</span>` : ''}</p>
 </div>`;
 }
 
@@ -185,7 +202,7 @@ function meetPage(host, m, ctx) {
 </section>`;
   // When and where, right under the top.
   body += `<section id="spot"><h2>The spot</h2>${when(m, tz, { live: !over })}
-    ${m.parking && !over ? `<h3 style="margin:20px 0 10px" id="parking">Where to park</h3>${parkingMap(m)}` : ''}
+    ${m.lot && !over ? `<h3 style="margin:20px 0 10px" id="parking">Where to park</h3>${parkingMap(m)}` : ''}
     ${rules.length ? `<h3 style="margin:16px 0 8px">House rules</h3><ul class="rules">${rules.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>` : ''}</section>`;
   body += `<section id="food"><h2>Food</h2>`;
   // Everyone serving food, as little round logos (like profile pictures). Each truck in the meet uses the logo from
