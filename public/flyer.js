@@ -296,12 +296,14 @@
       '<p class="small dim" style="margin-top:8px">These change the flyer only. To change the meet itself, use Edit on the meet.</p></div>' +
       '<div class="card"><h3>3. Logos</h3><div id="fmLogos"><p class="dim">Loading your kit…</p></div></div>' +
       '<div class="card"><h3>Preview</h3><div class="bar" style="margin:0 0 10px"><button class="btn sm" data-size="post" aria-pressed="true">Post 4:5</button><button class="btn sm" data-size="story" aria-pressed="false">Story 9:16</button></div>' +
-      '<p class="small dim" style="margin:0 0 8px">Tap a vendor in step 3 to put it on the flyer (it’s listed on the meet’s page too), then drag it where you want it.</p>' +
+      '<p class="small dim" style="margin:0 0 8px">Tap a vendor in step 3 to put it on the flyer, then drag it where you want it.</p>' +
       '<canvas id="fmCanvas" style="width:100%;max-width:420px;border-radius:12px;border:1px solid var(--line);display:block;cursor:grab"></canvas>' +
       '<div id="fmEdit" hidden style="max-width:420px"><label for="fmSize">Size of <b id="fmSelName"></b></label><input type="range" id="fmSize" min="6" max="70" step="1" style="padding:0;min-height:32px">' +
       '<div class="bar" style="margin-top:6px"><button class="btn sm" data-remove>Take it off the flyer</button><button class="btn sm" data-done>Done</button></div></div>' +
-      '<div class="bar"><button class="btn go" id="fmSave">Use as this meet’s flyer</button><a class="btn" id="fmDown" download="flyer.png">Download</a></div><div class="msg" id="fmMsg" role="status"></div></div>';
+      '<div class="bar"><button class="btn go" id="fmSave">Use as this meet’s flyer</button><a class="btn" id="fmDown" download="flyer.png">Download</a></div><div class="msg" id="fmMsg" role="status"></div></div>' +
+      '<div id="fmStage"></div>';
     var canvas = el.querySelector('#fmCanvas'), kit = [], imgs = {};
+    stage(el.querySelector('#fmStage'), { api: api, meet: m, me: me, title: '4. Logos on the meet’s page' });
     var redraw = function () { render(canvas, s, { sel: sel }); syncEdit(); };
     // The saved or downloaded flyer: drawn once without the outline, then the preview comes back.
     var clean = function (use) { render(canvas, s); try { return use(); } finally { redraw(); } };
@@ -323,7 +325,7 @@
         var list = kit.filter(function (l) { return kind === 'vendor' ? (l.kind === 'vendor' || l.kind === 'sponsor') : l.kind === kind; });
         if (!list.length) return '<p class="small dim">No ' + label + ' in your kit yet (Flyer kit tab).</p>';
         if (kind === 'vendor') {
-          return '<p class="small" style="margin:10px 0 6px">' + label + ': tap to put one on the flyer and the meet’s page, tap again to take it off</p><div class="vpick">' + list.map(function (l) {
+          return '<p class="small" style="margin:10px 0 6px">' + label + ': tap to put one on the flyer, tap again to take it off</p><div class="vpick">' + list.map(function (l) {
             return '<button type="button" data-place="' + l.id + '" aria-pressed="false"><span class="art"><img src="' + esc(l.url) + '" alt=""></span><span>' + esc(l.name) + '</span></button>';
           }).join('') + '</div>';
         }
@@ -376,9 +378,7 @@
     // A vendor's logo onto the flyer (at a free spot) or off it again.
     function togglePlace(id) {
       if (s.placed.some(function (x) { return x.id === id; })) {
-        s.placed = s.placed.filter(function (x) { return x.id !== id; }); if (sel === id) sel = null; redraw();
-        api('DELETE', '/meets/' + m.id + '/kit-vendors/' + id); // off the meet's page too
-        return;
+        s.placed = s.placed.filter(function (x) { return x.id !== id; }); if (sel === id) sel = null; redraw(); return;
       }
       var l = kit.filter(function (k) { return String(k.id) === id; })[0];
       if (!l) return;
@@ -387,7 +387,6 @@
         var spot = freeSpot(s);
         s.placed.push({ id: id, name: l.name, im: im, fx: spot[0], fy: spot[1], fw: fitWidth(im, 0.26, s.size) });
         sel = id; redraw();
-        api('PUT', '/meets/' + m.id + '/kit-vendors/' + id); // and listed under Food on the meet's page
       };
       if (imgs[id]) put(imgs[id]); else loadImage(l.url).then(function (im) { imgs[id] = im; put(im); }, function () {});
     }
@@ -426,5 +425,102 @@
     canvas.addEventListener('pointercancel', stop);
   }
 
-  window.Flyer = { splitter: splitter, maker: maker, findLogos: findLogos, cut: cut, render: render, freeSpot: freeSpot };
+  /* ======================= the meet page's logos (around the host's logo, where the host drags them) ======================= */
+  // The same automatic spots the page uses (views.js stageSpots): beside the logo, then rows under it.
+  var STAGE_SPOTS = [[10, 10], [90, 10], [10, 30], [90, 30], [25, 52], [50, 52], [75, 52], [15, 70], [38, 70], [62, 70], [85, 70], [25, 87], [50, 87], [75, 87]];
+  function autoSpot(taken) {
+    var far = function (sp) { return taken.length ? Math.min.apply(null, taken.map(function (d) { return Math.hypot(sp[0] - d.x, (sp[1] - d.y) * 4 / 3); })) : Infinity; };
+    var hit = STAGE_SPOTS.filter(function (c) { return far(c) >= 20; })[0];
+    return hit || STAGE_SPOTS.reduce(function (a, c) { return far(c) > far(a) ? c : a; });
+  }
+  // o: { api, meet (with id, video), me (logo, video), title }. Saves each change right away.
+  function stage(el, o) {
+    var api = o.api, m = o.meet, me = o.me, kit = [], spots = [], sel = null, drag = null;
+    var bg = (m.video && m.video.status === 'ready' && m.video.poster) || (me.video && me.video.status === 'ready' && me.video.poster) || '';
+    el.innerHTML = '<div class="card"><h3>' + esc(o.title || 'Logos on the meet’s page') + '</h3><p class="small dim">Tap a vendor to put its logo on the top of the meet’s page, around your logo. ' +
+      'Drag it with your finger to the spot you want; it saves when you let go. Tap it again to take it off. Trucks that take pre-orders are added with Invite a truck.</p>' +
+      '<div id="stTiles"><p class="dim">Loading your kit…</p></div>' +
+      '<div class="stage stage-edit" id="stStage" style="' + (bg ? 'background-image:url(' + esc(bg) + ')' : '') + '">' + (me.logo ? '<img class="stage-logo" src="' + esc(me.logo) + '" alt="">' : '') + '</div>' +
+      '<div id="stEdit" hidden><label for="stSize">Size of <b id="stName"></b></label><input type="range" id="stSize" min="8" max="40" step="1" style="padding:0;min-height:32px">' +
+      '<div class="bar" style="margin-top:6px"><button class="btn sm" data-st-off>Take it off the page</button><button class="btn sm" data-st-done>Done</button></div></div>' +
+      '<div class="msg" id="stMsg" role="status"></div></div>';
+    var box = el.querySelector('#stStage'), msg = el.querySelector('#stMsg');
+    var say = function (t, ok) { msg.className = 'msg ' + (ok ? 'ok' : 'bad'); msg.textContent = t || ''; };
+    var url = function (id) { var l = kit.filter(function (k) { return k.id === id; })[0]; return l ? l.url : ''; };
+    var nameOf = function (id) { var l = kit.filter(function (k) { return k.id === id; })[0]; return l ? l.name : ''; };
+    function draw() {
+      Array.prototype.forEach.call(box.querySelectorAll('.stage-v'), function (n) { n.remove(); });
+      spots.forEach(function (p) {
+        var im = document.createElement('img');
+        im.className = 'stage-v' + (p.id === sel ? ' sel' : ''); im.src = url(p.id); im.alt = nameOf(p.id); im.setAttribute('data-st', p.id); im.draggable = false;
+        im.style.left = p.x + '%'; im.style.top = p.y + '%'; im.style.width = p.s + '%';
+        box.appendChild(im);
+      });
+      el.querySelectorAll('[data-st-tile]').forEach(function (b) { b.setAttribute('aria-pressed', String(spots.some(function (p) { return String(p.id) === b.getAttribute('data-st-tile'); }))); });
+      var p = spots.filter(function (x) { return x.id === sel; })[0];
+      el.querySelector('#stEdit').hidden = !p;
+      if (p) { el.querySelector('#stName').textContent = nameOf(p.id); el.querySelector('#stSize').value = String(p.s); }
+    }
+    function save(p) {
+      return api('PUT', '/meets/' + m.id + '/kit-vendors/' + p.id, { x: p.x, y: p.y, s: p.s }).then(function (r) { if (!r.ok) say(r.d.error || 'Didn’t save.'); else say('Saved. It’s on the page.', true); });
+    }
+    Promise.all([api('GET', '/kit'), api('GET', '/meets/' + m.id + '/kit-vendors')]).then(function (r) {
+      kit = ((r[0].ok && r[0].d.logos) || []).filter(function (l) { return l.kind === 'vendor' || l.kind === 'sponsor'; });
+      spots = ((r[1].ok && r[1].d.spots) || []).filter(function (p) { return url(p.id); });
+      el.querySelector('#stTiles').innerHTML = kit.length ? '<div class="vpick">' + kit.map(function (l) {
+        return '<button type="button" data-st-tile="' + l.id + '" aria-pressed="false"><span class="art"><img src="' + esc(l.url) + '" alt=""></span><span>' + esc(l.name) + '</span></button>';
+      }).join('') + '</div>' : '<p class="small dim">No vendor logos yet. Add them in the Flyer kit tab.</p>';
+      draw();
+    });
+    el.addEventListener('click', function (e) {
+      var t = e.target.closest('[data-st-tile]');
+      if (t) {
+        e.stopPropagation();
+        var id = parseInt(t.getAttribute('data-st-tile'), 10);
+        if (spots.some(function (p) { return p.id === id; })) { off(id); return; }
+        var sp = autoSpot(spots), p = { id: id, x: sp[0], y: sp[1], s: 18 };
+        spots.push(p); sel = id; draw(); save(p);
+        return;
+      }
+      if (e.target.closest('[data-st-off]')) { e.stopPropagation(); if (sel) off(sel); return; }
+      if (e.target.closest('[data-st-done]')) { e.stopPropagation(); sel = null; draw(); }
+    });
+    function off(id) {
+      spots = spots.filter(function (p) { return p.id !== id; }); if (sel === id) sel = null; draw();
+      api('DELETE', '/meets/' + m.id + '/kit-vendors/' + id).then(function (r) { say(r.ok ? 'Taken off the page.' : (r.d.error || 'Didn’t save.'), r.ok); });
+    }
+    el.addEventListener('input', function (e) {
+      if (e.target.id !== 'stSize') return;
+      var p = spots.filter(function (x) { return x.id === sel; })[0];
+      if (p) { p.s = parseInt(e.target.value, 10) || 18; draw(); }
+    });
+    el.addEventListener('change', function (e) {
+      if (e.target.id !== 'stSize') return;
+      var p = spots.filter(function (x) { return x.id === sel; })[0]; if (p) save(p);
+    });
+    // Dragging: only on a logo (the logos don't scroll the page; anywhere else does).
+    box.addEventListener('pointerdown', function (e) {
+      var n = e.target.closest('[data-st]');
+      if (!n) { if (sel) { sel = null; draw(); } return; }
+      e.preventDefault();
+      var id = parseInt(n.getAttribute('data-st'), 10), p = spots.filter(function (x) { return x.id === id; })[0], r = box.getBoundingClientRect();
+      spots = spots.filter(function (x) { return x !== p; }).concat([p]); // to the front
+      sel = id; drag = { p: p, dx: (e.clientX - r.left) / r.width * 100 - p.x, dy: (e.clientY - r.top) / r.height * 100 - p.y, moved: false };
+      try { box.setPointerCapture(e.pointerId); } catch (err) { /* older browsers */ }
+      draw();
+    });
+    box.addEventListener('pointermove', function (e) {
+      if (!drag) return;
+      var r = box.getBoundingClientRect();
+      drag.p.x = Math.round(Math.max(3, Math.min(97, (e.clientX - r.left) / r.width * 100 - drag.dx)) * 10) / 10;
+      drag.p.y = Math.round(Math.max(3, Math.min(97, (e.clientY - r.top) / r.height * 100 - drag.dy)) * 10) / 10;
+      drag.moved = true;
+      var n = box.querySelector('[data-st="' + drag.p.id + '"]'); if (n) { n.style.left = drag.p.x + '%'; n.style.top = drag.p.y + '%'; }
+    });
+    var stop = function () { if (drag && drag.moved) save(drag.p); drag = null; };
+    box.addEventListener('pointerup', stop);
+    box.addEventListener('pointercancel', stop);
+  }
+
+  window.Flyer = { splitter: splitter, maker: maker, findLogos: findLogos, cut: cut, render: render, freeSpot: freeSpot, stage: stage, autoSpot: autoSpot };
 })();

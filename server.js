@@ -136,7 +136,7 @@ async function latestRecap(host) {
 }
 async function renderMeet(req, res, host, m, isHome) {
   const [trucks, last, recap, upcoming, kitVendors] = await Promise.all([trucksFor(m), lastTurnout(host), latestRecap(host), upcomingOf(host),
-    all('SELECT k.name, k.file FROM meet_kit_vendors v JOIN kit_logos k ON k.id = v.kit_id WHERE v.meet_id = ? AND k.host_id = ? ORDER BY v.created_at, v.kit_id', [m.id, host.id])]);
+    all('SELECT k.id, k.name, k.file, v.x, v.y, v.s FROM meet_kit_vendors v JOIN kit_logos k ON k.id = v.kit_id WHERE v.meet_id = ? AND k.host_id = ? ORDER BY v.created_at, v.kit_id', [m.id, host.id])]);
   res.set('Cache-Control', 'no-cache').type('html').send(V.meetPage(host, m, { tz: tzOf(host), base: baseOf(req, host), trucks, kitVendors, last, recap, upcoming, isHome, badge: badgeOf(host, req), meetMode: MEET_MODE(), origin: `${SCHEME}://${req.get('host')}` }));
 }
 const notFound = (req, res, host) => res.status(404).type('html').send(V.message(host || null, { title: 'Nothing here', text: 'The link may be old, or the address may have a typo.', href: host ? baseOf(req, host) || '/' : '/', cta: host ? 'See the next meet' : 'Go to the main page' }));
@@ -161,7 +161,12 @@ async function foodPage(req, res, host, day, truckSlug) {
 }
 
 /* ---------- host portal and its API ---------- */
-app.get(['/host', '/host/'], (req, res) => res.set('Cache-Control', 'no-cache').sendFile(path.join(__dirname, 'public', 'portal.html')));
+// The portal's scripts and styles carry this start's version, so after an update a phone never keeps the old ones.
+let portalHtml = null;
+app.get(['/host', '/host/'], (req, res) => {
+  if (!portalHtml) portalHtml = fs.readFileSync(path.join(__dirname, 'public', 'portal.html'), 'utf8').replace(/\?v=\d+/g, '?v=' + V.ver());
+  res.set('Cache-Control', 'no-cache').type('html').send(portalHtml);
+});
 app.use('/api/host', require('./host')({ trucksFor, truckCache, UPLOAD_DIR, tzOf }));
 
 /* ---------- public API: food, orders, alerts, vendor requests ---------- */

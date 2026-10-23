@@ -488,15 +488,22 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
   r.get('/meets/:id/kit-vendors', signedIn, async (req, res) => {
     const m = await own(req, req.params.id);
     if (!m) return res.status(404).json({ error: 'That meet is gone.' });
-    const rows = await all('SELECT kit_id FROM meet_kit_vendors WHERE meet_id = ? ORDER BY created_at, kit_id', [m.id]);
-    res.set('Cache-Control', 'no-store').json({ ids: rows.map((x) => x.kit_id) });
+    const rows = await all('SELECT kit_id, x, y, s FROM meet_kit_vendors WHERE meet_id = ? ORDER BY created_at, kit_id', [m.id]);
+    const spots = require('./views').stageSpots(rows);
+    res.set('Cache-Control', 'no-store').json({ ids: rows.map((x) => x.kit_id), spots: rows.map((x, i) => ({ id: x.kit_id, x: spots[i].x, y: spots[i].y, s: spots[i].s })) });
   });
   r.put('/meets/:id/kit-vendors/:kit', signedIn, async (req, res) => {
     const m = await own(req, req.params.id);
     if (!m) return res.status(404).json({ error: 'That meet is gone.' });
     const k = await get('SELECT * FROM kit_logos WHERE id = ? AND host_id = ?', [parseInt(req.params.kit, 10) || 0, req.me.id]);
     if (!k) return res.status(404).json({ error: 'That logo is gone.' });
+    // A spot on the page, when one is sent (from dragging it there): numbers within the area, a sensible size.
+    const b = req.body || {};
+    const num = (v, lo, hi) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(lo, Math.min(hi, Math.round(v * 10) / 10)) : null);
+    const x = num(b.x, 0, 100), y = num(b.y, 0, 100), s = num(b.s, 8, 40);
     await run('INSERT OR IGNORE INTO meet_kit_vendors (meet_id, kit_id, created_at) VALUES (?, ?, ?)', [m.id, k.id, Date.now()]);
+    if (x !== null && y !== null) await run('UPDATE meet_kit_vendors SET x = ?, y = ?, s = COALESCE(?, s) WHERE meet_id = ? AND kit_id = ?', [x, y, s, m.id, k.id]);
+    else if (s !== null) await run('UPDATE meet_kit_vendors SET s = ? WHERE meet_id = ? AND kit_id = ?', [s, m.id, k.id]);
     res.json({ ok: true });
   });
   r.delete('/meets/:id/kit-vendors/:kit', signedIn, async (req, res) => {

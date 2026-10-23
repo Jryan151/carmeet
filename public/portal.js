@@ -200,30 +200,10 @@
     };
   }
 
-  /* ---------- vendors from the flyer kit, listed on the meet's page (tap to add, tap again to take off) ---------- */
+  /* ---------- vendor logos on the meet's page: placed by hand around the host's logo (flyer.js) ---------- */
   function drawKitVendors(m) {
-    var box = $('kitVendorsBox'); if (!box) return;
-    Promise.all([api('GET', '/kit'), api('GET', '/meets/' + m.id + '/kit-vendors')]).then(function (r) {
-      if (!$('kitVendorsBox') || !r[0].ok || !r[1].ok) return;
-      var vendors = (r[0].d.logos || []).filter(function (l) { return l.kind === 'vendor' || l.kind === 'sponsor'; }), on = r[1].d.ids || [];
-      box.innerHTML = '<div class="card"><h3>Vendors on the meet’s page</h3><p class="small dim">Tap a vendor to show it under Food on the meet’s page, with its logo. Tap again to take it off. ' +
-        'Trucks that take pre-orders are added with Invite a truck above.</p>' +
-        (vendors.length ? '<div class="vpick">' + vendors.map(function (l) {
-          return '<button type="button" data-kv="' + l.id + '" aria-pressed="' + (on.indexOf(l.id) >= 0) + '"><span class="art"><img src="' + esc(l.url) + '" alt=""></span><span>' + esc(l.name) + '</span></button>';
-        }).join('') + '</div>' : '<p class="small dim">No vendor logos yet. Add them in the Flyer kit tab.</p>') + '<div class="msg" id="kvMsg" role="status"></div></div>';
-      box.onclick = function (e) {
-        var b = e.target.closest('[data-kv]'); if (!b) return;
-        e.stopPropagation();
-        var was = b.getAttribute('aria-pressed') === 'true';
-        b.disabled = true;
-        api(was ? 'DELETE' : 'PUT', '/meets/' + m.id + '/kit-vendors/' + b.getAttribute('data-kv')).then(function (x) {
-          b.disabled = false;
-          if (!x.ok) return say($('kvMsg'), x.d.error);
-          b.setAttribute('aria-pressed', String(!was));
-          say($('kvMsg'), was ? 'Taken off the page.' : 'On the page now.', true);
-        });
-      };
-    });
+    var box = $('kitVendorsBox'); if (!box || !window.Flyer) return;
+    Flyer.stage(box, { api: api, meet: m, me: me });
   }
 
   /* ---------- trucks for one meet ---------- */

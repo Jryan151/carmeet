@@ -91,6 +91,9 @@ async function ensureSchema() {
   await exec(`CREATE TABLE IF NOT EXISTS meet_kit_vendors (
     meet_id INTEGER NOT NULL, kit_id INTEGER NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (meet_id, kit_id)
   )`);
+  // Where each one sits on the top of the meet's page, around the host's logo: center (x, y) and size (s), as a
+  // percent of that area's width and height. Empty = an automatic spot.
+  for (const c of ['x', 'y', 's']) await addColumn('meet_kit_vendors', c, 'REAL');
   for (const t of ['hosts', 'meets', 'site']) {
     await addColumn(t, 'video', 'TEXT');
     await addColumn(t, 'video_poster', 'TEXT');

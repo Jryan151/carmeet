@@ -90,6 +90,29 @@ function alertsBtn(host, main) {
     ? `<a class="${cls}" href="https://instagram.com/${esc(host.instagram)}" rel="noopener">Follow on Instagram</a>`
     : `<a class="${cls}" href="#alerts">Get alerts</a>`;
 }
+/**
+ * The top of the meet's page: the host's logo with vendor logos around it, each where the host dragged it (like
+ * their flyers), over the live footage. Spots are a percent of this area (3 wide by 4 tall), so the page and the
+ * portal's editor match on every phone. Vendors without a spot get one automatically, around and under the logo.
+ */
+const STAGE_SPOTS = [[10, 10], [90, 10], [10, 30], [90, 30], [25, 52], [50, 52], [75, 52], [15, 70], [38, 70], [62, 70], [85, 70], [25, 87], [50, 87], [75, 87]];
+function stageSpots(rows) {
+  const done = rows.map((r) => (r.x != null && r.y != null ? { x: r.x, y: r.y, s: r.s || 18 } : null));
+  const far = (sp) => Math.min(Infinity, ...done.filter(Boolean).map((d) => Math.hypot(sp[0] - d.x, (sp[1] - d.y) * 4 / 3)));
+  done.forEach((d, i) => {
+    if (d) return;
+    const sp = STAGE_SPOTS.find((c) => far(c) >= 20) || STAGE_SPOTS.reduce((a, c) => (far(c) > far(a) ? c : a));
+    done[i] = { x: sp[0], y: sp[1], s: rows[i].s || 18 };
+  });
+  return done;
+}
+function stage(host, vendors) {
+  const spots = stageSpots(vendors);
+  return `<div class="stage">
+  ${host.logo ? `<img class="stage-logo" src="${esc(host.logo)}" alt="${esc(host.name)}">` : ''}
+  ${vendors.map((v, i) => `<img class="stage-v" src="/uploads/${esc(v.file)}" alt="${esc(v.name)}" title="${esc(v.name)}" style="left:${spots[i].x}%;top:${spots[i].y}%;width:${spots[i].s}%">`).join('\n  ')}
+</div>`;
+}
 /** The host's logo as a round profile picture: the top of their main page, no words. */
 function avatar(host) {
   return host.logo ? `<div class="avatar"><img src="${esc(host.logo)}" alt="${esc(host.name)}"></div>` : '';
@@ -138,10 +161,8 @@ function meetPage(host, m, ctx) {
   let body = (round ? '' : top(host, base)) + `<main class="wrap">
 <section class="hero${vid ? ' has-video' : ''}${m.flyer ? ' with-flyer' : ''}${round ? ' has-avatar' : ''}">
   ${heroBg(vid)}
-  ${round ? avatar(host) : ''}
+  ${m.flyer ? `${round ? avatar(host) : ''}<figure class="flyer"><img src="/uploads/${esc(m.flyer)}" alt="${esc(host.name)} flyer for ${esc(U.dayLong(t.startsAt, tz))}"></figure>` : stage(host, ctx.kitVendors || [])}
   ${ctx.isHome ? '' : `<p class="small dim" style="text-align:center"><a href="${esc(base || '/')}">Next meet</a></p>`}
-  ${m.flyer ? `<figure class="flyer"><img src="/uploads/${esc(m.flyer)}" alt="${esc(host.name)} flyer for ${esc(U.dayLong(t.startsAt, tz))}"></figure>` : ''}
-  ${m.flyer ? '' : '<div class="showcase" aria-hidden="true"></div>'}
   ${over ? '<p class="dim" style="text-align:center">This meet is over.</p>' : m.status === 'canceled' ? '<p class="soon-line">This meet is canceled.</p>' : ''}
   ${!over && m.status === 'on' ? `<div class="actions">
     ${anyPreorder ? `<a class="btn go" href="#food">Pre-order food</a>` : ''}
@@ -166,9 +187,8 @@ function meetPage(host, m, ctx) {
       ${href ? `<span class="btn${can ? ' go' : ''}">${can ? 'Pre-order' : 'Menu'}</span>` : ''}`;
     body += href ? `<a class="truck" href="${esc(href)}">${inner}</a>` : `<div class="truck">${inner}</div>`;
   }
-  for (const k of kit) {
-    body += `<div class="truck"><img class="tlogo" src="/uploads/${esc(k.file)}" alt="" loading="lazy"><div class="tinfo"><div class="name">${esc(k.name)}</div><div class="note">${over ? 'Was at this meet' : 'At the meet · order at the truck'}</div></div></div>`;
-  }
+  // The rest, as little round logos (like profile pictures).
+  if (kit.length) body += `<div class="minis">${kit.map((k) => `<img src="/uploads/${esc(k.file)}" alt="${esc(k.name)}" title="${esc(k.name)}" loading="lazy">`).join('')}</div>`;
   body += `</section>`;
   if (ctx.last && ctx.last.people) {
     body += `<section><p class="turnout">Last meet: about ${ctx.last.people} people${ctx.last.cars ? `, ${ctx.last.cars} cars` : ''}</p>
@@ -276,4 +296,4 @@ ${list.length ? `<div class="list-meets">${list.map((r) => {
   return layout({ title: `${SITE()}: car meets`, description: 'Car meets: where, when, and food you can pre-order.', body });
 }
 
-module.exports = { layout, meetPage, hostEmpty, foodPage, orderPage, message, home, privacy };
+module.exports = { ver, stageSpots, layout, meetPage, hostEmpty, foodPage, orderPage, message, home, privacy };

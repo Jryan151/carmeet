@@ -56,7 +56,7 @@ test('the logo keeps the whole crest, not a strip from the middle', { skip: !ffm
 test('the site opens on the host: round logo, no header, every truck linked to its menu', async () => {
   const r = await request(ctx, 'GET', SITE, '/');
   assert.equal(r.status, 200);
-  assert.match(r.text, /class="avatar"><img src="\/uploads\//);
+  assert.match(r.text, /class="stage-logo" src="\/uploads\//);
   assert.ok(!/<header class="wrap top">/.test(r.text), 'no name above the logo');
   assert.ok(!/Run a meet|Page by/.test(r.text));
   assert.ok(r.text.includes(`href="/meet/${ref}/birria-bros/"`), 'card truck → its menu in meet mode');
@@ -113,7 +113,7 @@ test('the page: logo and buttons on top, when and where under The spot, kit vend
   let r = await request(ctx, 'GET', SITE, '/');
   const hero = r.text.slice(r.text.indexOf('<section class="hero'), r.text.indexOf('<section id="spot"'));
   assert.ok(!/class="date"|data-countdown|Directions/.test(hero), 'no date block in the middle');
-  assert.match(hero, /class="showcase"/, 'open space for the footage');
+  assert.match(hero, /<div class="stage">/, 'the logo area, open for the footage');
   assert.ok(r.text.indexOf('<section id="spot"') < r.text.indexOf('<section id="food"'), 'the spot right under the top');
   assert.match(hero, /href="#alerts">Get alerts</);
   const spot = r.text.slice(r.text.indexOf('<section id="spot"'), r.text.indexOf('<section id="food"'));
@@ -128,7 +128,14 @@ test('the page: logo and buttons on top, when and where under The spot, kit vend
   assert.equal(r.status, 200, r.text);
   assert.deepEqual((await request(ctx, 'GET', SITE, `/api/host/meets/${mid}/kit-vendors`, { cookie: C })).json.ids, [kid]);
   r = await request(ctx, 'GET', SITE, '/');
-  assert.match(r.text, /Boba Spot<\/div><div class="note">At the meet · order at the truck/);
+  assert.match(r.text, /<div class="minis"><img src="\/uploads\/[^"]+" alt="Boba Spot"/, 'a little round logo under Food');
+  assert.match(r.text, /class="stage-v" src="\/uploads\/[^"]+" alt="Boba Spot" title="Boba Spot" style="left:10%;top:10%;width:18%"/, 'an automatic spot beside the logo');
+  // Dragged to a spot of its own (kept within the area, a sensible size).
+  r = await request(ctx, 'PUT', SITE, `/api/host/meets/${mid}/kit-vendors/${kid}`, { cookie: C, body: { x: 61.25, y: 140, s: 2 } });
+  assert.equal(r.status, 200, r.text);
+  assert.deepEqual((await request(ctx, 'GET', SITE, `/api/host/meets/${mid}/kit-vendors`, { cookie: C })).json.spots, [{ id: kid, x: 61.3, y: 100, s: 8 }]);
+  r = await request(ctx, 'GET', SITE, '/');
+  assert.match(r.text, /alt="Boba Spot" title="Boba Spot" style="left:61.3%;top:100%;width:8%"/);
   r = await request(ctx, 'DELETE', SITE, `/api/host/meets/${mid}/kit-vendors/${kid}`, { cookie: C });
   assert.ok(!(await request(ctx, 'GET', SITE, '/')).text.includes('Boba Spot'), 'taken off again');
   // With an Instagram handle, the top button follows the host there.

@@ -43,6 +43,9 @@
   .vpick .art { width: 100%; aspect-ratio: 1; display: grid; place-items: center; border-radius: 8px; padding: 6px;
     background: repeating-conic-gradient(#1b1726 0 25%, #231d31 0 50%) 0 0 / 16px 16px; }
   .vpick img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  .stage-edit { background: #07060b center / cover no-repeat; border-radius: 12px; border: 1px solid var(--line); overflow: hidden; margin-top: 14px; user-select: none; -webkit-user-select: none; }
+  .stage-edit .stage-v { touch-action: none; cursor: grab; }
+  .stage-edit .stage-v.sel { outline: 2px dashed #fff; outline-offset: 4px; }
   .vpick button[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
   .kit figcaption { font-size: 14px; overflow-wrap: anywhere; }
   .kit .bar { margin-top: 0; }
