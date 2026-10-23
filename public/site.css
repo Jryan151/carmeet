@@ -100,7 +100,10 @@ p { margin: 0 0 12px; }
   border: 1px solid var(--line); color: inherit; text-decoration: none; }
 .mini img { width: 100%; height: 100%; border-radius: 50%; object-fit: contain; padding: 5px; }
 .mini .emoji { font-size: 28px; }
-a.mini { border-color: color-mix(in srgb, var(--accent) 70%, transparent); box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 35%, transparent); }
+/* Open now: the truck tapped "We're open" on its night screen. */
+.mini .live { position: absolute; top: 1px; right: 1px; width: 14px; height: 14px; border-radius: 50%; background: #4ade80; border: 2px solid var(--void);
+  box-shadow: 0 0 10px #4ade80; }
+a.mini.menu { border-color: color-mix(in srgb, var(--accent) 70%, transparent); box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 35%, transparent); }
 .mini .tag { position: absolute; bottom: -8px; left: 50%; transform: translateX(-50%); padding: 1px 7px; border-radius: 999px;
   background: var(--accent); color: var(--on-accent); font: 700 10px/1.5 var(--body); letter-spacing: .04em; text-transform: uppercase; }
 .has-avatar .actions { margin-top: 0; }

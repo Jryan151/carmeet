@@ -61,7 +61,7 @@ test('the site opens on the host: round logo, no header, every truck linked to i
   assert.ok(!/Run a meet|Page by/.test(r.text));
   assert.ok(r.text.includes(`href="/meet/${ref}/birria-bros/"`), 'card truck → its menu in meet mode');
   assert.ok(r.text.includes(`href="/meet/${ref}/lemon-stand/"`), 'every truck gets a menu link');
-  assert.match(r.text, new RegExp(`<a class="mini" href="/meet/${ref}/night-birria/" aria-label="Night Birria: pre-order"`), 'a night-kit truck: its round logo opens its temporary menu');
+  assert.match(r.text, new RegExp(`<a class="mini menu" href="/meet/${ref}/night-birria/" aria-label="Night Birria: pre-order"`), 'a night-kit truck: its round logo opens its temporary menu');
   assert.ok(!/online ?kitchen|127\.0\.0\.1/i.test(r.text));
 });
 
@@ -133,7 +133,7 @@ test('the page: logo and buttons on top, when and where under The spot, kit vend
   r = await request(ctx, 'PUT', SITE, `/api/host/meets/${mid}/kit-vendors/${kid}`, { cookie: C, body: { truck: 'night-birria' } });
   assert.equal(r.status, 200, r.text);
   r = await request(ctx, 'GET', SITE, '/');
-  assert.match(r.text, new RegExp(`<a class="mini" href="/meet/${ref}/night-birria/" aria-label="Night Birria: pre-order" title="Night Birria"><img src="/uploads/`));
+  assert.match(r.text, new RegExp(`<a class="mini menu" href="/meet/${ref}/night-birria/" aria-label="Night Birria: pre-order" title="Night Birria"><img src="/uploads/`));
   assert.equal((r.text.match(/night-birria\//g) || []).length, 1, 'once');
   await request(ctx, 'PUT', SITE, `/api/host/meets/${mid}/kit-vendors/${kid}`, { cookie: C, body: { truck: null } });
   assert.ok(!/<section id="clubs"/.test(r.text), 'no Clubs section without clubs');
@@ -172,8 +172,56 @@ test('demo mode: the host sees their page filled in; nobody else does', async ()
   r = await request(ctx, 'GET', SITE, '/tasty-tuesday?demo=1', { cookie: C });
   assert.equal(r.status, 200);
   assert.match(r.text, /class="demo-bar"/);
-  assert.match(r.text, /aria-label="Birria Bros: pre-order"/, 'sample trucks');
+  assert.match(r.text, /aria-label="Birria Bros, open now: pre-order"/, 'sample trucks');
   assert.match(r.text, /aria-label="Viral Society"/, 'every club in the kit');
   assert.equal(r.headers['cache-control'], 'no-store');
   assert.ok(!/\/meet\/demo\//.test(r.text), 'sample trucks link nowhere real');
+});
+
+test('Food vendors and Clubs in Settings; a vendor gets its own link (a profile on the food side, no email or phone)', async () => {
+  let r = await request(ctx, 'POST', SITE, '/api/host/kit/entry', { cookie: C, body: { kind: 'vendor', name: 'Taco Fresh', instagram: '@tacofresh' } });
+  assert.equal(r.status, 201, r.text);
+  const v = r.json.logo;
+  assert.deepEqual([v.kind, v.name, v.instagram, v.url, v.truckSlug], ['vendor', 'Taco Fresh', 'tacofresh', '', null]);
+  r = await request(ctx, 'POST', SITE, '/api/host/kit/entry', { cookie: C, body: { kind: 'group', name: 'Slow Traffic', instagram: 'slowtrafficaz' } });
+  const club = r.json.logo;
+  // The host snaps the truck's menu board; the food side reads it and keeps it on the truck's profile.
+  r = await request(ctx, 'POST', SITE, `/api/host/kit/${v.id}/menu-read`, { cookie: C, raw: { buf: tallLogo(), type: 'image/png' } });
+  assert.equal(r.status, 200, r.text);
+  assert.deepEqual(r.json.items.map((x) => x.name), ['Al pastor']);
+  assert.equal(k().menuRead.files[0].type, 'image/png');
+  r = await request(ctx, 'PUT', SITE, `/api/host/kit/${v.id}/menu`, { cookie: C, body: { items: [{ name: 'Al pastor', price: 3.5 }] } });
+  assert.equal(r.status, 200, r.text);
+  const slug = k().profiles.find((x) => x.name === 'Taco Fresh').slug;
+  assert.equal(k().profiles.find((x) => x.slug === slug).instagram, 'tacofresh');
+  // Its link for the meet: the message to text them.
+  const meets = await request(ctx, 'GET', SITE, '/api/host/meets', { cookie: C });
+  const mid = meets.json.meets[0].id;
+  r = await request(ctx, 'GET', SITE, `/api/host/meets/${mid}/trucks`, { cookie: C });
+  assert.ok(r.json.vendors.some((x) => x.id === v.id), 'listed to send a link');
+  r = await request(ctx, 'POST', SITE, `/api/host/meets/${mid}/send-link`, { cookie: C, body: { kitId: v.id } });
+  assert.equal(r.status, 201, r.text);
+  assert.match(r.json.text, /no account needed/);
+  assert.match(r.json.url, /meet-invite\?c=/);
+  // In the meet and open now: its logo opens its menu, with the open light. A club opens its Instagram.
+  const tv = k().meets[ref].vendors.find((x) => x.slug === slug);
+  Object.assign(tv, { status: 'in', payAtTruck: true, openNow: true, setUp: true, brand: { logo: '/uploads/7-0123456789abcdef.png' } });
+  await request(ctx, 'PUT', SITE, `/api/host/meets/${mid}/kit-vendors/${club.id}`, { cookie: C });
+  r = await request(ctx, 'GET', SITE, `/api/host/meets/${mid}/trucks`, { cookie: C });
+  assert.ok(!r.json.vendors.some((x) => x.id === v.id), 'in the meet: not offered again');
+  r = await request(ctx, 'POST', SITE, `/api/host/meets/${mid}/send-link`, { cookie: C, body: { slug } });
+  assert.equal(r.json.signIn, true, 'already in: a one-time sign-in link');
+  r = await request(ctx, 'GET', SITE, '/');
+  assert.match(r.text, new RegExp(`<a class="mini menu" href="/meet/${ref}/${slug}/" aria-label="Taco Fresh, open now: pre-order"[^>]*><img src="/food-photo/${slug}/uploads/7-0123456789abcdef.png"[^>]*><span class="live"`), 'its own logo, through this site');
+  assert.match(r.text, /href="https:\/\/instagram\.com\/slowtrafficaz" rel="noopener" target="_blank" aria-label="Slow Traffic: Instagram"/);
+  // Removing it from the list takes it off the pages.
+  await request(ctx, 'DELETE', SITE, `/api/host/kit/${club.id}`, { cookie: C });
+});
+
+test('a truck that typed its own name on a plain invite joins the host’s Food vendors', async () => {
+  k().meets[ref].vendors.push({ inviteId: 99, status: 'in', slug: 'elote-express', name: 'Elote Express', hostProfile: true, setUp: true, payAtTruck: true });
+  const mid = (await request(ctx, 'GET', SITE, '/api/host/meets', { cookie: C })).json.meets[0].id;
+  await request(ctx, 'GET', SITE, `/api/host/meets/${mid}/trucks`, { cookie: C }); // asks the food side
+  const list = (await request(ctx, 'GET', SITE, '/api/host/kit', { cookie: C })).json.logos;
+  assert.ok(list.some((x) => x.name === 'Elote Express' && x.truckSlug === 'elote-express' && x.kind === 'vendor'));
 });

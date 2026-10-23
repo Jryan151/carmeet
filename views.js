@@ -95,9 +95,11 @@ function alertsBtn(host, main) {
 function minis(list) {
   return `<div class="minis">${list.map((k) => {
     const face = k.img ? `<img src="${esc(k.img)}" alt="" loading="lazy">` : `<span class="emoji" aria-hidden="true">${esc(k.emoji || '🍽')}</span>`;
+    const open = k.open ? '<span class="live" aria-hidden="true"></span>' : '';
+    const label = `${k.name}${k.open ? ', open now' : ''}${k.tag ? ': ' + (k.can ? 'pre-order' : 'menu') : k.external ? ': Instagram' : ''}`;
     return k.href
-      ? `<a class="mini" href="${esc(k.href)}" aria-label="${esc(k.name)}: ${k.can ? 'pre-order' : 'menu'}" title="${esc(k.name)}">${face}<span class="tag">${k.can ? 'Order' : 'Menu'}</span></a>`
-      : `<span class="mini" role="img" aria-label="${esc(k.name)}" title="${esc(k.name)}">${face}</span>`;
+      ? `<a class="mini${k.tag ? ' menu' : ''}" href="${esc(k.href)}"${k.external || !k.tag ? ' rel="noopener" target="_blank"' : ''} aria-label="${esc(label)}" title="${esc(k.name)}">${face}${open}${k.tag ? `<span class="tag">${k.tag}</span>` : ''}</a>`
+      : `<span class="mini" role="img" aria-label="${esc(label)}" title="${esc(k.name)}">${face}${open}</span>`;
   }).join('')}</div>`;
 }
 /** The host's logo as a round profile picture: the top of their main page, no words. */
@@ -164,25 +166,35 @@ function meetPage(host, m, ctx) {
   body += `<section id="spot"><h2>The spot</h2>${when(m, tz, { live: !over })}
     ${rules.length ? `<h3 style="margin:16px 0 8px">House rules</h3><ul class="rules">${rules.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>` : ''}</section>`;
   body += `<section id="food"><h2>Food</h2>`;
-  // Everyone serving food, as little round logos (like profile pictures). A logo from the flyer kit goes with the
-  // truck it's linked to (or one with the same name); a truck with a menu (its own pre-orders, or a night kit's
-  // temporary menu) opens it when tapped. Trucks without a kit logo show their own logo or emoji.
+  // Everyone serving food, as little round logos (like profile pictures). Each truck in the meet uses the logo from
+  // the host's Food vendors (tied to its profile, or the same name), else its own logo or emoji, and opens its menu
+  // (its pre-orders, or a night kit's menu for the night). Food vendors the host picked who aren't on the food side
+  // open their Instagram. "Open" shows when the truck tapped We're open.
   const norm = (x) => String(x || '').trim().toLowerCase();
-  const clubs = (ctx.kitVendors || []).filter((k) => k.kind === 'group');
+  const all = ctx.kitAll || [];
+  const ig = (h) => (h ? `https://instagram.com/${encodeURIComponent(h)}` : null);
   const live = !over && m.status === 'on';
   const hrefOf = (v) => (live ? menuLink(v, m, mpath, ctx, anyPreorder && takes(v)) : null);
+  const picked = (ctx.kitVendors || []).filter((k) => k.kind !== 'group');
+  const kitOf = (v) => all.find((k) => k.kind !== 'group' && k.truck_slug === v.slug) || picked.find((k) => k.meet_truck === v.slug) ||
+    all.find((k) => k.kind !== 'group' && !k.truck_slug && norm(k.name) === norm(v.name));
   const used = new Set();
-  const items = (ctx.kitVendors || []).filter((k) => k.kind !== 'group').map((k) => {
-    const v = trucks.find((x) => x.slug && (x.slug === k.truck_slug || (!k.truck_slug && norm(x.name) === norm(k.name))));
-    if (v) used.add(v.slug);
-    return { img: '/uploads/' + k.file, name: v ? v.name : k.name, href: v ? hrefOf(v) : null, can: !!(v && live && anyPreorder && takes(v)) };
+  const items = trucks.map((v) => {
+    const k = kitOf(v); if (k) used.add(k.id);
+    const href = hrefOf(v);
+    return { img: k && k.file ? '/uploads/' + k.file : v.logo || null, emoji: v.emoji, name: v.name, href: href || ig(k && k.instagram) || ig(v.instagram),
+      tag: href ? (live && anyPreorder && takes(v) ? 'Order' : 'Menu') : null, can: !!(href && live && anyPreorder && takes(v)), open: !!(live && v.openNow) };
   });
-  for (const v of trucks) if (!used.has(v.slug)) items.push({ img: v.logo || null, emoji: v.emoji, name: v.name, href: hrefOf(v), can: live && anyPreorder && takes(v) });
+  for (const k of picked) {
+    if (used.has(k.id)) continue;
+    items.push({ img: k.file ? '/uploads/' + k.file : null, name: k.name, href: ig(k.instagram), tag: null, external: !!k.instagram });
+  }
+  const clubs = (ctx.kitVendors || []).filter((k) => k.kind === 'group');
   if (!items.length) body += `<p class="dim">${over ? 'No food trucks were listed for this meet.' : 'Food trucks will show here once they’re confirmed.'}</p>`;
   else body += minis(items);
   body += `</section>`;
-  // The car clubs coming out, the same little round logos.
-  if (clubs.length) body += `<section id="clubs"><h2>Clubs</h2>${minis(clubs.map((k) => ({ img: '/uploads/' + k.file, name: k.name })))}</section>`;
+  // The car clubs coming out, the same little round logos; each opens the club's Instagram.
+  if (clubs.length) body += `<section id="clubs"><h2>Clubs</h2>${minis(clubs.map((k) => ({ img: k.file ? '/uploads/' + k.file : null, emoji: '🚗', name: k.name, href: ig(k.instagram), external: !!k.instagram })))}</section>`;
   if (ctx.last && ctx.last.people) {
     body += `<section><p class="turnout">Last meet: about ${ctx.last.people} people${ctx.last.cars ? `, ${ctx.last.cars} cars` : ''}</p>
     <p class="small dim">${esc(U.dayShort(ctx.last.at, tz))}${ctx.last.place ? ` at ${esc(ctx.last.place)}` : ''}</p></section>`;

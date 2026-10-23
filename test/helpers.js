@@ -33,6 +33,17 @@ function fakeKitchen() {
         if (p[2] === 'cancel' && o.status === 'Pending') { o.status = 'Canceled'; o.payment = 'expired'; }
         return send(res, 200, o);
       }
+      // Truck profiles the host keeps (no email or phone): name, Instagram, menu.
+      state.profiles = state.profiles || [];
+      if (String(p[0] || '').split('?')[0] === 'profiles') {
+        if (req.method === 'GET' && p.length === 1) return send(res, 200, { profiles: state.profiles.filter((x) => x.hostKey === new URL('http://x' + req.url).searchParams.get('hostKey')) });
+        if (req.method === 'POST' && p.length === 1) { const pr = { hostKey: body.hostKey, slug: String(body.name).toLowerCase().replace(/[^a-z0-9]+/g, '-'), name: body.name, items: 0, instagram: '' }; state.profiles.push(pr); return send(res, 201, { profile: pr }); }
+        const pr = state.profiles.find((x) => x.slug === p[1] && x.hostKey === body.hostKey);
+        if (!pr) return send(res, 404, { error: 'No such truck.' });
+        if (req.method === 'PUT' && p.length === 2) { Object.assign(pr, body.name ? { name: body.name } : {}, body.instagram !== undefined ? { instagram: body.instagram } : {}); return send(res, 200, { profile: pr }); }
+        if (p[2] === 'menu-read') { state.menuRead = body; return send(res, 200, { items: [{ name: 'Al pastor', price: 3.5 }] }); }
+        if (p[2] === 'menu') { pr.items = (body.items || []).length; return send(res, 200, { added: pr.items }); }
+      }
       const ref = p[0];
       const m = state.meets[ref];
       if (req.method === 'PUT' && p.length === 1) { if (!/^[A-Za-z0-9_-]{4,40}$/.test(String(body.hostKey || ''))) return send(res, 400, { error: 'hostKey is missing.' }); if (!/^[A-Za-z0-9_-]{6,40}$/.test(ref)) return send(res, 400, { error: 'Bad meet ref.' }); state.meets[ref] = Object.assign({ vendors: [] }, m || {}, { body }); return send(res, 200, { meet: body }); }
@@ -40,8 +51,11 @@ function fakeKitchen() {
       if (req.method === 'GET' && p.length === 1) return send(res, 200, { meet: m.body, vendors: m.vendors });
       if (req.method === 'POST' && p[1] === 'invites') {
         const id = state.nextInvite++; const code = 'ABCD-' + String(1000 + id);
-        m.vendors.push({ inviteId: id, status: 'invited', code });
-        return send(res, 201, { inviteId: id, code, url: 'https://kitchen.test/meet-invite?c=' + code });
+        const have = body.slug && m.vendors.find((x) => x.slug === body.slug && ['in', 'invited'].includes(x.status));
+        if (have) return send(res, 200, { inviteId: have.inviteId, code, url: 'https://kitchen.test/meet-invite?c=' + code, status: have.status, signIn: have.status === 'in' });
+        const pr = body.slug && state.profiles.find((x) => x.slug === body.slug);
+        m.vendors.push(Object.assign({ inviteId: id, status: 'invited', code }, pr ? { slug: pr.slug, name: pr.name, hostProfile: true, setUp: false } : {}));
+        return send(res, 201, { inviteId: id, code, url: 'https://kitchen.test/meet-invite?c=' + code, status: 'invited' });
       }
       if (req.method === 'POST' && p[1] === 'vendors' && p.length === 2) { m.vendors.push({ inviteId: state.nextInvite++, status: 'invited', slug: body.slug, name: body.slug }); return send(res, 201, { ok: true }); }
       if (req.method === 'DELETE' && p[1] === 'invites') { const v = m.vendors.find((x) => String(x.inviteId) === p[2]); if (v) v.status = 'removed'; return send(res, 200, { ok: true }); }

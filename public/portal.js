@@ -259,22 +259,27 @@
   }
 
   /* ---------- trucks for one meet ---------- */
-  function trucksHtml(m, trucks, known) {
+  function trucksHtml(m, trucks, known, vendors) {
     var html = '<div class="card"><h3>Food trucks</h3>';
     if (!me.foodOn) html += '<p class="small dim">Food pre-orders aren’t connected on this site yet.</p>';
     html += trucks.length ? trucks.map(function (v) {
       var name = v.name ? (v.emoji ? v.emoji + ' ' : '') + v.name : 'Invite ' + (v.code || '');
-      var st = v.status === 'in' ? '<span class="tag in">Confirmed · ' + v.preorders + ' pre-order' + (v.preorders === 1 ? '' : 's') + (v.plates !== null ? ' · ' + v.plates + ' plates sold' : '') + (v.cardReady ? '' : v.payAtTruck ? ' · paid at the truck' : ' · order at the truck') + (v.paused ? ' · paused' : '') + '</span>'
-        : v.status === 'invited' ? '<span class="tag">Invited, waiting</span>' : '<span class="tag">' + esc(v.status === 'declined' ? 'Declined' : v.status === 'left' ? 'Not coming' : v.status) + '</span>';
-      return '<div class="rowx"><div><div>' + esc(name) + '</div>' + st + '</div>' +
-        (['in', 'invited'].indexOf(v.status) >= 0 && !m.over ? '<button class="btn sm" data-drop-truck="' + v.inviteId + '">Remove</button>' : '') + '</div>';
+      var st = v.status === 'in' ? '<span class="tag in">' + (v.hostProfile && !v.setUp ? 'In · setting up' : 'Confirmed') + ' · ' + v.preorders + ' pre-order' + (v.preorders === 1 ? '' : 's') + (v.plates !== null ? ' · ' + v.plates + ' plates sold' : '') + (v.cardReady ? '' : v.payAtTruck ? ' · paid at the truck' : ' · order at the truck') + (v.paused ? ' · paused' : '') + (v.openNow ? ' · open now' : '') + '</span>'
+        : v.status === 'invited' ? '<span class="tag">Link sent, waiting</span>' : '<span class="tag">' + esc(v.status === 'declined' ? 'Declined' : v.status === 'left' ? 'Not coming' : v.status) + '</span>';
+      var again = v.hostProfile && ['in', 'invited'].indexOf(v.status) >= 0 && !m.over ? '<button class="btn sm" data-send-slug="' + esc(v.slug) + '">' + (v.status === 'in' ? 'New link' : 'Link again') + '</button>' : '';
+      return '<div class="rowx"><div><div>' + esc(name) + '</div>' + st + '</div><div class="bar" style="margin:0;flex:none">' + again +
+        (['in', 'invited'].indexOf(v.status) >= 0 && !m.over ? '<button class="btn sm" data-drop-truck="' + v.inviteId + '">Remove</button>' : '') + '</div></div>';
     }).join('') : '<p class="small dim">No trucks yet.</p>';
     if (!m.over && m.status === 'on' && me.foodOn) {
       if (invite && invite.meet === m.id) {
-        html += '<div style="margin-top:12px"><p class="small dim">Text this to the truck’s owner. The link works once, for one truck.</p><div class="copybox" id="inviteText">' + esc(invite.text) + '</div>' +
-          '<div class="bar"><button class="btn go sm" data-copy-invite>Copy message</button><a class="btn sm" href="sms:?&body=' + encodeURIComponent(invite.text) + '">Text it</a><button class="btn sm" data-new-invite="' + m.id + '">Another link</button></div></div>';
-      } else html += '<div class="bar"><button class="btn go sm" data-new-invite="' + m.id + '">Invite a truck</button></div>';
-      if (known && known.length) html += '<p class="small dim" style="margin:14px 0 6px">Trucks you’ve had before (one tap, they accept in their app):</p><div class="bar">' +
+        html += '<div style="margin-top:12px"><p class="small dim">' + (invite.signIn ? 'Text this to ' + esc(invite.name) + '. It signs one phone in, once.' : 'Text this to ' + esc(invite.name || 'the truck') + '. No email, phone number or account: the link opens straight to their truck.') + '</p><div class="copybox" id="inviteText">' + esc(invite.text) + '</div>' +
+          '<div class="bar"><button class="btn go sm" data-copy-invite>Copy message</button><a class="btn sm" href="sms:?&body=' + encodeURIComponent(invite.text) + '">Text it</a><button class="btn sm" data-close-invite>Done</button></div></div>';
+      }
+      if (vendors && vendors.length) html += '<p class="small dim" style="margin:14px 0 6px">Send a truck its link (from your Food vendors):</p><div class="vpick">' +
+        vendors.map(function (k) { return '<button type="button" data-send-kit="' + k.id + '"><span class="art">' + (k.url ? '<img src="' + esc(k.url) + '" alt="">' : '🍽') + '</span><span>' + esc(k.name) + '</span></button>'; }).join('') + '</div>';
+      html += '<div class="bar"><button class="btn sm" data-new-invite="' + m.id + '">Invite a truck not in your list</button></div>' +
+        '<p class="small dim" style="margin:6px 0 0">They type their truck’s name, and it’s added to your Food vendors.</p>';
+      if (known && known.length) html += '<p class="small dim" style="margin:14px 0 6px">Trucks with their own Online Kitchen (one tap, they accept in their app):</p><div class="bar">' +
         known.map(function (k) { return '<button class="btn sm" data-add-known="' + esc(k.slug) + '">+ ' + esc((k.emoji ? k.emoji + ' ' : '') + k.name) + '</button>'; }).join('') + '</div>';
     }
     return html + '<div class="msg" id="truckMsg" role="status"></div></div>';
@@ -283,10 +288,17 @@
     var b;
     if ((b = e.target.closest('[data-new-invite]'))) {
       b.disabled = true;
-      api('POST', '/meets/' + m.id + '/invite', {}).then(function (r) { if (!r.ok) { b.disabled = false; return say($('truckMsg'), r.d.error); } invite = { meet: m.id, text: r.d.text, url: r.d.url }; redraw(); });
+      api('POST', '/meets/' + m.id + '/invite', {}).then(function (r) { if (!r.ok) { b.disabled = false; return say($('truckMsg'), r.d.error); } invite = { meet: m.id, text: r.d.text, url: r.d.url, name: '' }; redraw(); });
+      return true;
+    }
+    if ((b = e.target.closest('[data-send-kit]')) || (b = e.target.closest('[data-send-slug]'))) {
+      b.disabled = true;
+      var body = b.hasAttribute('data-send-kit') ? { kitId: +b.getAttribute('data-send-kit') } : { slug: b.getAttribute('data-send-slug') };
+      api('POST', '/meets/' + m.id + '/send-link', body).then(function (r) { if (!r.ok) { b.disabled = false; return say($('truckMsg'), r.d.error); } invite = { meet: m.id, text: r.d.text, url: r.d.url, name: r.d.name, signIn: r.d.signIn }; redraw(); });
       return true;
     }
     if ((b = e.target.closest('[data-copy-invite]'))) { copy(invite.text, b); return true; }
+    if ((b = e.target.closest('[data-close-invite]'))) { invite = null; redraw(); return true; }
     if ((b = e.target.closest('[data-add-known]'))) {
       api('POST', '/meets/' + m.id + '/trucks', { slug: b.getAttribute('data-add-known') }).then(function (r) { if (!r.ok) return say($('truckMsg'), r.d.error); redraw(); });
       return true;
@@ -323,7 +335,7 @@
       if (d.last && d.last.people) html += '<p class="small dim">Last logged: about ' + d.last.people + ' people' + (d.last.cars ? ', ' + d.last.cars + ' cars' : '') + ' on ' + esc(d.last.label.split(', ').slice(0, 2).join(', ')) + ' at ' + esc(d.last.place) + '.</p>';
       html += '<div id="reqBox"></div>';
       view(html);
-      if (m) api('GET', '/meets/' + m.id + '/trucks').then(function (t) { if (t.ok) $('trucksBox').innerHTML = trucksHtml(m, t.d.trucks, t.d.known); });
+      if (m) api('GET', '/meets/' + m.id + '/trucks').then(function (t) { if (t.ok && $('trucksBox')) $('trucksBox').innerHTML = trucksHtml(m, t.d.trucks, t.d.known, t.d.vendors); });
       if (m) drawKitVendors(m);
       if (d.requests) drawRequests();
       $('view').onclick = function (e) {
@@ -384,7 +396,7 @@
         return '<div class="rowx"><div><div><b>' + esc(m.label) + '</b></div><div class="tag">' + esc(m.place) + (m.title ? ' · ' + esc(m.title) : '') + (m.status === 'canceled' ? ' · canceled' : '') + '</div></div><button class="btn sm" data-open="' + m.id + '">Open</button></div>';
       }).join('') : '<p class="dim">Nothing coming up.</p>');
       view(html);
-      if (detail) api('GET', '/meets/' + detail.id + '/trucks').then(function (t) { if (t.ok && $('trucksBox')) $('trucksBox').innerHTML = trucksHtml(detail, t.d.trucks, t.d.known); });
+      if (detail) api('GET', '/meets/' + detail.id + '/trucks').then(function (t) { if (t.ok && $('trucksBox')) $('trucksBox').innerHTML = trucksHtml(detail, t.d.trucks, t.d.known, t.d.vendors); });
       if (detail) drawKitVendors(detail);
       var form = $('meetForm');
       if (form) form.onsubmit = function (e) {
@@ -476,6 +488,105 @@
   }
 
   /* ---------- settings and recaps ---------- */
+  /* ---------- Settings: Food vendors and Clubs (kept as logos in the kit, each with an Instagram) ---------- */
+  var listOpen = null, menuDraft = null;
+  function drawLists() {
+    api('GET', '/kit').then(function (r) {
+      if (!r.ok || !$('listVendors') || !$('listClubs')) return;
+      var logos = r.d.logos || [];
+      $('listVendors').innerHTML = listCard('vendor', 'Food vendors', 'Trucks you work with. For a meet, each gets its own link (no email or phone): it opens straight to their truck, with their menu ready. Their logo shows under Food on your page.',
+        logos.filter(function (l) { return l.kind === 'vendor' || l.kind === 'sponsor'; }));
+      $('listClubs').innerHTML = listCard('group', 'Clubs', 'Car clubs that come out. Their logos show under Clubs on your page and open their Instagram.', logos.filter(function (l) { return l.kind === 'group'; }));
+      if (listOpen && menuDraft === null) { var k = logos.filter(function (l) { return l.id === listOpen; })[0]; if (k && k.kind !== 'group') api('GET', '/kit/' + k.id + '/menu').then(function (m) { var el = document.querySelector('[data-menu-count="' + k.id + '"]'); if (el && m.ok) el.textContent = m.d.foodOn ? (m.d.items ? m.d.items + ' item' + (m.d.items === 1 ? '' : 's') + ' on their menu' : 'No menu yet') : ''; }); }
+      ['listVendors', 'listClubs'].forEach(function (id) { $(id).onclick = listClick; $(id).onchange = listChange; });
+    });
+  }
+  function face(l) { return l.url ? '<img src="' + esc(l.url) + '" alt="">' : '<span>' + (l.kind === 'group' ? '🚗' : '🍽') + '</span>'; }
+  function listCard(kind, title, sub, list) {
+    var club = kind === 'group';
+    return '<div class="card"><h3>' + title + '</h3><p class="small dim">' + sub + '</p>' +
+      (list.length ? list.map(function (l) {
+        if (listOpen === l.id) {
+          return '<div class="entry open"><div class="ent-face">' + face(l) + '</div><form data-ent-form="' + l.id + '" style="flex:1;min-width:0">' +
+            '<label>Name</label><input name="name" maxlength="60" value="' + esc(l.name) + '">' +
+            '<label>Instagram</label><input name="instagram" maxlength="60" placeholder="@handle" value="' + esc(l.instagram ? '@' + l.instagram : '') + '">' +
+            (club ? '<label>A short line (optional)</label><input name="note" maxlength="80" value="' + esc(l.note) + '">' : '') +
+            '<label>Logo</label><input type="file" accept="image/jpeg,image/png" data-ent-logo="' + l.id + '">' +
+            (club ? '' : '<label>Menu</label><p class="small dim" data-menu-count="' + l.id + '">…</p>' + menuDraftHtml(l) +
+              '<label class="btn sm" style="display:inline-flex;margin:0">Snap their menu board<input type="file" accept="image/jpeg,image/png" data-ent-menu="' + l.id + '" hidden></label>' +
+              '<p class="small dim" style="margin:6px 0 0">Optional. They check it when they open their link.</p>') +
+            '<div class="bar"><button class="btn go sm" type="submit">Save</button><button class="btn sm" type="button" data-ent-close>Close</button><button class="btn sm" type="button" data-ent-del="' + l.id + '">Remove</button></div>' +
+            '<div class="msg" data-ent-msg="' + l.id + '" role="status"></div></form></div>';
+        }
+        return '<div class="entry"><div class="ent-face">' + face(l) + '</div><div style="flex:1;min-width:0"><b>' + esc(l.name) + '</b>' + (l.instagram ? '<div class="small dim">@' + esc(l.instagram) + '</div>' : '') +
+          (l.note ? '<div class="small dim">' + esc(l.note) + '</div>' : '') + '</div><button class="btn sm" data-ent-open="' + l.id + '">Edit</button></div>';
+      }).join('') : '<p class="small dim">None yet.</p>') +
+      '<form class="ent-add" data-ent-add="' + kind + '"><input name="name" maxlength="60" placeholder="' + (club ? 'Club name' : 'Truck name') + '" aria-label="Name"><input name="instagram" maxlength="60" placeholder="@instagram" aria-label="Instagram">' +
+      '<button class="btn sm" type="submit">Add</button></form><div class="msg" data-add-msg="' + kind + '" role="status"></div></div>';
+  }
+  function menuDraftHtml(l) {
+    if (!menuDraft || menuDraft.id !== l.id) return '';
+    if (menuDraft.busy) return '<p class="small">Reading the menu…</p>';
+    return '<div class="copybox" style="margin:6px 0">' + menuDraft.items.map(function (it, i) {
+      return '<div class="row" style="margin:4px 0"><input data-md="' + i + '" data-k="name" value="' + esc(it.name) + '" aria-label="Item"><input data-md="' + i + '" data-k="price" inputmode="decimal" style="max-width:90px" value="' + esc(it.price === undefined || it.price === null ? '' : Number(it.price).toFixed(2)) + '" aria-label="Price"><button class="btn sm" type="button" data-md-del="' + i + '">×</button></div>';
+    }).join('') + '<div class="bar"><button class="btn go sm" type="button" data-md-save="' + l.id + '">Save this menu</button><button class="btn sm" type="button" data-md-cancel>Cancel</button></div></div>';
+  }
+  function listClick(e) {
+    var b, t = e.target;
+    if ((b = t.closest('[data-ent-open]'))) { listOpen = +b.getAttribute('data-ent-open'); menuDraft = null; drawLists(); return; }
+    if (t.closest('[data-ent-close]')) { listOpen = null; menuDraft = null; drawLists(); return; }
+    if ((b = t.closest('[data-ent-del]'))) {
+      if (!confirm('Remove this from your list? It comes off your pages too.')) return;
+      api('DELETE', '/kit/' + b.getAttribute('data-ent-del')).then(function () { listOpen = null; drawLists(); });
+      return;
+    }
+    if ((b = t.closest('[data-md-del]'))) { menuDraft.items.splice(+b.getAttribute('data-md-del'), 1); drawLists(); return; }
+    if (t.closest('[data-md-cancel]')) { menuDraft = null; drawLists(); return; }
+    if ((b = t.closest('[data-md-save]'))) {
+      document.querySelectorAll('[data-md]').forEach(function (inp) { var it = menuDraft.items[+inp.getAttribute('data-md')]; if (it) it[inp.getAttribute('data-k')] = inp.getAttribute('data-k') === 'price' ? parseFloat(String(inp.value).replace(/[$,\s]/g, '')) : inp.value; });
+      var id = b.getAttribute('data-md-save');
+      api('PUT', '/kit/' + id + '/menu', { items: menuDraft.items }).then(function (r) {
+        var msg = document.querySelector('[data-ent-msg="' + id + '"]');
+        if (!r.ok) return say(msg, r.d.error);
+        menuDraft = null; drawLists(); setTimeout(function () { say(document.querySelector('[data-ent-msg="' + id + '"]'), 'Menu saved. They’ll see it when they open their link.', true); }, 300);
+      });
+    }
+  }
+  function listChange(e) {
+    var t = e.target, f = t.files && t.files[0];
+    if (t.hasAttribute('data-ent-logo') && f) {
+      var id = t.getAttribute('data-ent-logo');
+      api('POST', '/kit/' + id + '/image', null, f).then(function (r) { if (!r.ok) return say(document.querySelector('[data-ent-msg="' + id + '"]'), r.d.error); drawLists(); });
+    }
+    if (t.hasAttribute('data-ent-menu') && f) {
+      var mid = +t.getAttribute('data-ent-menu');
+      if (f.size > 8 * 1024 * 1024) return say(document.querySelector('[data-ent-msg="' + mid + '"]'), 'That photo is over 8 MB.');
+      menuDraft = { id: mid, busy: true, items: [] }; drawLists();
+      api('POST', '/kit/' + mid + '/menu-read', null, f).then(function (r) {
+        if (!r.ok) { menuDraft = null; drawLists(); setTimeout(function () { say(document.querySelector('[data-ent-msg="' + mid + '"]'), r.d.error || 'That didn’t read.'); }, 300); return; }
+        menuDraft = { id: mid, items: r.d.items || [] }; drawLists();
+      });
+    }
+  }
+  document.addEventListener('submit', function (e) {
+    var f = e.target;
+    if (f.hasAttribute && f.hasAttribute('data-ent-form')) {
+      e.preventDefault();
+      var id = f.getAttribute('data-ent-form');
+      api('PUT', '/kit/' + id, { name: f.elements.namedItem('name').value.trim(), instagram: f.elements.namedItem('instagram').value.trim(), note: f.elements.namedItem('note') ? f.elements.namedItem('note').value.trim() : undefined }).then(function (r) {
+        if (!r.ok) return say(document.querySelector('[data-ent-msg="' + id + '"]'), r.d.error);
+        listOpen = null; drawLists();
+      });
+    } else if (f.hasAttribute && f.hasAttribute('data-ent-add')) {
+      e.preventDefault();
+      var kind = f.getAttribute('data-ent-add');
+      api('POST', '/kit/entry', { kind: kind, name: f.elements.namedItem('name').value.trim(), instagram: f.elements.namedItem('instagram').value.trim() }).then(function (r) {
+        if (!r.ok) return say(document.querySelector('[data-add-msg="' + kind + '"]'), r.d.error);
+        listOpen = r.d.logo.id; drawLists();
+      });
+    }
+  });
+
   function drawSettings() {
     Promise.all([api('GET', '/me'), api('GET', '/recaps'), api('GET', '/meets'), api('GET', '/site-video'), api('GET', '/portal-video')]).then(function (rs) {
       me = rs[0].d.host; var recaps = rs[1].d.recaps || []; var siteVideo = rs[3].ok ? rs[3].d.video : null;
@@ -491,6 +602,7 @@
         '<div class="bar"><button class="btn go" type="submit">Save</button></div><div class="msg" id="setMsg" role="status"></div></form></div>';
       html += '<div class="card"><h3>Logo</h3>' + (me.logo ? '<img src="' + esc(me.logo) + '" alt="" style="width:64px;height:64px;border-radius:10px;object-fit:cover;margin-bottom:8px">' : '') +
         '<input type="file" id="logoFile" accept="image/jpeg,image/png" aria-label="Logo image"><div class="msg" id="logoMsg" role="status"></div></div>';
+      html += '<div id="listVendors"></div><div id="listClubs"></div>';
       html += videoCard(me.video, 'host');
       html += videoCard(portalVideo, 'portal');
       html += '<div class="card"><h3>Demo mode</h3><p class="small dim">See your page filled in: sample food trucks plus every vendor and club logo in your Flyer kit. Only you see it; nothing is saved or shown to anyone else.</p>' +
@@ -502,11 +614,9 @@
         '<label for="rPhotos">Photos (JPEG or PNG)</label><input id="rPhotos" type="file" accept="image/jpeg,image/png" multiple>' +
         '<div class="bar"><button class="btn go" type="submit">Post recap</button></div><div class="msg" id="recapMsg" role="status"></div></form>' +
         recaps.map(function (x) { return '<div class="rowx"><div>' + esc(x.caption || x.video_url || 'Recap') + '<div class="tag">' + x.photos.length + ' photo' + (x.photos.length === 1 ? '' : 's') + '</div></div><button class="btn sm" data-del-recap="' + x.id + '">Delete</button></div>'; }).join('') + '</div>';
-      html += '<div class="card"><h3>Your own domain</h3><p class="small dim">Already have a domain like tuesdaymeets.com? Your page can live there, without the ' + esc(me.siteName) + ' line at the bottom.</p>' +
-        '<form id="domForm" class="row"><input id="sDomain" maxlength="120" placeholder="tuesdaymeets.com" value="' + esc(me.customDomain) + '" aria-label="Your domain"><button class="btn" type="submit">Save</button></form>' +
-        '<p class="small dim" style="margin-top:8px">' + (me.customDomain ? (me.domainOn ? 'Live at ' + esc(me.customDomain) + '.' : 'Waiting for setup. We’ll reach out with the one DNS step.') : '') + '</p><div class="msg" id="domMsg" role="status"></div></div>';
       html += '<p><button class="btn" id="signOut">Sign out</button></p>';
       view(html);
+      drawLists();
       var accent = me.accent || ACCENTS[0];
       Array.prototype.forEach.call(document.querySelectorAll('[data-video-file]'), function (inp) { inp.onchange = function () { uploadVideo(inp, drawSettings); }; });
       if ((me.video && me.video.status === 'processing') || (siteVideo && siteVideo.status === 'processing') || portalVideo.status === 'processing') poll(drawSettings);
@@ -526,10 +636,6 @@
         e.preventDefault();
         api('PUT', '/settings', { name: $('sName').value.trim(), city: $('sCity').value.trim(), accent: accent, instagram: $('sIg').value.trim(), tiktok: $('sTt').value.trim(), youtube: $('sYt').value.trim(), rules: $('sRules').value, closeMinutes: +$('sClose').value })
           .then(function (r) { if (!r.ok) return say($('setMsg'), r.d.error); me = r.d.host; $('whoName').textContent = me.name; say($('setMsg'), 'Saved.', true); });
-      };
-      $('domForm').onsubmit = function (e) {
-        e.preventDefault();
-        api('PUT', '/settings', { customDomain: $('sDomain').value.trim() }).then(function (r) { if (!r.ok) return say($('domMsg'), r.d.error); me = r.d.host; drawSettings(); });
       };
       $('logoFile').onchange = function () {
         var f = this.files[0]; if (!f) return;

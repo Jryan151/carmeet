@@ -10,10 +10,10 @@ const key = () => String(process.env.MEET_PARTNER_KEY || '');
 const on = () => !!(base() && key().length >= 24);
 
 /** Calls the food side. Returns { ok, status, data }; never throws (status 0 = it didn't answer). */
-async function call(method, p, body) {
+async function call(method, p, body, ms) {
   if (!on()) return { ok: false, status: 0, data: { error: 'Food pre-orders aren’t set up on this site yet.' } };
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 10000);
+  const t = setTimeout(() => ctrl.abort(), ms || 10000);
   try {
     const r = await fetch(base() + '/api/meets/partner' + p, {
       method, signal: ctrl.signal,
@@ -30,8 +30,9 @@ async function call(method, p, body) {
 
 const tz = () => process.env.TIMEZONE || 'America/Phoenix';
 /** Sends a meet's details (new, changed or canceled). The trucks in it follow automatically. */
-function syncMeet(host, m) {
+function syncMeet(host, m, pageUrl) {
   return call('PUT', '/' + encodeURIComponent(m.ref), {
+    pageUrl: /^https:\/\//.test(pageUrl || '') ? pageUrl : undefined, // the meet's page (a truck's post links here)
     hostKey: 'host_' + host.id, hostName: host.name, title: m.title || '', day: m.day, start: m.start_time, end: m.end_time,
     timezone: host.timezone || tz(), place: m.place, address: m.address || '', closeMinutes: host.close_minutes || 120,
     status: m.status === 'canceled' ? 'canceled' : 'on',
@@ -53,7 +54,13 @@ function themeOf(host, m) {
   };
 }
 const meetVendors = (ref) => call('GET', '/' + encodeURIComponent(ref));
-const inviteLink = (ref) => call('POST', '/' + encodeURIComponent(ref) + '/invites', {});
+const inviteLink = (ref, slug) => call('POST', '/' + encodeURIComponent(ref) + '/invites', slug ? { slug } : {});
+/* Truck profiles this host keeps on the food side (name, menu; no email or phone): one per Food vendor. */
+const profiles = (hostKey) => call('GET', '/profiles?hostKey=' + encodeURIComponent(hostKey));
+const createProfile = (hostKey, name, timezone) => call('POST', '/profiles', { hostKey, name, timezone });
+const updateProfile = (hostKey, slug, fields) => call('PUT', '/profiles/' + encodeURIComponent(slug), Object.assign({ hostKey }, fields));
+const profileMenuRead = (hostKey, slug, files) => call('POST', '/profiles/' + encodeURIComponent(slug) + '/menu-read', { hostKey, files }, 90000);
+const profileMenu = (hostKey, slug, items) => call('PUT', '/profiles/' + encodeURIComponent(slug) + '/menu', { hostKey, items, mode: 'replace' });
 const addKnown = (ref, slug) => call('POST', '/' + encodeURIComponent(ref) + '/vendors', { slug });
 const dropInvite = (ref, id) => call('DELETE', '/' + encodeURIComponent(ref) + '/invites/' + encodeURIComponent(id));
 const notice = (ref, subject, text) => call('POST', '/' + encodeURIComponent(ref) + '/notice', { subject, text });
@@ -88,4 +95,4 @@ function photoSource(sub, rest) {
   return `${k.protocol}//${sub === '_' ? '' : sub + '.'}${k.host}${rest}`;
 }
 
-module.exports = { themeOf, on, call, syncMeet, meetVendors, inviteLink, addKnown, dropInvite, notice, menu, order, orderStatus, confirmOrder, cancelOrder, verify, photoPath, photoSource };
+module.exports = { themeOf, on, call, syncMeet, meetVendors, inviteLink, profiles, createProfile, updateProfile, profileMenuRead, profileMenu, addKnown, dropInvite, notice, menu, order, orderStatus, confirmOrder, cancelOrder, verify, photoPath, photoSource };

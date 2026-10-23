@@ -123,7 +123,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
       over: t.endsAt < Date.now(), people: m.turnout_people, cars: m.turnout_cars, video: videoShape(m), flyer: m.flyer ? '/uploads/' + m.flyer : null, synced: !!m.synced_at && !m.sync_error, syncError: m.sync_error || '', url: `${pageUrl(h)}/${m.day}` };
   }
   async function sync(h, m) {
-    const s = await K.syncMeet(h, m);
+    const s = await K.syncMeet(h, m, `${pageUrl(h)}/${m.day}`);
     await run('UPDATE meets SET synced_at = ?, sync_error = ? WHERE id = ?', [s.ok ? Date.now() : null, s.ok ? null : (s.data.error || 'not sent'), m.id]);
     truckCache.delete(m.ref);
     return s;
@@ -159,7 +159,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
       subscribers: subs.n, requests: reqs.n, unlogged, last: last ? meetShape(last, h) : null });
   });
   const truckShape = (v) => ({ inviteId: v.inviteId, status: v.status, code: v.code, slug: v.slug || null, name: v.name || null, emoji: v.emoji || '',
-    cardReady: !!v.cardReady, payAtTruck: !!v.payAtTruck, paused: !!v.paused, preorders: v.preorders || 0, plates: v.plates === undefined ? null : v.plates });
+    cardReady: !!v.cardReady, payAtTruck: !!v.payAtTruck, paused: !!v.paused, openNow: !!v.openNow, setUp: v.setUp !== false, hostProfile: !!v.hostProfile, preorders: v.preorders || 0, plates: v.plates === undefined ? null : v.plates });
 
   /* ---------- meets ---------- */
   r.get('/meets', signedIn, async (req, res) => {
@@ -258,8 +258,13 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     if (!m) return res.status(404).json({ error: 'That meet is gone.' });
     const list = (await trucksFor(m, { fresh: true })).map(truckShape);
     const inNow = new Set(list.filter((v) => v.slug && ['in', 'invited'].includes(v.status)).map((v) => v.slug));
-    const known = (await all('SELECT slug, name, emoji FROM host_vendors WHERE host_id = ? ORDER BY last_meet_at DESC LIMIT 40', [req.me.id])).filter((v) => !inNow.has(v.slug));
-    res.set('Cache-Control', 'no-store').json({ trucks: list, known, foodOn: K.on() });
+    const vendorRows = await all("SELECT * FROM kit_logos WHERE host_id = ? AND kind IN ('vendor', 'sponsor') ORDER BY name COLLATE NOCASE", [req.me.id]);
+    const mine = new Set(vendorRows.map((k) => k.truck_slug).filter(Boolean));
+    // Full Online Kitchen accounts the host has had before (one tap: they accept in their own app).
+    const known = (await all('SELECT slug, name, emoji FROM host_vendors WHERE host_id = ? ORDER BY last_meet_at DESC LIMIT 40', [req.me.id])).filter((v) => !inNow.has(v.slug) && !mine.has(v.slug));
+    // The host's Food vendors not in this meet yet: each gets its own link (no email or phone).
+    const vendors = vendorRows.filter((k) => !(k.truck_slug && inNow.has(k.truck_slug))).map(kitShape);
+    res.set('Cache-Control', 'no-store').json({ trucks: list, known, vendors, foodOn: K.on() });
   });
   // A link for a truck the host hasn't worked with: the host texts it to the owner.
   r.post('/meets/:id/invite', signedIn, async (req, res) => {
@@ -270,8 +275,29 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     if (!r2.ok) return res.status(r2.status || 502).json({ error: r2.data.error || 'Couldn’t make a link.' });
     truckCache.delete(m.ref);
     const tz = tzOf(req.me); const t = U.meetTimes(m, tz);
-    const text = `Hey! We'd love to have you at ${m.title || req.me.name + "'s meet"}: ${m.place}, ${U.dayShort(t.startsAt, tz)} ${U.time12(t.startsAt, tz)}–${U.time12(t.endsAt, tz)}. People can pre-order from you ahead of time. Accept here: ${r2.data.url}`;
+    const text = `Hey! We'd love to have you at ${m.title || req.me.name + "'s meet"}: ${m.place}, ${U.dayShort(t.startsAt, tz)} ${U.time12(t.startsAt, tz)}–${U.time12(t.endsAt, tz)}. People can pre-order from you ahead of time and pay at your truck. Open this to set up (no account needed): ${r2.data.url}`;
     res.status(201).json({ url: r2.data.url, code: r2.data.code, text });
+  });
+  // A Food vendor's own link for this meet: no email or phone, it opens straight to their truck (name and menu ready).
+  // Already in the meet: a one-time sign-in link (a new phone, or a lost one).
+  r.post('/meets/:id/send-link', signedIn, async (req, res) => {
+    const m = await own(req, req.params.id);
+    if (!m) return res.status(404).json({ error: 'That meet is gone.' });
+    const b = req.body || {};
+    let k = b.kitId ? await ownKit(req, b.kitId) : null;
+    if (!k && b.slug) k = await get('SELECT * FROM kit_logos WHERE host_id = ? AND truck_slug = ?', [req.me.id, String(b.slug).toLowerCase()]);
+    if (!k) return res.status(404).json({ error: 'Add the truck to your Food vendors first.' });
+    if (!m.synced_at) { const s = await sync(req.me, m); if (!s.ok) return res.status(502).json({ error: s.data.error || 'The food side didn’t answer.' }); }
+    const pf = await ensureProfile(req.me, k);
+    if (pf.error) return res.status(pf.status).json({ error: pf.error });
+    const r2 = await K.inviteLink(m.ref, pf.slug);
+    if (!r2.ok) return res.status(r2.status || 502).json({ error: r2.data.error || 'Couldn’t make a link.' });
+    truckCache.delete(m.ref);
+    const tz = tzOf(req.me); const t = U.meetTimes(m, tz);
+    const text = r2.data.signIn
+      ? `Here's a new link for ${k.name}'s pre-order screen (it works once, on the phone that opens it): ${r2.data.url}`
+      : `Hey ${k.name}! You're on for ${m.title || req.me.name + "'s meet"}: ${m.place}, ${U.dayShort(t.startsAt, tz)} ${U.time12(t.startsAt, tz)}–${U.time12(t.endsAt, tz)}. People can pre-order from you ahead of time and pay at your truck. Open this to set up (no account needed): ${r2.data.url}`;
+    res.status(201).json({ url: r2.data.url, text, signIn: !!r2.data.signIn, name: k.name });
   });
   r.post('/meets/:id/trucks', signedIn, async (req, res) => {
     const m = await own(req, req.params.id);
@@ -435,7 +461,18 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
 
   /* ---------- the flyer kit: vendor and car group logos, ready to paste onto a flyer ---------- */
   const KINDS = ['vendor', 'group', 'sponsor', 'title'];
-  const kitShape = (k) => ({ id: k.id, kind: k.kind, name: k.name, url: '/uploads/' + k.file });
+  const kitShape = (k) => ({ id: k.id, kind: k.kind, name: k.name, url: k.file ? '/uploads/' + k.file : '', instagram: k.instagram || '', note: k.note || '', truckSlug: k.truck_slug || null });
+  const hostKey = (h) => 'host_' + h.id;
+  // A Food vendor's truck profile on the food side (name and menu, no email or phone), made the first time it's needed.
+  async function ensureProfile(h, k) {
+    if (k.truck_slug) return { slug: k.truck_slug };
+    const r2 = await K.createProfile(hostKey(h), k.name, tzOf(h));
+    if (!r2.ok) return { error: r2.data.error || 'The food side didn’t answer.', status: r2.status || 502 };
+    await run('UPDATE kit_logos SET truck_slug = ? WHERE id = ?', [r2.data.profile.slug, k.id]);
+    if (k.instagram) K.updateProfile(hostKey(h), r2.data.profile.slug, { instagram: k.instagram }).catch(() => {});
+    return { slug: r2.data.profile.slug };
+  }
+  const ownKit = (req, id) => get('SELECT * FROM kit_logos WHERE id = ? AND host_id = ?', [parseInt(id, 10) || 0, req.me.id]);
   r.get('/kit', signedIn, async (req, res) => {
     const rows = await all('SELECT * FROM kit_logos WHERE host_id = ? ORDER BY kind, name COLLATE NOCASE', [req.me.id]);
     res.set('Cache-Control', 'no-store').json({ logos: rows.map(kitShape) });
@@ -453,6 +490,18 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     const ins = await run('INSERT INTO kit_logos (host_id, kind, name, file, created_at) VALUES (?, ?, ?, ?, ?)', [req.me.id, kind, nm, name, Date.now()]);
     res.status(201).json({ logo: kitShape(await get('SELECT * FROM kit_logos WHERE id = ?', [ins.lastID])) });
   });
+  // A Food vendor or a Club added from Settings: a name (and Instagram), with or without a logo yet.
+  r.post('/kit/entry', signedIn, async (req, res) => {
+    const b = req.body || {};
+    const kind = b.kind === 'group' ? 'group' : 'vendor';
+    const nm = U.clean(b.name, 60);
+    if (!nm) return res.status(400).json({ error: kind === 'group' ? 'Name the club.' : 'Name the truck.' });
+    const n = await get('SELECT COUNT(*) AS n FROM kit_logos WHERE host_id = ?', [req.me.id]);
+    if (n.n >= 200) return res.status(400).json({ error: 'Your lists have 200 entries. Delete a few first.' });
+    const ins = await run('INSERT INTO kit_logos (host_id, kind, name, file, instagram, note, created_at) VALUES (?, ?, ?, \'\', ?, ?, ?)',
+      [req.me.id, kind, nm, U.handle(b.instagram) || null, U.clean(b.note, 80) || null, Date.now()]);
+    res.status(201).json({ logo: kitShape(await get('SELECT * FROM kit_logos WHERE id = ?', [ins.lastID])) });
+  });
   r.put('/kit/:id', signedIn, async (req, res) => {
     const k = await get('SELECT * FROM kit_logos WHERE id = ? AND host_id = ?', [parseInt(req.params.id, 10) || 0, req.me.id]);
     if (!k) return res.status(404).json({ error: 'That logo is gone.' });
@@ -460,7 +509,11 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     const nm = b.name === undefined ? k.name : U.clean(b.name, 60);
     if (!nm) return res.status(400).json({ error: 'Name the logo.' });
     const kind = KINDS.includes(b.kind) ? b.kind : k.kind;
-    await run('UPDATE kit_logos SET name = ?, kind = ? WHERE id = ?', [nm, kind, k.id]);
+    const ig = b.instagram === undefined ? k.instagram : (U.handle(b.instagram) || null);
+    const note = b.note === undefined ? k.note : (U.clean(b.note, 80) || null);
+    await run('UPDATE kit_logos SET name = ?, kind = ?, instagram = ?, note = ? WHERE id = ?', [nm, kind, ig, note, k.id]);
+    // The truck's profile on the food side keeps the same name and Instagram.
+    if (k.truck_slug && (nm !== k.name || ig !== k.instagram)) K.updateProfile(hostKey(req.me), k.truck_slug, { name: nm, instagram: ig || '' }).catch(() => {});
     res.json({ logo: kitShape(await get('SELECT * FROM kit_logos WHERE id = ?', [k.id])) });
   });
   // A new picture for a logo already in the kit (same name and type).
@@ -472,16 +525,45 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     const trimmed = await V.trimLogo(path.join(UPLOAD_DIR, name), UPLOAD_DIR);
     if (trimmed) { fs.promises.unlink(path.join(UPLOAD_DIR, name)).catch(() => {}); name = trimmed; }
     await run('UPDATE kit_logos SET file = ? WHERE id = ?', [name, k.id]);
-    fs.promises.unlink(path.join(UPLOAD_DIR, k.file)).catch(() => {});
+    if (k.file) fs.promises.unlink(path.join(UPLOAD_DIR, k.file)).catch(() => {});
     res.json({ logo: kitShape(await get('SELECT * FROM kit_logos WHERE id = ?', [k.id])) });
   });
   r.delete('/kit/:id', signedIn, async (req, res) => {
     const k = await get('SELECT * FROM kit_logos WHERE id = ? AND host_id = ?', [parseInt(req.params.id, 10) || 0, req.me.id]);
     if (!k) return res.status(404).json({ error: 'That logo is gone.' });
-    fs.promises.unlink(path.join(UPLOAD_DIR, k.file)).catch(() => {});
+    if (k.file) fs.promises.unlink(path.join(UPLOAD_DIR, k.file)).catch(() => {});
     await run('DELETE FROM kit_logos WHERE id = ?', [k.id]);
     await run('DELETE FROM meet_kit_vendors WHERE kit_id = ?', [k.id]);
     res.json({ ok: true });
+  });
+
+  /* ---------- a Food vendor's menu, put in by the host (a photo of their board), so the truck only checks it ---------- */
+  r.get('/kit/:id/menu', signedIn, async (req, res) => {
+    const k = await ownKit(req, req.params.id);
+    if (!k) return res.status(404).json({ error: 'That truck is gone.' });
+    if (!k.truck_slug || !K.on()) return res.set('Cache-Control', 'no-store').json({ items: 0, foodOn: K.on() });
+    const r2 = await K.profiles(hostKey(req.me));
+    const p = r2.ok ? (r2.data.profiles || []).find((x) => x.slug === k.truck_slug) : null;
+    res.set('Cache-Control', 'no-store').json({ items: p ? p.items : 0, foodOn: true });
+  });
+  r.post('/kit/:id/menu-read', signedIn, rawImage, async (req, res) => {
+    const k = await ownKit(req, req.params.id);
+    if (!k) return res.status(404).json({ error: 'That truck is gone.' });
+    if (!Buffer.isBuffer(req.body) || req.body.length < 100) return res.status(400).json({ error: 'Use a JPEG or PNG photo of the menu.' });
+    const pf = await ensureProfile(req.me, k);
+    if (pf.error) return res.status(pf.status).json({ error: pf.error });
+    const type = String(req.headers['content-type'] || '').split(';')[0];
+    const r2 = await K.profileMenuRead(hostKey(req.me), pf.slug, [{ type, data: req.body.toString('base64') }]);
+    res.status(r2.ok ? 200 : r2.status || 502).json(r2.data);
+  });
+  r.put('/kit/:id/menu', signedIn, async (req, res) => {
+    const k = await ownKit(req, req.params.id);
+    if (!k) return res.status(404).json({ error: 'That truck is gone.' });
+    const pf = await ensureProfile(req.me, k);
+    if (pf.error) return res.status(pf.status).json({ error: pf.error });
+    const items = Array.isArray((req.body || {}).items) ? req.body.items.slice(0, 80) : [];
+    const r2 = await K.profileMenu(hostKey(req.me), pf.slug, items);
+    res.status(r2.ok ? 200 : r2.status || 502).json(r2.ok ? { ok: true, added: r2.data.added } : r2.data);
   });
 
   /* ---------- vendors from the kit listed on a meet's page (with their logo, under Food) ---------- */

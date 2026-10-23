@@ -93,6 +93,11 @@ async function ensureSchema() {
   )`);
   // A kit logo can be linked to one of the meet's trucks (its slug), so tapping the logo opens that truck's menu.
   await addColumn('meet_kit_vendors', 'truck_slug', 'TEXT');
+  // A Food vendor or Club in the host's lists (kept in kit_logos): their Instagram, a club's short line, and the
+  // truck profile on the food side a Food vendor is tied to (its pre-order link and menu).
+  await addColumn('kit_logos', 'instagram', 'TEXT');
+  await addColumn('kit_logos', 'note', 'TEXT');
+  await addColumn('kit_logos', 'truck_slug', 'TEXT');
   // The host portal's own background video (one row per host, id = the host's id).
   await exec('CREATE TABLE IF NOT EXISTS host_portal (id INTEGER PRIMARY KEY)');
   for (const t of ['hosts', 'meets', 'site', 'host_portal']) {
