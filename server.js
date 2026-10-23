@@ -347,6 +347,7 @@ app.post('/api/alerts', limitForm, async (req, res) => {
   if (b.website) return res.json({ ok: true });
   const host = await get('SELECT * FROM hosts WHERE slug = ?', [String(b.host || '')]);
   if (!host) return res.status(404).json({ error: 'No such host.' });
+  if (!host.alerts_on) return res.status(404).json({ error: 'Alerts aren’t on for this page.' });
   const email = U.clean(b.email, 120).toLowerCase();
   if (!U.EMAIL_RE.test(email)) return res.status(400).json({ error: 'That email doesn’t look right.' });
   const t = D.token(18);

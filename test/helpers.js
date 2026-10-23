@@ -135,12 +135,15 @@ function send(ctx, method, host, urlPath, { body, cookie, headers, raw } = {}) {
 }
 
 /** Signs a host up (email code → page name and address) and returns their cookie. */
-async function host(ctx, { email = 'crew@example.com', name = 'Tasty Tuesday', slug = 'tasty-tuesday' } = {}) {
+async function host(ctx, { email = 'crew@example.com', name = 'Tasty Tuesday', slug = 'tasty-tuesday', alerts } = {}) {
   const c = await request(ctx, 'POST', 'meets.test', '/api/host/code', { body: { email } });
   if (!c.json || !c.json.devCode) throw new Error('code: ' + c.text);
   const l = await request(ctx, 'POST', 'meets.test', '/api/host/login', { body: { email, code: c.json.devCode, name, slug, city: 'Phoenix' } });
   if (l.status !== 200) throw new Error('login: ' + l.text);
-  return String([].concat(l.headers['set-cookie'] || [])[0] || '').split(';')[0];
+  const cookie = String([].concat(l.headers['set-cookie'] || [])[0] || '').split(';')[0];
+  // Email alerts start off for a new host; the tests that use them expect them on (alerts.off turns them off).
+  if (alerts !== false) await request(ctx, 'PUT', 'meets.test', '/api/host/settings', { cookie, body: { alertsOn: true } });
+  return cookie;
 }
 
 const sign = (body) => crypto.createHmac('sha256', KEY).update(body).digest('hex');

@@ -90,7 +90,7 @@ function alertsBtn(host, main) {
   const cls = `btn${main ? ' go' : ''}`;
   return host.instagram
     ? `<a class="${cls}" href="https://instagram.com/${esc(host.instagram)}" rel="noopener">Follow on Instagram</a>`
-    : `<a class="${cls}" href="#alerts">Get alerts</a>`;
+    : host.alerts_on ? `<a class="${cls}" href="#alerts">Get alerts</a>` : '';
 }
 /** Little round logos, like profile pictures (vendors under Food, car clubs under Clubs). One with a menu is a link,
     marked with a small tag under it. */
@@ -261,7 +261,8 @@ function meetPage(host, m, ctx) {
     ${rc.video_url ? `<a class="video" href="${esc(rc.video_url)}" rel="noopener"><b>Watch the recap</b><span class="dim small">${esc(rc.caption || 'Video from the last meet')}</span></a>` : (rc.caption ? `<p>${esc(rc.caption)}</p>` : '')}
     ${rc.photos && rc.photos.length ? `<div class="photos">${rc.photos.map((p) => `<img src="${esc(p)}" alt="" loading="lazy">`).join('')}</div>` : ''}</section>`;
   }
-  body += `<section id="alerts"><h2>Get alerts</h2>
+  // Email alerts only when the host has turned them on (Settings).
+  if (host.alerts_on) body += `<section id="alerts"><h2>Get alerts</h2>
   <p class="dim">An email when the next meet is posted or something changes. Nothing else.</p>
   <form class="row" data-form="alerts" data-host="${esc(host.slug)}">
     <input type="email" name="email" required maxlength="120" placeholder="you@email.com" aria-label="Your email">
@@ -335,12 +336,12 @@ function hostEmpty(host, ctx) {
   const body = (host.logo ? '' : top(host, ctx.base)) + `<main class="wrap"><section class="hero${vid ? ' has-video' : ''}${host.logo ? ' has-avatar' : ''}">
   ${heroBg(vid)}
   ${avatar(host)}
-  <p class="soon-line">Next meet: soon. Get an alert when it’s posted.</p>
+  <p class="soon-line">Next meet: soon.${host.alerts_on ? ' Get an alert when it’s posted.' : host.instagram ? ' Follow along for the date.' : ''}</p>
   <div class="actions">${alertsBtn(host, true)}</div>
   </section>
-  <section id="alerts"><h2>Get alerts</h2><p class="dim">An email when the next meet is posted. Nothing else.</p>
+  ${host.alerts_on ? `<section id="alerts"><h2>Get alerts</h2><p class="dim">An email when the next meet is posted. Nothing else.</p>
   <form class="row" data-form="alerts" data-host="${esc(host.slug)}"><input type="email" name="email" required maxlength="120" placeholder="you@email.com" aria-label="Your email">
-  <input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true"><button class="btn go" type="submit">Join</button></form><div class="msg" role="status"></div></section></main>` + footer(host, ctx.base, ctx);
+  <input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true"><button class="btn go" type="submit">Join</button></form><div class="msg" role="status"></div></section>` : ''}</main>` + footer(host, ctx.base, ctx);
   return layout({ title: host.name, description: `${host.name}: car meets${host.city ? ' in ' + host.city : ''}.`, host, body, scripts: ['site.js'] });
 }
 

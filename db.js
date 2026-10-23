@@ -129,6 +129,8 @@ async function ensureSchema() {
   await addColumn('meets', 'venue_id', 'INTEGER');
   // A meet's own header logo (a host who runs more than one meet name: Tasty Tuesday, Fuel Friday...), over their usual one.
   await addColumn('meets', 'logo', 'TEXT');
+  // Email alerts (the sign-up on the page and the emails): off until the host turns them on in Settings.
+  await addColumn('hosts', 'alerts_on', 'INTEGER NOT NULL DEFAULT 0');
   // Addresses already looked up, so the map search doesn't ask the geocoder twice for the same one.
   await exec('CREATE TABLE IF NOT EXISTS geocache (q TEXT PRIMARY KEY, json TEXT NOT NULL, at INTEGER NOT NULL)');
   // The host portal's own background video (one row per host, id = the host's id).

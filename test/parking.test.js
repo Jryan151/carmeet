@@ -217,3 +217,19 @@ test('logos: names and types read for them; placeholder names replaced; Food, Cl
   assert.match(sec('Clubs'), /Unforsaken/);
   assert.match(sec('Vendors'), /LV Smoke Shop/); assert.doesNotMatch(sec('Vendors'), /México/);
 });
+
+test('email alerts start off: no sign-up on the page, none taken, no emails; on in Settings brings them back', async () => {
+  const C4 = await host(ctx, { email: 'quiet@example.com', name: 'Quiet Meet', slug: 'quiet-meet', alerts: false });
+  let r = await request(ctx, 'GET', SITE, '/api/host/me', { cookie: C4 });
+  assert.equal(r.json.host.alertsOn, false);
+  r = await request(ctx, 'GET', SITE, '/quiet-meet');
+  assert.ok(!/id="alerts"|Get alerts/.test(r.text), 'no sign-up');
+  r = await request(ctx, 'POST', SITE, '/api/alerts', { body: { host: 'quiet-meet', email: 'fan@example.com' } });
+  assert.equal(r.status, 404);
+  r = await request(ctx, 'PUT', SITE, '/api/host/settings', { cookie: C4, body: { alertsOn: true } });
+  assert.equal(r.json.host.alertsOn, true);
+  r = await request(ctx, 'GET', SITE, '/quiet-meet');
+  assert.match(r.text, /id="alerts"/);
+  r = await request(ctx, 'POST', SITE, '/api/alerts', { body: { host: 'quiet-meet', email: 'fan@example.com' } });
+  assert.equal(r.status, 200);
+});

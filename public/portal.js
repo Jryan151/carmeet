@@ -348,7 +348,7 @@
           '<div class="time">' + esc(m.label.split(', ').slice(2).join(', ')) + '</div><div class="where">' + esc(m.place) + '</div></div>' +
           '<div class="bar"><button class="btn sm" data-copy-link="' + esc(m.url) + '">Copy page link</button><a class="btn sm" href="' + esc(m.url) + '" target="_blank" rel="noopener">Open page</a><button class="btn sm" data-edit="' + m.id + '">Edit</button></div>' +
           (m.syncError ? '<p class="msg bad">Food side not updated: ' + esc(m.syncError) + ' <button class="link" data-resync="' + m.id + '">Try again</button></p>' : '') +
-          '<div class="stats"><div class="stat"><b>' + d.preorders + '</b><span>pre-orders paid</span></div><div class="stat"><b>' + d.trucks.filter(function (v) { return v.status === 'in'; }).length + '</b><span>trucks confirmed</span></div><div class="stat"><b>' + d.subscribers + '</b><span>on alerts</span></div></div>' +
+          '<div class="stats"><div class="stat"><b>' + d.preorders + '</b><span>pre-orders paid</span></div><div class="stat"><b>' + d.trucks.filter(function (v) { return v.status === 'in'; }).length + '</b><span>trucks confirmed</span></div>' + (me.alertsOn ? '<div class="stat"><b>' + d.subscribers + '</b><span>on alerts</span></div>' : '') + '</div>' +
           '<div id="trucksBox"></div><div id="kitVendorsBox"></div>';
       }
       if (d.last && d.last.people) html += '<p class="small dim">Last logged: about ' + d.last.people + ' people' + (d.last.cars ? ', ' + d.last.cars + ' cars' : '') + ' on ' + esc(d.last.label.split(', ').slice(0, 2).join(', ')) + ' at ' + esc(d.last.place) + '.</p>';
@@ -398,7 +398,7 @@
       (venues && venues.length ? '' : '<p class="small dim" style="margin:4px 0 0">Add businesses in Settings › Venues.</p>') +
       '<label for="mTitle">Name for this one (optional)</label><input id="mTitle" maxlength="80" placeholder="JDM night" value="' + esc(m.title || '') + '">' +
       '<label for="mNotes">Notes (optional)</label><textarea id="mNotes" maxlength="300" placeholder="Enter from 35th Ave. Overflow parking on the north side.">' + esc(m.notes || '') + '</textarea>' +
-      '<div class="checks"><label><input type="checkbox" id="mTell"' + (m.id ? '' : ' checked') + '> ' + (m.id ? 'If the time or place changed, email the alert list' : 'Email the alert list') + '</label></div>' +
+      (me.alertsOn ? '<div class="checks"><label><input type="checkbox" id="mTell"' + (m.id ? '' : ' checked') + '> ' + (m.id ? 'If the time or place changed, email the alert list' : 'Email the alert list') + '</label></div>' : '') +
       '<div class="bar"><button class="btn go" type="submit">' + (m.id ? 'Save' : 'Post meet') + '</button><button class="btn" type="button" data-close-form>Cancel</button></div>' +
       '<div class="msg" id="meetMsg" role="status"></div></form></div>';
   }
@@ -425,7 +425,7 @@
       var form = $('meetForm');
       if (form) form.onsubmit = function (e) {
         e.preventDefault();
-        var body = { day: $('mDay').value, start: $('mStart').value, end: $('mEnd').value, place: $('mPlace').value.trim(), address: $('mAddr').value.trim(), title: $('mTitle').value.trim(), notes: $('mNotes').value.trim(), venueId: $('mVenue').value ? +$('mVenue').value : null, tellAlerts: $('mTell').checked };
+        var body = { day: $('mDay').value, start: $('mStart').value, end: $('mEnd').value, place: $('mPlace').value.trim(), address: $('mAddr').value.trim(), title: $('mTitle').value.trim(), notes: $('mNotes').value.trim(), venueId: $('mVenue').value ? +$('mVenue').value : null, tellAlerts: !!($('mTell') && $('mTell').checked) };
         api(editing.id ? 'PUT' : 'POST', editing.id ? '/meets/' + editing.id : '/meets', body).then(function (r2) {
           if (!r2.ok) return say($('meetMsg'), r2.d.error);
           openMeet = { id: r2.d.meet.id }; drawMeets();
@@ -485,7 +485,7 @@
       var html = '<div class="card"><h3>Send an update</h3><p class="small dim">Weather, a new spot, running late. Goes out by email now.</p><form id="updForm">' +
         (meets.length ? '<label for="uMeet">About</label><select id="uMeet">' + meets.map(function (m) { return '<option value="' + m.id + '">' + esc(m.label + ' · ' + m.place) + '</option>'; }).join('') + '</select>' : '') +
         '<label for="uMsg">Message</label><textarea id="uMsg" maxlength="600" required placeholder="Moving to the north lot tonight. Same time."></textarea>' +
-        '<div class="checks"><label><input type="checkbox" id="uAlerts" checked> Alert list (' + u.subscribers + ')</label>' + (meets.length ? '<label><input type="checkbox" id="uTrucks"> Food trucks in this meet</label>' : '') + '</div>' +
+        '<div class="checks">' + (me.alertsOn ? '<label><input type="checkbox" id="uAlerts" checked> Alert list (' + u.subscribers + ')</label>' : '') + (meets.length ? '<label><input type="checkbox" id="uTrucks"> Food trucks in this meet</label>' : '') + '</div>' +
         (u.mailOn ? '' : '<p class="small dim">Email isn’t set up on this site yet, so nothing will actually send.</p>') +
         '<div class="bar"><button class="btn go" type="submit">Send</button></div><div class="msg" id="updMsg" role="status"></div></form></div>';
       html += u.updates.length ? '<h3 style="margin:20px 0 8px">Sent</h3>' + u.updates.map(function (x) {
@@ -494,7 +494,7 @@
       view(html);
       $('updForm').onsubmit = function (e) {
         e.preventDefault();
-        api('POST', '/updates', { message: $('uMsg').value.trim(), meetId: $('uMeet') ? +$('uMeet').value : null, toAlerts: $('uAlerts').checked, toVendors: !!($('uTrucks') && $('uTrucks').checked) }).then(function (r) {
+        api('POST', '/updates', { message: $('uMsg').value.trim(), meetId: $('uMeet') ? +$('uMeet').value : null, toAlerts: !!($('uAlerts') && $('uAlerts').checked), toVendors: !!($('uTrucks') && $('uTrucks').checked) }).then(function (r) {
           if (!r.ok) return say($('updMsg'), r.d.error);
           drawUpdates();
         });
@@ -747,6 +747,7 @@
         '<label>Color</label><div class="swatches">' + ACCENTS.map(function (c) { return '<button type="button" data-accent="' + c + '" aria-label="Color ' + c + '" aria-pressed="' + ((me.accent || ACCENTS[0]) === c) + '" style="background:' + c + '"></button>'; }).join('') + '</div>' +
         '<label for="sIg">Instagram</label><input id="sIg" maxlength="60" placeholder="@yourmeet" value="' + esc(me.instagram) + '">' +
         '<div class="grid2"><div><label for="sTt">TikTok</label><input id="sTt" maxlength="60" value="' + esc(me.tiktok) + '"></div><div><label for="sYt">YouTube</label><input id="sYt" maxlength="60" value="' + esc(me.youtube) + '"></div></div>' +
+        '<div class="checks"><label><input type="checkbox" id="sAlerts"' + (me.alertsOn ? ' checked' : '') + '> Email alerts: a sign-up on your page, and an email to the list when you post or change a meet</label></div>' +
         '<label for="sRules">House rules (one per line)</label><textarea id="sRules" maxlength="600">' + esc(me.rules) + '</textarea>' +
         '<label for="sClose">Food pre-orders close</label><select id="sClose">' + [[30, '30 minutes before'], [60, '1 hour before'], [120, '2 hours before'], [180, '3 hours before'], [240, '4 hours before'], [360, '6 hours before']].map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === me.closeMinutes ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select>' +
         '<div class="bar"><button class="btn go" type="submit">Save</button></div><div class="msg" id="setMsg" role="status"></div></form></div>';
@@ -784,7 +785,7 @@
       };
       $('setForm').onsubmit = function (e) {
         e.preventDefault();
-        api('PUT', '/settings', { name: $('sName').value.trim(), city: $('sCity').value.trim(), accent: accent, instagram: $('sIg').value.trim(), tiktok: $('sTt').value.trim(), youtube: $('sYt').value.trim(), rules: $('sRules').value, closeMinutes: +$('sClose').value })
+        api('PUT', '/settings', { name: $('sName').value.trim(), city: $('sCity').value.trim(), accent: accent, instagram: $('sIg').value.trim(), tiktok: $('sTt').value.trim(), youtube: $('sYt').value.trim(), rules: $('sRules').value, closeMinutes: +$('sClose').value, alertsOn: $('sAlerts').checked })
           .then(function (r) { if (!r.ok) return say($('setMsg'), r.d.error); me = r.d.host; $('whoName').textContent = me.name; say($('setMsg'), 'Saved.', true); });
       };
       $('logoFile').onchange = function () {

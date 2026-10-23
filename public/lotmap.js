@@ -132,7 +132,15 @@
       if (pts.length < 3) return;
       var want = String(z.color || '').toLowerCase();
       var color = PALETTE.indexOf(want) >= 0 || Object.keys(KIND_COLOR).some(function (k) { return KIND_COLOR[k] === want; }) ? want : KIND_COLOR[z.kind];
-      out.zones.push({ kind: z.kind, label: text(z.label, 30), color: color, pts: pts });
+      // A "club" zone named after one of the kinds (Parking, Overflow, Vendors...) is that kind, in that kind's
+      // color; any other zone left in the club color takes its kind's own. Each kind reads at a glance.
+      var label = text(z.label, 30), kind = z.kind;
+      if (kind === 'club') {
+        var named = Object.keys(ZONES).filter(function (k) { return k !== 'club' && ZONES[k].toLowerCase() === label.toLowerCase(); })[0];
+        if (named) kind = named;
+      }
+      if (kind !== 'club' && color === KIND_COLOR.club) color = KIND_COLOR[kind];
+      out.zones.push({ kind: kind, label: label, color: color, pts: pts });
     });
     (Array.isArray(v.pins) ? v.pins : []).slice(0, 20).forEach(function (p) {
       var at = pt(p);

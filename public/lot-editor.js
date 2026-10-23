@@ -16,7 +16,7 @@
   function mount(box, o) {
     var meet = o.meet, api = o.api;
     var lot = meet.lot ? JSON.parse(JSON.stringify(meet.lot)) : null;
-    var mode = lot ? 'select' : 'move', zoneKind = 'club', zoneColor = L.KIND_COLOR.club, pinKind = 'enter';
+    var mode = lot ? 'select' : 'move', zoneKind = 'parking', zoneColor = L.KIND_COLOR.parking, pinKind = 'enter';
     var shapes = null, shapesAt = ''; // parking already on the map around the spot: [{ id, type: lot | space | aisle, pts }]
     var chosen = { s: {}, z: {} }, sheet = null; // what Select has picked (map shapes by id, zones by index); the sheet's step
     var history = []; // the layout before each change, for Undo

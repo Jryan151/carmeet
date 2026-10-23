@@ -116,7 +116,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     return { name: h.name, slug: h.slug, email: h.email, tagline: h.tagline || '', city: h.city || '', accent: h.accent || '', logo: h.logo || '',
       instagram: h.instagram || '', tiktok: h.tiktok || '', youtube: h.youtube || '', rules: h.rules || '', closeMinutes: h.close_minutes,
       timezone: h.timezone || '', mapTiles: geo.tiles(), mapCredit: geo.credit(), customDomain: h.custom_domain || '', domainOn: !!h.domain_on, pageUrl: pageUrl(h), siteName: SITE(), foodOn: K.on(), mailOn: mail.configured(),
-      video: videoShape(h), videoReady: V.ffmpegOk(), owner: isOwner(h) };
+      video: videoShape(h), videoReady: V.ffmpegOk(), owner: isOwner(h), alertsOn: !!h.alerts_on };
   }
   function meetShape(m, h) {
     const tz = tzOf(h); const t = U.meetTimes(m, tz);
@@ -346,6 +346,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
 
   /* ---------- updates: one message to the alert list and/or the trucks ---------- */
   async function tellAlerts(h, m, kind) {
+    if (!h.alerts_on) return; // alerts are off for this host (Settings)
     const tz = tzOf(h); const t = U.meetTimes(m, tz);
     const when = `${U.dayLong(t.startsAt, tz)}, ${U.time12(t.startsAt, tz)}–${U.time12(t.endsAt, tz)}`;
     const subject = kind === 'canceled' ? `Canceled: ${h.name}, ${U.dayShort(t.startsAt, tz)}` : kind === 'moved' ? `Changed: ${h.name} is now ${U.dayShort(t.startsAt, tz)} at ${m.place}` : `${h.name}: ${U.dayShort(t.startsAt, tz)} at ${m.place}`;
@@ -376,7 +377,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     if (limited('upd:' + h.id, 10, 60 * 60000)) return res.status(429).json({ error: 'That’s a lot of updates in an hour. Wait a bit.' });
     const text = U.cleanBlock(b.message, 600);
     if (!text) return res.status(400).json({ error: 'Write the update first.' });
-    const toAlerts = b.toAlerts === true; const toVendors = b.toVendors === true;
+    const toAlerts = b.toAlerts === true && !!req.me.alerts_on; const toVendors = b.toVendors === true;
     if (!toAlerts && !toVendors) return res.status(400).json({ error: 'Pick who gets it.' });
     const m = b.meetId ? await own(req, b.meetId) : await nextMeet(h);
     if (toVendors && !m) return res.status(400).json({ error: 'Trucks hear about a specific meet. Post one first.' });
@@ -939,6 +940,8 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     const domainOn = domain && domain === h.custom_domain ? h.domain_on : 0; // a new domain waits for setup
     const pick = (k, f) => (b[k] === undefined ? h[f] : b[k]);
     const closeChanged = close !== h.close_minutes;
+    const alertsOn = b.alertsOn === undefined ? h.alerts_on : (b.alertsOn ? 1 : 0);
+    if (alertsOn !== h.alerts_on) await run('UPDATE hosts SET alerts_on = ? WHERE id = ?', [alertsOn, h.id]);
     await run(`UPDATE hosts SET name = ?, tagline = ?, city = ?, accent = ?, instagram = ?, tiktok = ?, youtube = ?, rules = ?, close_minutes = ?, custom_domain = ?, domain_on = ?, updated_at = ? WHERE id = ?`,
       [name, U.clean(pick('tagline', 'tagline'), 120), U.clean(pick('city', 'city'), 60), accent, U.handle(pick('instagram', 'instagram')), U.handle(pick('tiktok', 'tiktok')), U.handle(pick('youtube', 'youtube')),
         U.cleanBlock(pick('rules', 'rules'), 600), close, domain || null, domainOn, Date.now(), h.id]);
