@@ -87,14 +87,13 @@ async function ensureSchema() {
   await exec(`CREATE TABLE IF NOT EXISTS kit_logos (
     id INTEGER PRIMARY KEY AUTOINCREMENT, host_id INTEGER NOT NULL, kind TEXT NOT NULL, name TEXT NOT NULL, file TEXT NOT NULL, created_at INTEGER NOT NULL
   )`);
-  // Vendors from the flyer kit a host lists on a meet's page (trucks not on the ordering system), in the order added.
+  // Logos from the flyer kit a host lists on a meet's page, in the order added: vendors under Food, car clubs under Clubs.
   await exec(`CREATE TABLE IF NOT EXISTS meet_kit_vendors (
     meet_id INTEGER NOT NULL, kit_id INTEGER NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (meet_id, kit_id)
   )`);
-  // Where each one sits on the top of the meet's page, around the host's logo: center (x, y) and size (s), as a
-  // percent of that area's width and height. Empty = an automatic spot.
-  for (const c of ['x', 'y', 's']) await addColumn('meet_kit_vendors', c, 'REAL');
-  for (const t of ['hosts', 'meets', 'site']) {
+  // The host portal's own background video (one row per host, id = the host's id).
+  await exec('CREATE TABLE IF NOT EXISTS host_portal (id INTEGER PRIMARY KEY)');
+  for (const t of ['hosts', 'meets', 'site', 'host_portal']) {
     await addColumn(t, 'video', 'TEXT');
     await addColumn(t, 'video_poster', 'TEXT');
     await addColumn(t, 'video_status', 'TEXT'); // processing | ready | failed

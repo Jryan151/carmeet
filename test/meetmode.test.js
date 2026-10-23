@@ -56,7 +56,7 @@ test('the logo keeps the whole crest, not a strip from the middle', { skip: !ffm
 test('the site opens on the host: round logo, no header, every truck linked to its menu', async () => {
   const r = await request(ctx, 'GET', SITE, '/');
   assert.equal(r.status, 200);
-  assert.match(r.text, /class="stage-logo" src="\/uploads\//);
+  assert.match(r.text, /class="avatar"><img src="\/uploads\//);
   assert.ok(!/<header class="wrap top">/.test(r.text), 'no name above the logo');
   assert.ok(!/Run a meet|Page by/.test(r.text));
   assert.ok(r.text.includes(`href="/meet/${ref}/birria-bros/"`), 'card truck → its menu in meet mode');
@@ -113,7 +113,7 @@ test('the page: logo and buttons on top, when and where under The spot, kit vend
   let r = await request(ctx, 'GET', SITE, '/');
   const hero = r.text.slice(r.text.indexOf('<section class="hero'), r.text.indexOf('<section id="spot"'));
   assert.ok(!/class="date"|data-countdown|Directions/.test(hero), 'no date block in the middle');
-  assert.match(hero, /<div class="stage">/, 'the logo area, open for the footage');
+  assert.match(hero, /class="showcase"/, 'open space for the footage');
   assert.ok(r.text.indexOf('<section id="spot"') < r.text.indexOf('<section id="food"'), 'the spot right under the top');
   assert.match(hero, /href="#alerts">Get alerts</);
   const spot = r.text.slice(r.text.indexOf('<section id="spot"'), r.text.indexOf('<section id="food"'));
@@ -129,13 +129,15 @@ test('the page: logo and buttons on top, when and where under The spot, kit vend
   assert.deepEqual((await request(ctx, 'GET', SITE, `/api/host/meets/${mid}/kit-vendors`, { cookie: C })).json.ids, [kid]);
   r = await request(ctx, 'GET', SITE, '/');
   assert.match(r.text, /<div class="minis"><img src="\/uploads\/[^"]+" alt="Boba Spot"/, 'a little round logo under Food');
-  assert.match(r.text, /class="stage-v" src="\/uploads\/[^"]+" alt="Boba Spot" title="Boba Spot" style="left:10%;top:10%;width:18%"/, 'an automatic spot beside the logo');
-  // Dragged to a spot of its own (kept within the area, a sensible size).
-  r = await request(ctx, 'PUT', SITE, `/api/host/meets/${mid}/kit-vendors/${kid}`, { cookie: C, body: { x: 61.25, y: 140, s: 2 } });
-  assert.equal(r.status, 200, r.text);
-  assert.deepEqual((await request(ctx, 'GET', SITE, `/api/host/meets/${mid}/kit-vendors`, { cookie: C })).json.spots, [{ id: kid, x: 61.3, y: 100, s: 8 }]);
+  assert.ok(!/<section id="clubs"/.test(r.text), 'no Clubs section without clubs');
+  // A car club: its own section, the same little round logos.
+  r = await request(ctx, 'POST', SITE, '/api/host/kit?kind=group&name=Viral%20Society', { cookie: C, raw: { buf: tallLogo(), type: 'image/png' } });
+  const club = r.json.logo.id;
+  await request(ctx, 'PUT', SITE, `/api/host/meets/${mid}/kit-vendors/${club}`, { cookie: C });
   r = await request(ctx, 'GET', SITE, '/');
-  assert.match(r.text, /alt="Boba Spot" title="Boba Spot" style="left:61.3%;top:100%;width:8%"/);
+  const food = r.text.slice(r.text.indexOf('<section id="food"'), r.text.indexOf('<section id="clubs"'));
+  assert.ok(!food.includes('Viral Society'), 'a club is not food');
+  assert.match(r.text, /<section id="clubs"><h2>Clubs<\/h2><div class="minis"><img src="\/uploads\/[^"]+" alt="Viral Society"/);
   r = await request(ctx, 'DELETE', SITE, `/api/host/meets/${mid}/kit-vendors/${kid}`, { cookie: C });
   assert.ok(!(await request(ctx, 'GET', SITE, '/')).text.includes('Boba Spot'), 'taken off again');
   // With an Instagram handle, the top button follows the host there.
@@ -143,4 +145,16 @@ test('the page: logo and buttons on top, when and where under The spot, kit vend
   assert.equal(r.status, 200, r.text);
   r = await request(ctx, 'GET', SITE, '/');
   assert.match(r.text, /<a class="btn[^"]*" href="https:\/\/instagram\.com\/tastytuesdayaz" rel="noopener">Follow on Instagram<\/a>/);
+});
+
+test('the portal background: its own video, only for the host', async () => {
+  let r = await request(ctx, 'GET', SITE, '/api/host/portal-video', { cookie: C });
+  assert.equal(r.status, 200);
+  assert.equal(r.json.video.status, null);
+  assert.equal((await request(ctx, 'GET', SITE, '/api/host/portal-video')).status, 401, 'signed in only');
+  r = await request(ctx, 'DELETE', SITE, '/api/host/portal-video', { cookie: C });
+  assert.equal(r.status, 200);
+  r = await request(ctx, 'GET', SITE, '/host');
+  assert.match(r.text, /portal\.js\?v=[a-z0-9]+/);
+  assert.ok(!/portal\.js\?v=6"/.test(r.text), 'the portal script carries this start’s version');
 });

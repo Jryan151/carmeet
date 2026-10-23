@@ -59,6 +59,7 @@
       $('signin').hidden = true; $('portal').hidden = false;
       $('whoName').textContent = me.name; $('whoUrl').innerHTML = '<a href="' + esc(me.pageUrl) + '" target="_blank" rel="noopener">' + esc(me.pageUrl.replace(/^https?:\/\//, '')) + '</a>';
       if (me.accent) document.documentElement.style.setProperty('--accent', me.accent);
+      api('GET', '/portal-video').then(function (v) { if (v.ok) portalBg(v.d.video); });
       show(tab);
     });
   }
@@ -76,10 +77,10 @@
 
   /* ---------- background video: upload with progress, then it processes on the server ---------- */
   function videoCard(v, scope, id) {
-    var where = scope === 'meet' ? 'this meet' : scope === 'site' ? 'the front page' : 'your page';
+    var where = scope === 'meet' ? 'this meet' : scope === 'site' ? 'the front page' : scope === 'portal' ? 'your portal' : 'your page';
     var st = v && v.status;
-    return '<div class="card"><h3>' + (scope === 'site' ? 'Front page video' : 'Background video' + (scope === 'meet' ? ' for this meet' : '')) + '</h3>' +
-      '<p class="small dim">' + (scope === 'meet' ? 'Plays behind this meet’s date instead of your usual one. Last week’s recap footage works well.' : scope === 'site' ? 'Plays at the top of ' + esc(location.host) + ', the site’s own front page. Only you see this.' : 'Plays behind the date at the top of your page, silent and on repeat.') +
+    return '<div class="card"><h3>' + (scope === 'site' ? 'Front page video' : scope === 'portal' ? 'Portal background' : 'Background video' + (scope === 'meet' ? ' for this meet' : '')) + '</h3>' +
+      '<p class="small dim">' + (scope === 'portal' ? 'Plays behind this portal, only for you.' : scope === 'meet' ? 'Plays behind this meet’s date instead of your usual one. Last week’s recap footage works well.' : scope === 'site' ? 'Plays at the top of ' + esc(location.host) + ', the site’s own front page. Only you see this.' : 'Plays behind the date at the top of your page, silent and on repeat.') +
       ' Any clip from your phone: it becomes a 15-second 1080p loop.</p>' +
       (st === 'ready' ? '<img src="' + esc(v.poster) + '" alt="" style="width:100%;border-radius:8px;margin:6px 0">' : '') +
       (st === 'processing' ? '<p class="msg ok">Processing. It shows on ' + where + ' in a minute or two.</p>' : '') +
@@ -94,7 +95,7 @@
     var msg = document.querySelector('[data-video-msg="' + scope + '"]');
     if (f.size > 400 * 1024 * 1024) return say(msg, 'That video is over 400 MB. Trim it on your phone first.');
     var x = new XMLHttpRequest();
-    x.open('POST', '/api/host' + (scope === 'meet' ? '/meets/' + id + '/video' : scope === 'site' ? '/site-video' : '/video'));
+    x.open('POST', '/api/host' + (scope === 'meet' ? '/meets/' + id + '/video' : scope === 'site' ? '/site-video' : scope === 'portal' ? '/portal-video' : '/video'));
     x.setRequestHeader('Content-Type', f.type || 'video/mp4');
     x.upload.onprogress = function (e) { if (e.lengthComputable) say(msg, 'Uploading… ' + Math.round(e.loaded / e.total * 100) + '%', true); };
     x.onload = function () {
@@ -104,6 +105,19 @@
     };
     x.onerror = function () { say(msg, 'The upload stopped. Try again on a stronger signal.'); };
     input.disabled = true; x.send(f);
+  }
+  // The portal's own background loop (Settings → Portal background), behind everything, like the public page.
+  var portalBgSrc = null;
+  function portalBg(v) {
+    var src = v && v.status === 'ready' ? v.url : null, el = document.getElementById('portalBg');
+    if (src === portalBgSrc) return;
+    portalBgSrc = src;
+    if (el) el.remove();
+    if (!src) return;
+    el = document.createElement('div'); el.id = 'portalBg'; el.className = 'page-bg'; el.setAttribute('aria-hidden', 'true');
+    el.style.backgroundImage = 'url("' + v.poster + '")';
+    el.innerHTML = '<video autoplay muted loop playsinline preload="auto" disablepictureinpicture poster="' + esc(v.poster) + '"><source src="' + esc(src) + '" type="video/mp4"></video>';
+    document.body.insertBefore(el, document.body.firstChild);
   }
   var pollTimer = null;
   // While a video processes, look again every 8 seconds (each redraw sets the next look only if it's still processing).
@@ -200,10 +214,35 @@
     };
   }
 
-  /* ---------- vendor logos on the meet's page: placed by hand around the host's logo (flyer.js) ---------- */
+  /* ---------- logos from the flyer kit on the meet's page: vendors under Food, car clubs under Clubs ---------- */
   function drawKitVendors(m) {
-    var box = $('kitVendorsBox'); if (!box || !window.Flyer) return;
-    Flyer.stage(box, { api: api, meet: m, me: me });
+    var box = $('kitVendorsBox'); if (!box) return;
+    Promise.all([api('GET', '/kit'), api('GET', '/meets/' + m.id + '/kit-vendors')]).then(function (r) {
+      if (!$('kitVendorsBox') || !r[0].ok || !r[1].ok) return;
+      var logos = r[0].d.logos || [], on = r[1].d.ids || [];
+      var tiles = function (list, none) {
+        return list.length ? '<div class="vpick">' + list.map(function (l) {
+          return '<button type="button" data-kv="' + l.id + '" aria-pressed="' + (on.indexOf(l.id) >= 0) + '"><span class="art"><img src="' + esc(l.url) + '" alt=""></span><span>' + esc(l.name) + '</span></button>';
+        }).join('') + '</div>' : '<p class="small dim">' + none + '</p>';
+      };
+      box.innerHTML = '<div class="card"><h3>Logos on the meet’s page</h3><p class="small dim">Tap a logo to show it on the meet’s page as a little round logo. Tap again to take it off. ' +
+        'Trucks that take pre-orders are added with Invite a truck above.</p>' +
+        '<p class="small" style="margin:12px 0 6px">Food (under Food)</p>' + tiles(logos.filter(function (l) { return l.kind === 'vendor' || l.kind === 'sponsor'; }), 'No vendor logos yet. Add them in the Flyer kit tab.') +
+        '<p class="small" style="margin:14px 0 6px">Clubs (their own section)</p>' + tiles(logos.filter(function (l) { return l.kind === 'group'; }), 'No car club logos yet. Add them in the Flyer kit tab as Car group.') +
+        '<div class="msg" id="kvMsg" role="status"></div></div>';
+      box.onclick = function (e) {
+        var b = e.target.closest('[data-kv]'); if (!b) return;
+        e.stopPropagation();
+        var was = b.getAttribute('aria-pressed') === 'true';
+        b.disabled = true;
+        api(was ? 'DELETE' : 'PUT', '/meets/' + m.id + '/kit-vendors/' + b.getAttribute('data-kv')).then(function (x) {
+          b.disabled = false;
+          if (!x.ok) return say($('kvMsg'), x.d.error);
+          b.setAttribute('aria-pressed', String(!was));
+          say($('kvMsg'), was ? 'Taken off the page.' : 'On the page now.', true);
+        });
+      };
+    });
   }
 
   /* ---------- trucks for one meet ---------- */
@@ -425,8 +464,9 @@
 
   /* ---------- settings and recaps ---------- */
   function drawSettings() {
-    Promise.all([api('GET', '/me'), api('GET', '/recaps'), api('GET', '/meets'), api('GET', '/site-video')]).then(function (rs) {
+    Promise.all([api('GET', '/me'), api('GET', '/recaps'), api('GET', '/meets'), api('GET', '/site-video'), api('GET', '/portal-video')]).then(function (rs) {
       me = rs[0].d.host; var recaps = rs[1].d.recaps || []; var siteVideo = rs[3].ok ? rs[3].d.video : null;
+      var portalVideo = (rs[4].ok && rs[4].d.video) || {};
       var html = '<div class="card"><h3>Your page</h3><form id="setForm">' +
         '<label for="sName">Meet name</label><input id="sName" maxlength="60" value="' + esc(me.name) + '">' +
         '<label for="sCity">City</label><input id="sCity" maxlength="60" value="' + esc(me.city) + '">' +
@@ -439,6 +479,7 @@
       html += '<div class="card"><h3>Logo</h3>' + (me.logo ? '<img src="' + esc(me.logo) + '" alt="" style="width:64px;height:64px;border-radius:10px;object-fit:cover;margin-bottom:8px">' : '') +
         '<input type="file" id="logoFile" accept="image/jpeg,image/png" aria-label="Logo image"><div class="msg" id="logoMsg" role="status"></div></div>';
       html += videoCard(me.video, 'host');
+      html += videoCard(portalVideo, 'portal');
       if (me.owner && siteVideo) html += videoCard(siteVideo, 'site');
       html += '<div class="card"><h3>Recap</h3><p class="small dim">The newest recap shows on your page: a video link and up to 9 photos.</p><form id="recapForm">' +
         '<label for="rVideo">Video link (YouTube, Instagram, TikTok, Vimeo)</label><input id="rVideo" maxlength="300" placeholder="https://youtube.com/watch?v=…">' +
@@ -453,10 +494,15 @@
       view(html);
       var accent = me.accent || ACCENTS[0];
       Array.prototype.forEach.call(document.querySelectorAll('[data-video-file]'), function (inp) { inp.onchange = function () { uploadVideo(inp, drawSettings); }; });
-      if ((me.video && me.video.status === 'processing') || (siteVideo && siteVideo.status === 'processing')) poll(drawSettings);
+      if ((me.video && me.video.status === 'processing') || (siteVideo && siteVideo.status === 'processing') || portalVideo.status === 'processing') poll(drawSettings);
+      portalBg(portalVideo);
       $('view').onclick = function (e) {
         var b;
-        if ((b = e.target.closest('[data-video-drop]'))) { var site = b.getAttribute('data-video-drop') === 'site'; if (confirm(site ? 'Remove the front page video?' : 'Remove the background video?')) api('DELETE', site ? '/site-video' : '/video').then(drawSettings); return; }
+        if ((b = e.target.closest('[data-video-drop]'))) {
+          var sc = b.getAttribute('data-video-drop');
+          if (confirm(sc === 'site' ? 'Remove the front page video?' : sc === 'portal' ? 'Remove the portal background?' : 'Remove the background video?')) api('DELETE', sc === 'site' ? '/site-video' : sc === 'portal' ? '/portal-video' : '/video').then(drawSettings);
+          return;
+        }
         if ((b = e.target.closest('[data-accent]'))) { accent = b.getAttribute('data-accent'); Array.prototype.forEach.call(document.querySelectorAll('[data-accent]'), function (x) { x.setAttribute('aria-pressed', String(x === b)); }); document.documentElement.style.setProperty('--accent', accent); }
         else if ((b = e.target.closest('[data-del-recap]'))) { if (confirm('Delete this recap and its photos?')) api('DELETE', '/recaps/' + b.getAttribute('data-del-recap')).then(drawSettings); }
         else if (e.target.id === 'signOut') api('POST', '/logout', {}).then(function () { me = null; showSignin(); });

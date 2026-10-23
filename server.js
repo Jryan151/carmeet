@@ -136,7 +136,7 @@ async function latestRecap(host) {
 }
 async function renderMeet(req, res, host, m, isHome) {
   const [trucks, last, recap, upcoming, kitVendors] = await Promise.all([trucksFor(m), lastTurnout(host), latestRecap(host), upcomingOf(host),
-    all('SELECT k.id, k.name, k.file, v.x, v.y, v.s FROM meet_kit_vendors v JOIN kit_logos k ON k.id = v.kit_id WHERE v.meet_id = ? AND k.host_id = ? ORDER BY v.created_at, v.kit_id', [m.id, host.id])]);
+    all('SELECT k.id, k.kind, k.name, k.file FROM meet_kit_vendors v JOIN kit_logos k ON k.id = v.kit_id WHERE v.meet_id = ? AND k.host_id = ? ORDER BY v.created_at, v.kit_id', [m.id, host.id])]);
   res.set('Cache-Control', 'no-cache').type('html').send(V.meetPage(host, m, { tz: tzOf(host), base: baseOf(req, host), trucks, kitVendors, last, recap, upcoming, isHome, badge: badgeOf(host, req), meetMode: MEET_MODE(), origin: `${SCHEME}://${req.get('host')}` }));
 }
 const notFound = (req, res, host) => res.status(404).type('html').send(V.message(host || null, { title: 'Nothing here', text: 'The link may be old, or the address may have a typo.', href: host ? baseOf(req, host) || '/' : '/', cta: host ? 'See the next meet' : 'Go to the main page' }));
@@ -399,7 +399,7 @@ app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
  */
 async function tidyAtStart() {
   const Vid = require('./video');
-  for (const t of ['hosts', 'meets', 'site']) {
+  for (const t of ['hosts', 'meets', 'site', 'host_portal']) {
     await D.run(`UPDATE ${t} SET video_status = 'failed', video_error = ? WHERE video_status = 'processing'`,
       ['The server restarted while this video was processing. Upload it again.']).catch(() => {});
   }
