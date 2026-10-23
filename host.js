@@ -480,6 +480,29 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     if (!k) return res.status(404).json({ error: 'That logo is gone.' });
     fs.promises.unlink(path.join(UPLOAD_DIR, k.file)).catch(() => {});
     await run('DELETE FROM kit_logos WHERE id = ?', [k.id]);
+    await run('DELETE FROM meet_kit_vendors WHERE kit_id = ?', [k.id]);
+    res.json({ ok: true });
+  });
+
+  /* ---------- vendors from the kit listed on a meet's page (with their logo, under Food) ---------- */
+  r.get('/meets/:id/kit-vendors', signedIn, async (req, res) => {
+    const m = await own(req, req.params.id);
+    if (!m) return res.status(404).json({ error: 'That meet is gone.' });
+    const rows = await all('SELECT kit_id FROM meet_kit_vendors WHERE meet_id = ? ORDER BY created_at, kit_id', [m.id]);
+    res.set('Cache-Control', 'no-store').json({ ids: rows.map((x) => x.kit_id) });
+  });
+  r.put('/meets/:id/kit-vendors/:kit', signedIn, async (req, res) => {
+    const m = await own(req, req.params.id);
+    if (!m) return res.status(404).json({ error: 'That meet is gone.' });
+    const k = await get('SELECT * FROM kit_logos WHERE id = ? AND host_id = ?', [parseInt(req.params.kit, 10) || 0, req.me.id]);
+    if (!k) return res.status(404).json({ error: 'That logo is gone.' });
+    await run('INSERT OR IGNORE INTO meet_kit_vendors (meet_id, kit_id, created_at) VALUES (?, ?, ?)', [m.id, k.id, Date.now()]);
+    res.json({ ok: true });
+  });
+  r.delete('/meets/:id/kit-vendors/:kit', signedIn, async (req, res) => {
+    const m = await own(req, req.params.id);
+    if (!m) return res.status(404).json({ error: 'That meet is gone.' });
+    await run('DELETE FROM meet_kit_vendors WHERE meet_id = ? AND kit_id = ?', [m.id, parseInt(req.params.kit, 10) || 0]);
     res.json({ ok: true });
   });
 

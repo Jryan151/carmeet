@@ -200,6 +200,32 @@
     };
   }
 
+  /* ---------- vendors from the flyer kit, listed on the meet's page (tap to add, tap again to take off) ---------- */
+  function drawKitVendors(m) {
+    var box = $('kitVendorsBox'); if (!box) return;
+    Promise.all([api('GET', '/kit'), api('GET', '/meets/' + m.id + '/kit-vendors')]).then(function (r) {
+      if (!$('kitVendorsBox') || !r[0].ok || !r[1].ok) return;
+      var vendors = (r[0].d.logos || []).filter(function (l) { return l.kind === 'vendor' || l.kind === 'sponsor'; }), on = r[1].d.ids || [];
+      box.innerHTML = '<div class="card"><h3>Vendors on the meet’s page</h3><p class="small dim">Tap a vendor to show it under Food on the meet’s page, with its logo. Tap again to take it off. ' +
+        'Trucks that take pre-orders are added with Invite a truck above.</p>' +
+        (vendors.length ? '<div class="vpick">' + vendors.map(function (l) {
+          return '<button type="button" data-kv="' + l.id + '" aria-pressed="' + (on.indexOf(l.id) >= 0) + '"><span class="art"><img src="' + esc(l.url) + '" alt=""></span><span>' + esc(l.name) + '</span></button>';
+        }).join('') + '</div>' : '<p class="small dim">No vendor logos yet. Add them in the Flyer kit tab.</p>') + '<div class="msg" id="kvMsg" role="status"></div></div>';
+      box.onclick = function (e) {
+        var b = e.target.closest('[data-kv]'); if (!b) return;
+        e.stopPropagation();
+        var was = b.getAttribute('aria-pressed') === 'true';
+        b.disabled = true;
+        api(was ? 'DELETE' : 'PUT', '/meets/' + m.id + '/kit-vendors/' + b.getAttribute('data-kv')).then(function (x) {
+          b.disabled = false;
+          if (!x.ok) return say($('kvMsg'), x.d.error);
+          b.setAttribute('aria-pressed', String(!was));
+          say($('kvMsg'), was ? 'Taken off the page.' : 'On the page now.', true);
+        });
+      };
+    });
+  }
+
   /* ---------- trucks for one meet ---------- */
   function trucksHtml(m, trucks, known) {
     var html = '<div class="card"><h3>Food trucks</h3>';
@@ -260,12 +286,13 @@
           '<div class="bar"><button class="btn sm" data-copy-link="' + esc(m.url) + '">Copy page link</button><a class="btn sm" href="' + esc(m.url) + '" target="_blank" rel="noopener">Open page</a><button class="btn sm" data-edit="' + m.id + '">Edit</button></div>' +
           (m.syncError ? '<p class="msg bad">Food side not updated: ' + esc(m.syncError) + ' <button class="link" data-resync="' + m.id + '">Try again</button></p>' : '') +
           '<div class="stats"><div class="stat"><b>' + d.preorders + '</b><span>pre-orders paid</span></div><div class="stat"><b>' + d.trucks.filter(function (v) { return v.status === 'in'; }).length + '</b><span>trucks confirmed</span></div><div class="stat"><b>' + d.subscribers + '</b><span>on alerts</span></div></div>' +
-          '<div id="trucksBox"></div>';
+          '<div id="trucksBox"></div><div id="kitVendorsBox"></div>';
       }
       if (d.last && d.last.people) html += '<p class="small dim">Last logged: about ' + d.last.people + ' people' + (d.last.cars ? ', ' + d.last.cars + ' cars' : '') + ' on ' + esc(d.last.label.split(', ').slice(0, 2).join(', ')) + ' at ' + esc(d.last.place) + '.</p>';
       html += '<div id="reqBox"></div>';
       view(html);
       if (m) api('GET', '/meets/' + m.id + '/trucks').then(function (t) { if (t.ok) $('trucksBox').innerHTML = trucksHtml(m, t.d.trucks, t.d.known); });
+      if (m) drawKitVendors(m);
       if (d.requests) drawRequests();
       $('view').onclick = function (e) {
         if (m && truckActions(e, m, drawNext)) return;
@@ -320,12 +347,13 @@
       if (editing) html += meetForm(editing);
       else if (detail) html += '<p class="small"><button class="link" data-back>All meets</button></p><div class="card"><h3>' + esc(detail.title || detail.label) + '</h3><p class="dim">' + esc(detail.label) + ' · ' + esc(detail.place) + (detail.status === 'canceled' ? ' · canceled' : '') + '</p>' +
         '<div class="bar"><button class="btn sm" data-edit="' + detail.id + '">Edit</button><button class="btn sm" data-again="' + detail.id + '">Repeat next week</button>' +
-        (detail.status === 'canceled' ? '<button class="btn sm" data-uncancel="' + detail.id + '">Put it back on</button>' : '<button class="btn sm" data-cancel="' + detail.id + '">Cancel meet</button>') + '</div></div>' + flyerCard(detail) + '<div id="trucksBox"></div>' + videoCard(detail.video, 'meet', detail.id);
+        (detail.status === 'canceled' ? '<button class="btn sm" data-uncancel="' + detail.id + '">Put it back on</button>' : '<button class="btn sm" data-cancel="' + detail.id + '">Cancel meet</button>') + '</div></div>' + flyerCard(detail) + '<div id="trucksBox"></div><div id="kitVendorsBox"></div>' + videoCard(detail.video, 'meet', detail.id);
       else html += '<div class="bar" style="margin:16px 0"><button class="btn go" data-new>Post a meet</button></div>' + (list.length ? list.map(function (m) {
         return '<div class="rowx"><div><div><b>' + esc(m.label) + '</b></div><div class="tag">' + esc(m.place) + (m.title ? ' · ' + esc(m.title) : '') + (m.status === 'canceled' ? ' · canceled' : '') + '</div></div><button class="btn sm" data-open="' + m.id + '">Open</button></div>';
       }).join('') : '<p class="dim">Nothing coming up.</p>');
       view(html);
       if (detail) api('GET', '/meets/' + detail.id + '/trucks').then(function (t) { if (t.ok && $('trucksBox')) $('trucksBox').innerHTML = trucksHtml(detail, t.d.trucks, t.d.known); });
+      if (detail) drawKitVendors(detail);
       var form = $('meetForm');
       if (form) form.onsubmit = function (e) {
         e.preventDefault();

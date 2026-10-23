@@ -87,6 +87,10 @@ async function ensureSchema() {
   await exec(`CREATE TABLE IF NOT EXISTS kit_logos (
     id INTEGER PRIMARY KEY AUTOINCREMENT, host_id INTEGER NOT NULL, kind TEXT NOT NULL, name TEXT NOT NULL, file TEXT NOT NULL, created_at INTEGER NOT NULL
   )`);
+  // Vendors from the flyer kit a host lists on a meet's page (trucks not on the ordering system), in the order added.
+  await exec(`CREATE TABLE IF NOT EXISTS meet_kit_vendors (
+    meet_id INTEGER NOT NULL, kit_id INTEGER NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (meet_id, kit_id)
+  )`);
   for (const t of ['hosts', 'meets', 'site']) {
     await addColumn(t, 'video', 'TEXT');
     await addColumn(t, 'video_poster', 'TEXT');

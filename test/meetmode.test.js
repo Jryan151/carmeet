@@ -108,3 +108,30 @@ test('the privacy page meet mode links to is there, with no trace of the orderin
   assert.match(r.text, /Food pre-orders/);
   assert.ok(!/online ?kitchen/i.test(r.text));
 });
+
+test('the page: logo and buttons on top, when and where under The spot, kit vendors under Food, Instagram button', async () => {
+  let r = await request(ctx, 'GET', SITE, '/');
+  const hero = r.text.slice(r.text.indexOf('<section class="hero'), r.text.indexOf('<section id="food"'));
+  assert.ok(!/class="date"|data-countdown|Directions/.test(hero), 'no date block in the middle');
+  assert.match(hero, /href="#alerts">Get alerts</);
+  const spot = r.text.slice(r.text.indexOf('<section id="spot"'));
+  assert.match(spot, /class="when"[\s\S]*class="date"[\s\S]*data-countdown[\s\S]*9240 N 43rd Ave[\s\S]*Directions/);
+  // A vendor from the kit, listed on the meet's page.
+  r = await request(ctx, 'POST', SITE, '/api/host/kit?kind=vendor&name=Boba%20Spot', { cookie: C, raw: { buf: tallLogo(), type: 'image/png' } });
+  assert.equal(r.status, 201, r.text);
+  const kid = r.json.logo.id;
+  const meets = await request(ctx, 'GET', SITE, '/api/host/meets', { cookie: C });
+  const mid = (meets.json.meets || meets.json.upcoming || [])[0].id;
+  r = await request(ctx, 'PUT', SITE, `/api/host/meets/${mid}/kit-vendors/${kid}`, { cookie: C });
+  assert.equal(r.status, 200, r.text);
+  assert.deepEqual((await request(ctx, 'GET', SITE, `/api/host/meets/${mid}/kit-vendors`, { cookie: C })).json.ids, [kid]);
+  r = await request(ctx, 'GET', SITE, '/');
+  assert.match(r.text, /Boba Spot<\/div><div class="note">At the meet · order at the truck/);
+  r = await request(ctx, 'DELETE', SITE, `/api/host/meets/${mid}/kit-vendors/${kid}`, { cookie: C });
+  assert.ok(!(await request(ctx, 'GET', SITE, '/')).text.includes('Boba Spot'), 'taken off again');
+  // With an Instagram handle, the top button follows the host there.
+  r = await request(ctx, 'PUT', SITE, '/api/host/settings', { cookie: C, body: { instagram: '@tastytuesdayaz' } });
+  assert.equal(r.status, 200, r.text);
+  r = await request(ctx, 'GET', SITE, '/');
+  assert.match(r.text, /<a class="btn[^"]*" href="https:\/\/instagram\.com\/tastytuesdayaz" rel="noopener">Follow on Instagram<\/a>/);
+});

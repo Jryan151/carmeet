@@ -296,7 +296,7 @@
       '<p class="small dim" style="margin-top:8px">These change the flyer only. To change the meet itself, use Edit on the meet.</p></div>' +
       '<div class="card"><h3>3. Logos</h3><div id="fmLogos"><p class="dim">Loading your kit…</p></div></div>' +
       '<div class="card"><h3>Preview</h3><div class="bar" style="margin:0 0 10px"><button class="btn sm" data-size="post" aria-pressed="true">Post 4:5</button><button class="btn sm" data-size="story" aria-pressed="false">Story 9:16</button></div>' +
-      '<p class="small dim" style="margin:0 0 8px">Tap a vendor in step 3 to put it on the flyer, then drag it where you want it.</p>' +
+      '<p class="small dim" style="margin:0 0 8px">Tap a vendor in step 3 to put it on the flyer (it’s listed on the meet’s page too), then drag it where you want it.</p>' +
       '<canvas id="fmCanvas" style="width:100%;max-width:420px;border-radius:12px;border:1px solid var(--line);display:block;cursor:grab"></canvas>' +
       '<div id="fmEdit" hidden style="max-width:420px"><label for="fmSize">Size of <b id="fmSelName"></b></label><input type="range" id="fmSize" min="6" max="70" step="1" style="padding:0;min-height:32px">' +
       '<div class="bar" style="margin-top:6px"><button class="btn sm" data-remove>Take it off the flyer</button><button class="btn sm" data-done>Done</button></div></div>' +
@@ -323,7 +323,7 @@
         var list = kit.filter(function (l) { return kind === 'vendor' ? (l.kind === 'vendor' || l.kind === 'sponsor') : l.kind === kind; });
         if (!list.length) return '<p class="small dim">No ' + label + ' in your kit yet (Flyer kit tab).</p>';
         if (kind === 'vendor') {
-          return '<p class="small" style="margin:10px 0 6px">' + label + ': tap to put one on the flyer, tap again to take it off</p><div class="vpick">' + list.map(function (l) {
+          return '<p class="small" style="margin:10px 0 6px">' + label + ': tap to put one on the flyer and the meet’s page, tap again to take it off</p><div class="vpick">' + list.map(function (l) {
             return '<button type="button" data-place="' + l.id + '" aria-pressed="false"><span class="art"><img src="' + esc(l.url) + '" alt=""></span><span>' + esc(l.name) + '</span></button>';
           }).join('') + '</div>';
         }
@@ -376,7 +376,9 @@
     // A vendor's logo onto the flyer (at a free spot) or off it again.
     function togglePlace(id) {
       if (s.placed.some(function (x) { return x.id === id; })) {
-        s.placed = s.placed.filter(function (x) { return x.id !== id; }); if (sel === id) sel = null; redraw(); return;
+        s.placed = s.placed.filter(function (x) { return x.id !== id; }); if (sel === id) sel = null; redraw();
+        api('DELETE', '/meets/' + m.id + '/kit-vendors/' + id); // off the meet's page too
+        return;
       }
       var l = kit.filter(function (k) { return String(k.id) === id; })[0];
       if (!l) return;
@@ -385,6 +387,7 @@
         var spot = freeSpot(s);
         s.placed.push({ id: id, name: l.name, im: im, fx: spot[0], fy: spot[1], fw: fitWidth(im, 0.26, s.size) });
         sel = id; redraw();
+        api('PUT', '/meets/' + m.id + '/kit-vendors/' + id); // and listed under Food on the meet's page
       };
       if (imgs[id]) put(imgs[id]); else loadImage(l.url).then(function (im) { imgs[id] = im; put(im); }, function () {});
     }

@@ -83,6 +83,13 @@ function heroBg(vid) {
   </div>`;
 }
 
+/** The top button for news of the next meet: the host's Instagram when they've added it, else the email alerts. */
+function alertsBtn(host, main) {
+  const cls = `btn${main ? ' go' : ''}`;
+  return host.instagram
+    ? `<a class="${cls}" href="https://instagram.com/${esc(host.instagram)}" rel="noopener">Follow on Instagram</a>`
+    : `<a class="${cls}" href="#alerts">Get alerts</a>`;
+}
 /** The host's logo as a round profile picture: the top of their main page, no words. */
 function avatar(host) {
   return host.logo ? `<div class="avatar"><img src="${esc(host.logo)}" alt="${esc(host.name)}"></div>` : '';
@@ -93,20 +100,20 @@ function menuLink(v, m, mpath, ctx, canOrder) {
   return canOrder ? `${mpath}/food/${encodeURIComponent(v.slug)}` : null;
 }
 
-/** The meet in its parking space: day, date, time, spot, and how soon. */
-function stall(m, tz, { live, logo } = {}) {
+/** When and where: day, date, time, the spot with directions, and how soon. Shown under "The spot". */
+function when(m, tz, { live } = {}) {
   const t = U.meetTimes(m, tz);
   const off = m.status === 'canceled';
   const date = U.fmt(t.startsAt, tz, { month: 'short', day: 'numeric' });
   const dow = U.fmt(t.startsAt, tz, { weekday: 'long' });
   const maps = m.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(m.address)}` : null;
-  return `<div class="stall${off ? ' off' : ''}">
-  ${logo ? `<img class="mark" src="${esc(logo)}" alt="">` : ''}
+  return `<div class="when${off ? ' off' : ''}">
   <div class="dow">${esc(dow)}${m.title ? ` · ${esc(m.title)}` : ''}</div>
   <div class="date">${esc(date)}</div>
   <div class="time">${esc(U.time12(t.startsAt, tz))}–${esc(U.time12(t.endsAt, tz))}</div>
-  <div class="where">${esc(m.place)}${maps ? ` · <a href="${esc(maps)}" rel="noopener">Directions</a>` : ''}</div>
   ${off ? '<div class="soon">Canceled</div>' : live ? `<div class="soon" data-countdown="${t.startsAt}" data-ends="${t.endsAt}"></div>` : ''}
+  <p class="where">${esc(m.place)}${m.address ? `<br><span class="dim">${esc(m.address)}</span>` : ''}</p>
+  ${maps ? `<a class="btn" href="${esc(maps)}" rel="noopener">Directions</a>` : ''}
 </div>`;
 }
 
@@ -122,27 +129,30 @@ function meetPage(host, m, ctx) {
   const anyPreorder = !over && m.status === 'on' && trucks.some(takes);
   const mpath = `${base}/${m.day}`;
   const rules = String(host.rules || '').split('\n').map((s) => s.trim()).filter(Boolean);
-  const desc = `${U.dayLong(t.startsAt, tz)}, ${U.time12(t.startsAt, tz)} at ${m.place}.${trucks.length ? ' Food: ' + trucks.map((v) => v.name).join(', ') + '.' : ''}`;
+  const foodNames = trucks.map((v) => v.name).concat((ctx.kitVendors || []).map((k) => k.name)).filter((n, i, a) => n && a.indexOf(n) === i);
+  const desc = `${U.dayLong(t.startsAt, tz)}, ${U.time12(t.startsAt, tz)} at ${m.place}.${foodNames.length ? ' Food: ' + foodNames.join(', ') + '.' : ''}`;
   // The background loop: this meet's own clip, or the host's usual one.
   const vid = m.video && m.video_status === 'ready' ? m : host.video && host.video_status === 'ready' ? host : null;
-  // The main page opens on the round logo (no header text); the other meet pages keep the name at the top.
-  const round = ctx.isHome && host.logo;
+  // The top of the page: the host's logo (or name), the flyer, and the buttons. When and where are under "The spot".
+  const round = !!host.logo;
   let body = (round ? '' : top(host, base)) + `<main class="wrap">
 <section class="hero${vid ? ' has-video' : ''}${m.flyer ? ' with-flyer' : ''}${round ? ' has-avatar' : ''}">
   ${heroBg(vid)}
   ${round ? avatar(host) : ''}
-  ${ctx.isHome ? '' : `<p class="small dim"><a href="${esc(base || '/')}">Next meet</a></p>`}
+  ${ctx.isHome ? '' : `<p class="small dim" style="text-align:center"><a href="${esc(base || '/')}">Next meet</a></p>`}
   ${m.flyer ? `<figure class="flyer"><img src="/uploads/${esc(m.flyer)}" alt="${esc(host.name)} flyer for ${esc(U.dayLong(t.startsAt, tz))}"></figure>` : ''}
-  ${stall(m, tz, { live: !over, logo: m.flyer || round ? null : host.logo })}
-  ${over ? '<p class="dim">This meet is over.</p>' : ''}
+  ${over ? '<p class="dim" style="text-align:center">This meet is over.</p>' : m.status === 'canceled' ? '<p class="soon-line">This meet is canceled.</p>' : ''}
   ${!over && m.status === 'on' ? `<div class="actions">
     ${anyPreorder ? `<a class="btn go" href="#food">Pre-order food</a>` : ''}
-    <a class="btn${anyPreorder ? '' : ' go'}" href="#alerts">Get alerts</a>
+    ${alertsBtn(host, !anyPreorder)}
   </div>` : ''}
   ${m.notes ? `<p class="dim" style="margin-top:10px">${esc(m.notes)}</p>` : ''}
 </section>`;
   body += `<section id="food"><h2>Food</h2>`;
-  if (!trucks.length) body += `<p class="dim">${over ? 'No food trucks were listed for this meet.' : 'Food trucks will show here once they’re confirmed.'}</p>`;
+  // Vendors the host listed from their flyer kit (not on the ordering system): name and logo, order at the truck.
+  const taken = new Set(trucks.map((v) => String(v.name || '').trim().toLowerCase()));
+  const kit = (ctx.kitVendors || []).filter((k) => !taken.has(String(k.name).trim().toLowerCase()));
+  if (!trucks.length && !kit.length) body += `<p class="dim">${over ? 'No food trucks were listed for this meet.' : 'Food trucks will show here once they’re confirmed.'}</p>`;
   for (const v of trucks) {
     const can = anyPreorder && takes(v);
     const href = over || m.status !== 'on' ? null : menuLink(v, m, mpath, ctx, can);
@@ -152,13 +162,16 @@ function meetPage(host, m, ctx) {
       ${href ? `<span class="btn${can ? ' go' : ''}">${can ? 'Pre-order' : 'Menu'}</span>` : ''}`;
     body += href ? `<a class="truck" href="${esc(href)}">${inner}</a>` : `<div class="truck">${inner}</div>`;
   }
+  for (const k of kit) {
+    body += `<div class="truck"><img class="tlogo" src="/uploads/${esc(k.file)}" alt="" loading="lazy"><div class="tinfo"><div class="name">${esc(k.name)}</div><div class="note">${over ? 'Was at this meet' : 'At the meet · order at the truck'}</div></div></div>`;
+  }
   body += `</section>`;
   if (ctx.last && ctx.last.people) {
     body += `<section><p class="turnout">Last meet: about ${ctx.last.people} people${ctx.last.cars ? `, ${ctx.last.cars} cars` : ''}</p>
     <p class="small dim">${esc(U.dayShort(ctx.last.at, tz))}${ctx.last.place ? ` at ${esc(ctx.last.place)}` : ''}</p></section>`;
   }
-  if (m.address || rules.length) {
-    body += `<section><h2>The spot</h2><p>${esc(m.place)}${m.address ? `<br><span class="dim">${esc(m.address)}</span>` : ''}</p>
+  {
+    body += `<section id="spot"><h2>The spot</h2>${when(m, tz, { live: !over })}
     ${rules.length ? `<h3 style="margin:16px 0 8px">House rules</h3><ul class="rules">${rules.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>` : ''}</section>`;
   }
   const rc = ctx.recap;
@@ -191,8 +204,8 @@ function hostEmpty(host, ctx) {
   const body = (host.logo ? '' : top(host, ctx.base)) + `<main class="wrap"><section class="hero${vid ? ' has-video' : ''}${host.logo ? ' has-avatar' : ''}">
   ${heroBg(vid)}
   ${avatar(host)}
-  <div class="stall"><div class="dow">Next meet</div><div class="date">Soon</div><div class="time">Get an alert when it’s posted</div></div>
-  <div class="actions"><a class="btn go" href="#alerts">Get alerts</a></div>
+  <p class="soon-line">Next meet: soon. Get an alert when it’s posted.</p>
+  <div class="actions">${alertsBtn(host, true)}</div>
   </section>
   <section id="alerts"><h2>Get alerts</h2><p class="dim">An email when the next meet is posted. Nothing else.</p>
   <form class="row" data-form="alerts" data-host="${esc(host.slug)}"><input type="email" name="email" required maxlength="120" placeholder="you@email.com" aria-label="Your email">
