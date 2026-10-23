@@ -4,7 +4,9 @@ const U = require('./util');
 const { esc } = U;
 
 const SITE = () => process.env.SITE_NAME || 'Meet Night';
-const ver = () => process.env.ASSET_VERSION || '1';
+// A new version on every restart, so phones never keep an old stylesheet after an update.
+const STARTED = Date.now().toString(36);
+const ver = () => process.env.ASSET_VERSION || STARTED;
 
 function layout({ title, description, host, body, scripts = [], noindex, image }) {
   const accent = host && /^#[0-9a-f]{6}$/i.test(host.accent || '') ? host.accent : null;

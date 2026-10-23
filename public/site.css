@@ -76,7 +76,7 @@ p { margin: 0 0 12px; }
   animation: breathe 7s ease-in-out infinite; }
 @keyframes breathe { 0%, 100% { opacity: .78; } 50% { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .stall .halo { animation: none; } }
-.stall .mark { width: min(300px, 74%); max-height: 150px; object-fit: contain; margin: 0 auto 6px; filter: drop-shadow(0 0 18px color-mix(in srgb, var(--accent) 45%, transparent)); }
+.stall .mark { width: min(300px, 74%); max-height: 170px; object-fit: contain; margin: 0 auto 6px; mix-blend-mode: screen; /* a logo on a black square: the black drops out */ filter: drop-shadow(0 0 18px color-mix(in srgb, var(--accent) 45%, transparent)); }
 .stall .dow { font: italic 500 22px/1.2 var(--ether); color: var(--dim); letter-spacing: .04em; }
 .stall .date { font: 400 clamp(76px, 25vw, 132px)/.95 var(--display); margin: 2px 0 8px; letter-spacing: .01em;
   background: linear-gradient(180deg, #ffffff 0%, #e9e2f7 38%, #9d95b0 52%, #f7f2ff 64%, #c7bedb 100%);
