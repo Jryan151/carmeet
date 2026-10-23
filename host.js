@@ -23,6 +23,8 @@ const linkSecret = (() => { let s = process.env.LINK_SECRET; if (!s || s.length 
 const offSig = (id) => crypto.createHmac('sha256', linkSecret()).update('off:' + id).digest('hex').slice(0, 32);
 function offOk(s) { const [id, sig] = String(s || '').split('.'); return /^\d+$/.test(id || '') && sig && crypto.timingSafeEqual(Buffer.from(offSig(id)), Buffer.from(sig.padEnd(32).slice(0, 32))) ? +id : 0; }
 
+/** The site owner (SITE_OWNER_EMAIL) also sets the front page's background video. */
+const isOwner = (h) => !!process.env.SITE_OWNER_EMAIL && String(h.email).toLowerCase() === String(process.env.SITE_OWNER_EMAIL).trim().toLowerCase();
 const videoShape = (x) => ({ status: x.video_status || null, url: x.video ? '/uploads/' + x.video : null, poster: x.video_poster ? '/uploads/' + x.video_poster : null, error: x.video_error || null });
 
 function cookieOf(req, name) {
@@ -112,7 +114,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     return { name: h.name, slug: h.slug, email: h.email, tagline: h.tagline || '', city: h.city || '', accent: h.accent || '', logo: h.logo || '',
       instagram: h.instagram || '', tiktok: h.tiktok || '', youtube: h.youtube || '', rules: h.rules || '', closeMinutes: h.close_minutes,
       timezone: h.timezone || '', customDomain: h.custom_domain || '', domainOn: !!h.domain_on, pageUrl: pageUrl(h), siteName: SITE(), foodOn: K.on(), mailOn: mail.configured(),
-      video: videoShape(h), videoReady: V.ffmpegOk() };
+      video: videoShape(h), videoReady: V.ffmpegOk(), owner: isOwner(h) };
   }
   function meetShape(m, h) {
     const tz = tzOf(h); const t = U.meetTimes(m, tz);
@@ -444,6 +446,17 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     await run(`UPDATE ${table} SET video = NULL, video_poster = NULL, video_status = NULL, video_error = NULL WHERE id = ?`, [id]);
   }
   r.post('/video', signedIn, (req, res) => takeVideo(req, res, 'hosts', req.me.id));
+  // The front page's video: the site owner only.
+  r.get('/site-video', signedIn, async (req, res) => {
+    if (!isOwner(req.me)) return res.status(404).json({ error: 'Not found.' });
+    res.set('Cache-Control', 'no-store').json({ video: videoShape(await get('SELECT * FROM site WHERE id = 1')) });
+  });
+  r.post('/site-video', signedIn, (req, res) => (isOwner(req.me) ? takeVideo(req, res, 'site', 1) : res.status(404).json({ error: 'Not found.' })));
+  r.delete('/site-video', signedIn, async (req, res) => {
+    if (!isOwner(req.me)) return res.status(404).json({ error: 'Not found.' });
+    await dropVideo('site', 1);
+    res.json({ video: videoShape(await get('SELECT * FROM site WHERE id = 1')) });
+  });
   r.delete('/video', signedIn, async (req, res) => { await dropVideo('hosts', req.me.id); res.json({ host: hostShape(await get('SELECT * FROM hosts WHERE id = ?', [req.me.id])) }); });
   r.post('/meets/:id/video', signedIn, async (req, res) => {
     const m = await own(req, req.params.id);

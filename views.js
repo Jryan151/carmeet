@@ -195,11 +195,12 @@ function message(host, { title, text, href, cta }) {
 }
 
 /** The site's own front page: the meets coming up, and how a host gets a page. */
-function home(list) {
+function home(list, site) {
   const tz = process.env.TIMEZONE || 'America/Phoenix';
   const body = `<header class="wrap top"><span class="who">${esc(SITE())}</span></header>
 <main class="wrap">
-<section>
+<section class="hero${site && site.video && site.video_status === 'ready' ? ' has-video' : ''}">
+  ${heroBg(site && site.video && site.video_status === 'ready' ? site : null)}
   <div class="stall"><div class="dow">Car meets</div><div class="date">${list.length ? 'Tonight & soon' : 'Soon'}</div><div class="time">Where they are, when, and what’s to eat</div></div>
 </section>
 <section><h2>Coming up</h2>

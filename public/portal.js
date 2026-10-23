@@ -76,10 +76,10 @@
 
   /* ---------- background video: upload with progress, then it processes on the server ---------- */
   function videoCard(v, scope, id) {
-    var where = scope === 'meet' ? 'this meet' : 'your page';
+    var where = scope === 'meet' ? 'this meet' : scope === 'site' ? 'the front page' : 'your page';
     var st = v && v.status;
-    return '<div class="card"><h3>Background video' + (scope === 'meet' ? ' for this meet' : '') + '</h3>' +
-      '<p class="small dim">' + (scope === 'meet' ? 'Plays behind this meet’s date instead of your usual one. Last week’s recap footage works well.' : 'Plays behind the date at the top of your page, silent and on repeat.') +
+    return '<div class="card"><h3>' + (scope === 'site' ? 'Front page video' : 'Background video' + (scope === 'meet' ? ' for this meet' : '')) + '</h3>' +
+      '<p class="small dim">' + (scope === 'meet' ? 'Plays behind this meet’s date instead of your usual one. Last week’s recap footage works well.' : scope === 'site' ? 'Plays at the top of ' + esc(location.host) + ', the site’s own front page. Only you see this.' : 'Plays behind the date at the top of your page, silent and on repeat.') +
       ' Any clip from your phone: it becomes a 15-second 1080p loop.</p>' +
       (st === 'ready' ? '<img src="' + esc(v.poster) + '" alt="" style="width:100%;border-radius:8px;margin:6px 0">' : '') +
       (st === 'processing' ? '<p class="msg ok">Processing. It shows on ' + where + ' in a minute or two.</p>' : '') +
@@ -94,7 +94,7 @@
     var msg = document.querySelector('[data-video-msg="' + scope + '"]');
     if (f.size > 400 * 1024 * 1024) return say(msg, 'That video is over 400 MB. Trim it on your phone first.');
     var x = new XMLHttpRequest();
-    x.open('POST', '/api/host' + (scope === 'meet' ? '/meets/' + id + '/video' : '/video'));
+    x.open('POST', '/api/host' + (scope === 'meet' ? '/meets/' + id + '/video' : scope === 'site' ? '/site-video' : '/video'));
     x.setRequestHeader('Content-Type', f.type || 'video/mp4');
     x.upload.onprogress = function (e) { if (e.lengthComputable) say(msg, 'Uploading… ' + Math.round(e.loaded / e.total * 100) + '%', true); };
     x.onload = function () {
@@ -309,8 +309,8 @@
 
   /* ---------- settings and recaps ---------- */
   function drawSettings() {
-    Promise.all([api('GET', '/me'), api('GET', '/recaps'), api('GET', '/meets')]).then(function (rs) {
-      me = rs[0].d.host; var recaps = rs[1].d.recaps || [];
+    Promise.all([api('GET', '/me'), api('GET', '/recaps'), api('GET', '/meets'), api('GET', '/site-video')]).then(function (rs) {
+      me = rs[0].d.host; var recaps = rs[1].d.recaps || []; var siteVideo = rs[3].ok ? rs[3].d.video : null;
       var html = '<div class="card"><h3>Your page</h3><form id="setForm">' +
         '<label for="sName">Meet name</label><input id="sName" maxlength="60" value="' + esc(me.name) + '">' +
         '<label for="sCity">City</label><input id="sCity" maxlength="60" value="' + esc(me.city) + '">' +
@@ -323,6 +323,7 @@
       html += '<div class="card"><h3>Logo</h3>' + (me.logo ? '<img src="' + esc(me.logo) + '" alt="" style="width:64px;height:64px;border-radius:10px;object-fit:cover;margin-bottom:8px">' : '') +
         '<input type="file" id="logoFile" accept="image/jpeg,image/png" aria-label="Logo image"><div class="msg" id="logoMsg" role="status"></div></div>';
       html += videoCard(me.video, 'host');
+      if (me.owner && siteVideo) html += videoCard(siteVideo, 'site');
       html += '<div class="card"><h3>Recap</h3><p class="small dim">The newest recap shows on your page: a video link and up to 9 photos.</p><form id="recapForm">' +
         '<label for="rVideo">Video link (YouTube, Instagram, TikTok, Vimeo)</label><input id="rVideo" maxlength="300" placeholder="https://youtube.com/watch?v=…">' +
         '<label for="rCap">Caption</label><input id="rCap" maxlength="140" placeholder="Last Tuesday at Dunlap">' +
@@ -336,10 +337,10 @@
       view(html);
       var accent = me.accent || ACCENTS[0];
       Array.prototype.forEach.call(document.querySelectorAll('[data-video-file]'), function (inp) { inp.onchange = function () { uploadVideo(inp, drawSettings); }; });
-      if (me.video && me.video.status === 'processing') poll(drawSettings);
+      if ((me.video && me.video.status === 'processing') || (siteVideo && siteVideo.status === 'processing')) poll(drawSettings);
       $('view').onclick = function (e) {
         var b;
-        if ((b = e.target.closest('[data-video-drop]'))) { if (confirm('Remove the background video?')) api('DELETE', '/video').then(drawSettings); return; }
+        if ((b = e.target.closest('[data-video-drop]'))) { var site = b.getAttribute('data-video-drop') === 'site'; if (confirm(site ? 'Remove the front page video?' : 'Remove the background video?')) api('DELETE', site ? '/site-video' : '/video').then(drawSettings); return; }
         if ((b = e.target.closest('[data-accent]'))) { accent = b.getAttribute('data-accent'); Array.prototype.forEach.call(document.querySelectorAll('[data-accent]'), function (x) { x.setAttribute('aria-pressed', String(x === b)); }); document.documentElement.style.setProperty('--accent', accent); }
         else if ((b = e.target.closest('[data-del-recap]'))) { if (confirm('Delete this recap and its photos?')) api('DELETE', '/recaps/' + b.getAttribute('data-del-recap')).then(drawSettings); }
         else if (e.target.id === 'signOut') api('POST', '/logout', {}).then(function () { me = null; showSignin(); });

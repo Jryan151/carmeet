@@ -78,7 +78,10 @@ async function ensureSchema() {
   // Later additions go here, with addColumn, so a database from an older version picks them up.
   await addColumn('hosts', 'plan', "TEXT NOT NULL DEFAULT 'free'");
   // Background video behind the meet's date (video.js): the loop, its still frame, and where processing stands.
-  for (const t of ['hosts', 'meets']) {
+  // The site's own front page (one row): its background video, set by the site owner (SITE_OWNER_EMAIL).
+  await exec("CREATE TABLE IF NOT EXISTS site (id INTEGER PRIMARY KEY CHECK (id = 1), updated_at INTEGER)");
+  await run('INSERT OR IGNORE INTO site (id, updated_at) VALUES (1, 0)');
+  for (const t of ['hosts', 'meets', 'site']) {
     await addColumn(t, 'video', 'TEXT');
     await addColumn(t, 'video_poster', 'TEXT');
     await addColumn(t, 'video_status', 'TEXT'); // processing | ready | failed

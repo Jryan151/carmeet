@@ -328,7 +328,7 @@ app.get('/', async (req, res) => {
   const rows = await all(`SELECT m.*, h.slug, h.name AS host_name, h.timezone FROM meets m JOIN hosts h ON h.id = m.host_id
     WHERE m.status = 'on' AND m.day >= ? ORDER BY m.day, m.start_time LIMIT 30`, [U.addDays(U.dayKey(Date.now(), TZ()), -1)]);
   const list = rows.filter((m) => U.meetTimes(m, m.timezone || TZ()).endsAt > Date.now()).slice(0, 12);
-  res.set('Cache-Control', 'no-cache').type('html').send(V.home(list));
+  res.set('Cache-Control', 'no-cache').type('html').send(V.home(list, await get('SELECT * FROM site WHERE id = 1')));
 });
 app.get('/:a', async (req, res, next) => {
   if (req.own) { const m = await meetOn(req.own, req.params.a); return m ? renderMeet(req, res, req.own, m, false) : notFound(req, res, req.own); }

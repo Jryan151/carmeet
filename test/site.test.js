@@ -243,3 +243,10 @@ test('a background video: any clip becomes a silent 15-second 1080p loop with a 
   assert.ok(!r.text.includes('<video'));
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('only the site owner sets the front page video', async () => {
+  const r = await request(ctx, 'GET', SITE, '/api/host/site-video', { cookie: C });
+  assert.equal(r.status, 404, 'a host who isn’t the owner doesn’t see it');
+  const me = (await request(ctx, 'GET', SITE, '/api/host/me', { cookie: C })).json.host;
+  assert.equal(me.owner, false);
+});
