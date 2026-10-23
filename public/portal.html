@@ -7,8 +7,8 @@
 <title>Host portal</title>
 <meta name="theme-color" content="#17191e">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="/static/site.css?v=2">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Michroma&family=Instrument+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/static/site.css?v=3">
 <style>
   .tabs { display: flex; gap: 4px; overflow-x: auto; border-bottom: 1px solid var(--line); margin: 8px calc(-1 * var(--gutter)) 0; padding: 0 var(--gutter); scrollbar-width: none; }
   .tabs button { flex: none; background: none; border: 0; border-bottom: 3px solid transparent; color: var(--dim); font: 600 16px "Barlow", sans-serif; padding: 12px 10px; cursor: pointer; }
@@ -32,6 +32,15 @@
   .copybox { background: var(--lot-2); border: 1px dashed var(--line); border-radius: 8px; padding: 10px; font-size: 14px; word-break: break-word; }
   .checks label { display: flex; align-items: center; gap: 8px; color: var(--ink); margin: 8px 0; }
   .checks input { width: auto; min-height: 0; }
+  .kit { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+  .kit figure { margin: 0; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--lot); display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .kit .art { aspect-ratio: 1; display: grid; place-items: center; border-radius: 8px; padding: 8px;
+    background: repeating-conic-gradient(#1b1726 0 25%, #231d31 0 50%) 0 0 / 16px 16px; }
+  .kit .art img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  .kit figcaption { font-size: 14px; overflow-wrap: anywhere; }
+  .kit .bar { margin-top: 0; }
+  .kit .btn.sm { flex: 1; padding: 0 8px; }
+  .flyer-prev { width: 100%; max-width: 320px; border-radius: 10px; border: 1px solid var(--line); margin: 6px 0; }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -58,6 +67,7 @@
     <nav class="tabs" role="tablist">
       <button role="tab" data-tab="next" aria-selected="true">Next meet</button>
       <button role="tab" data-tab="meets">Meets</button>
+      <button role="tab" data-tab="kit">Flyer kit</button>
       <button role="tab" data-tab="updates">Send update</button>
       <button role="tab" data-tab="history">History</button>
       <button role="tab" data-tab="settings">Settings</button>
@@ -65,6 +75,6 @@
     <div id="view"></div>
   </div>
 </main>
-<script src="/static/portal.js?v=2" defer></script>
+<script src="/static/portal.js?v=3" defer></script>
 </body>
 </html>

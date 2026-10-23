@@ -250,3 +250,31 @@ test('only the site owner sets the front page video', async () => {
   const me = (await request(ctx, 'GET', SITE, '/api/host/me', { cookie: C })).json.host;
   assert.equal(me.owner, false);
 });
+
+test('a meet’s flyer is the page’s main picture and its link preview', async () => {
+  const zlib = require('node:zlib');
+  // A tiny real PNG (1×1).
+  const crc = (b) => { let c = ~0; for (const x of b) { c ^= x; for (let k = 0; k < 8; k++) c = (c >>> 1) ^ (0xedb88320 & -(c & 1)); } return ~c >>> 0; };
+  const chunk = (t, d) => { const len = Buffer.alloc(4); len.writeUInt32BE(d.length); const td = Buffer.concat([Buffer.from(t, 'latin1'), d]); const c = Buffer.alloc(4); c.writeUInt32BE(crc(td)); return Buffer.concat([len, td, c]); };
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(1, 0); ihdr.writeUInt32BE(1, 4); ihdr[8] = 8; ihdr[9] = 2;
+  const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(Buffer.from([0, 120, 80, 200]))), chunk('IEND', Buffer.alloc(0))]);
+  let r = await request(ctx, 'POST', SITE, `/api/host/meets/${meetId}/flyer`, { cookie: C, raw: { buf: png, type: 'image/png' } });
+  assert.equal(r.status, 200, r.text);
+  assert.match(r.json.meet.flyer, /^\/uploads\/.+\.png$/);
+  r = await request(ctx, 'GET', 'tastytuesday.com', '/' + day);
+  assert.ok(r.text.includes('class="flyer"') && r.text.includes(r.text.match(/\/uploads\/[a-f0-9]+\.png/)[0]));
+  assert.match(r.text, /og:image" content="[^"]+\/uploads\/[a-f0-9]+\.png"/);
+  r = await request(ctx, 'DELETE', SITE, `/api/host/meets/${meetId}/flyer`, { cookie: C });
+  assert.equal(r.json.meet.flyer, null);
+});
+
+test('the flyer kit keeps vendor and car group logos', async () => {
+  const fs = require('node:fs');
+  const buf = fs.readFileSync(require('node:path').join(__dirname, '..', 'public', 'fonts', 'README.md'));
+  let r = await request(ctx, 'POST', SITE, '/api/host/kit?kind=vendor&name=Lemon', { cookie: C, raw: { buf, type: 'image/png' } });
+  assert.equal(r.status, 400, 'not an image');
+  r = await request(ctx, 'POST', SITE, '/api/host/kit?kind=vendor&name=', { cookie: C, raw: { buf, type: 'image/png' } });
+  assert.equal(r.status, 400, 'needs a name');
+  r = await request(ctx, 'GET', SITE, '/api/host/kit', { cookie: C });
+  assert.deepEqual(r.json.logos, []);
+});

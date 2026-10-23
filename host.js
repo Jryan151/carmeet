@@ -120,7 +120,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     const tz = tzOf(h); const t = U.meetTimes(m, tz);
     return { id: m.id, ref: m.ref, title: m.title || '', day: m.day, start: m.start_time, end: m.end_time, place: m.place, address: m.address || '', notes: m.notes || '',
       status: m.status, startsAt: t.startsAt, endsAt: t.endsAt, label: `${U.dayShort(t.startsAt, tz)}, ${U.time12(t.startsAt, tz)}–${U.time12(t.endsAt, tz)}`,
-      over: t.endsAt < Date.now(), people: m.turnout_people, cars: m.turnout_cars, video: videoShape(m), synced: !!m.synced_at && !m.sync_error, syncError: m.sync_error || '', url: `${pageUrl(h)}/${m.day}` };
+      over: t.endsAt < Date.now(), people: m.turnout_people, cars: m.turnout_cars, video: videoShape(m), flyer: m.flyer ? '/uploads/' + m.flyer : null, synced: !!m.synced_at && !m.sync_error, syncError: m.sync_error || '', url: `${pageUrl(h)}/${m.day}` };
   }
   async function sync(h, m) {
     const s = await K.syncMeet(h, m);
@@ -387,6 +387,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
   });
   // A photo arrives as the raw file. Only JPEG or PNG, up to 6 MB; a JPEG's hidden data (where it was taken) is removed.
   const rawImage = express.raw({ type: ['image/jpeg', 'image/png'], limit: '6mb' });
+  const rawFlyer = express.raw({ type: ['image/jpeg', 'image/png'], limit: '12mb' });
   async function saveImage(buf) {
     const isJpeg = buf.length > 4 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
     const isPng = buf.length > 8 && buf.slice(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
@@ -407,6 +408,62 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     await run('INSERT INTO recap_photos (recap_id, host_id, file, created_at) VALUES (?, ?, ?, ?)', [x.id, req.me.id, name, Date.now()]);
     res.status(201).json({ url: '/uploads/' + name });
   });
+  /* ---------- the flyer for a meet ---------- */
+  r.post('/meets/:id/flyer', signedIn, rawFlyer, async (req, res) => {
+    const m = await own(req, req.params.id);
+    if (!m) return res.status(404).json({ error: 'That meet is gone.' });
+    const name = Buffer.isBuffer(req.body) ? await saveImage(req.body) : null;
+    if (!name) return res.status(400).json({ error: 'Use the flyer as a JPEG or PNG (a screenshot works).' });
+    if (m.flyer) fs.promises.unlink(path.join(UPLOAD_DIR, path.basename(m.flyer))).catch(() => {});
+    await run('UPDATE meets SET flyer = ?, updated_at = ? WHERE id = ?', [name, Date.now(), m.id]);
+    res.json({ meet: meetShape(await get('SELECT * FROM meets WHERE id = ?', [m.id]), req.me) });
+  });
+  r.delete('/meets/:id/flyer', signedIn, async (req, res) => {
+    const m = await own(req, req.params.id);
+    if (!m) return res.status(404).json({ error: 'That meet is gone.' });
+    if (m.flyer) fs.promises.unlink(path.join(UPLOAD_DIR, path.basename(m.flyer))).catch(() => {});
+    await run('UPDATE meets SET flyer = NULL, updated_at = ? WHERE id = ?', [Date.now(), m.id]);
+    res.json({ meet: meetShape(await get('SELECT * FROM meets WHERE id = ?', [m.id]), req.me) });
+  });
+
+  /* ---------- the flyer kit: vendor and car group logos, ready to paste onto a flyer ---------- */
+  const KINDS = ['vendor', 'group', 'sponsor'];
+  const kitShape = (k) => ({ id: k.id, kind: k.kind, name: k.name, url: '/uploads/' + k.file });
+  r.get('/kit', signedIn, async (req, res) => {
+    const rows = await all('SELECT * FROM kit_logos WHERE host_id = ? ORDER BY kind, name COLLATE NOCASE', [req.me.id]);
+    res.set('Cache-Control', 'no-store').json({ logos: rows.map(kitShape) });
+  });
+  r.post('/kit', signedIn, rawImage, async (req, res) => {
+    const kind = KINDS.includes(req.query.kind) ? req.query.kind : 'vendor';
+    const nm = U.clean(req.query.name, 60);
+    if (!nm) return res.status(400).json({ error: 'Name the logo (the vendor or car group).' });
+    const n = await get('SELECT COUNT(*) AS n FROM kit_logos WHERE host_id = ?', [req.me.id]);
+    if (n.n >= 200) return res.status(400).json({ error: 'Your kit has 200 logos. Delete a few first.' });
+    let name = Buffer.isBuffer(req.body) ? await saveImage(req.body) : null;
+    if (!name) return res.status(400).json({ error: 'Use a JPEG or PNG logo.' });
+    const trimmed = await V.trimLogo(path.join(UPLOAD_DIR, name), UPLOAD_DIR);
+    if (trimmed) { fs.promises.unlink(path.join(UPLOAD_DIR, name)).catch(() => {}); name = trimmed; }
+    const ins = await run('INSERT INTO kit_logos (host_id, kind, name, file, created_at) VALUES (?, ?, ?, ?, ?)', [req.me.id, kind, nm, name, Date.now()]);
+    res.status(201).json({ logo: kitShape(await get('SELECT * FROM kit_logos WHERE id = ?', [ins.lastID])) });
+  });
+  r.put('/kit/:id', signedIn, async (req, res) => {
+    const k = await get('SELECT * FROM kit_logos WHERE id = ? AND host_id = ?', [parseInt(req.params.id, 10) || 0, req.me.id]);
+    if (!k) return res.status(404).json({ error: 'That logo is gone.' });
+    const b = req.body || {};
+    const nm = b.name === undefined ? k.name : U.clean(b.name, 60);
+    if (!nm) return res.status(400).json({ error: 'Name the logo.' });
+    const kind = KINDS.includes(b.kind) ? b.kind : k.kind;
+    await run('UPDATE kit_logos SET name = ?, kind = ? WHERE id = ?', [nm, kind, k.id]);
+    res.json({ logo: kitShape(await get('SELECT * FROM kit_logos WHERE id = ?', [k.id])) });
+  });
+  r.delete('/kit/:id', signedIn, async (req, res) => {
+    const k = await get('SELECT * FROM kit_logos WHERE id = ? AND host_id = ?', [parseInt(req.params.id, 10) || 0, req.me.id]);
+    if (!k) return res.status(404).json({ error: 'That logo is gone.' });
+    fs.promises.unlink(path.join(UPLOAD_DIR, k.file)).catch(() => {});
+    await run('DELETE FROM kit_logos WHERE id = ?', [k.id]);
+    res.json({ ok: true });
+  });
+
   r.post('/logo', signedIn, rawImage, async (req, res) => {
     let name = Buffer.isBuffer(req.body) ? await saveImage(req.body) : null;
     if (!name) return res.status(400).json({ error: 'Use a JPEG or PNG image.' });

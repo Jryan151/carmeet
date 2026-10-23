@@ -70,7 +70,7 @@
     tab = t;
     Array.prototype.forEach.call(document.querySelectorAll('.tabs [data-tab]'), function (b) { b.setAttribute('aria-selected', String(b.getAttribute('data-tab') === t)); });
     view('<p class="dim" style="padding:20px 0">Loading…</p>');
-    ({ next: drawNext, meets: drawMeets, updates: drawUpdates, history: drawHistory, settings: drawSettings })[t]();
+    ({ next: drawNext, meets: drawMeets, kit: drawKit, updates: drawUpdates, history: drawHistory, settings: drawSettings })[t]();
   }
 
 
@@ -108,6 +108,63 @@
   var pollTimer = null;
   // While a video processes, look again every 8 seconds (each redraw sets the next look only if it's still processing).
   function poll(redraw) { clearTimeout(pollTimer); var t = tab; pollTimer = setTimeout(function () { if (tab === t) redraw(); }, 8000); }
+
+  /* ---------- the meet's flyer ---------- */
+  function flyerCard(m) {
+    return '<div class="card"><h3>Flyer</h3><p class="small dim">The one you post on Instagram. It becomes the main picture on this meet’s page, over your background video, and the preview when the link is shared.</p>' +
+      (m.flyer ? '<img class="flyer-prev" src="' + esc(m.flyer) + '" alt="">' : '') +
+      '<input type="file" id="flyerFile" data-id="' + m.id + '" accept="image/jpeg,image/png" aria-label="Choose the flyer image">' +
+      '<div class="msg" id="flyerMsg" role="status"></div>' +
+      (m.flyer ? '<div class="bar"><button class="btn sm" data-flyer-drop="' + m.id + '">Remove flyer</button></div>' : '') + '</div>';
+  }
+
+  /* ---------- flyer kit: logos to paste onto each week's flyer ---------- */
+  var KIND_NAMES = { vendor: 'Food vendors', group: 'Car groups', sponsor: 'Sponsors' };
+  function drawKit() {
+    api('GET', '/kit').then(function (r) {
+      if (!r.ok) return view('<p class="msg bad">' + esc(r.d.error) + '</p>');
+      var logos = r.d.logos;
+      var html = '<div class="card"><h3>Add a logo</h3><p class="small dim">Keep every vendor’s and car group’s logo here. When you make this week’s flyer, copy the ones you need and paste them in. A PNG with a see-through background works best; a black square around a logo is trimmed off.</p>' +
+        '<form id="kitForm"><label for="kName">Name</label><input id="kName" maxlength="60" placeholder="Taqueria Obregon" required>' +
+        '<label for="kKind">Type</label><select id="kKind"><option value="vendor">Food vendor</option><option value="group">Car group</option><option value="sponsor">Sponsor</option></select>' +
+        '<label for="kFile">Logo</label><input id="kFile" type="file" accept="image/png,image/jpeg" required>' +
+        '<div class="bar"><button class="btn go" type="submit">Add to kit</button></div><div class="msg" id="kitMsg" role="status"></div></form></div>';
+      ['vendor', 'group', 'sponsor'].forEach(function (k) {
+        var list = logos.filter(function (l) { return l.kind === k; });
+        if (!list.length) return;
+        html += '<h3 style="margin:22px 0 10px">' + KIND_NAMES[k] + ' (' + list.length + ')</h3><div class="kit">' + list.map(function (l) {
+          return '<figure><div class="art"><img src="' + esc(l.url) + '" alt="' + esc(l.name) + '" loading="lazy"></div><figcaption>' + esc(l.name) + '</figcaption>' +
+            '<div class="bar"><button class="btn sm go" data-kit-copy="' + esc(l.url) + '">Copy</button><a class="btn sm" href="' + esc(l.url) + '" download="' + esc(l.name.replace(/[^A-Za-z0-9 _-]/g, '')) + '.png">Save</a></div>' +
+            '<button class="link small" data-kit-del="' + l.id + '">Delete</button></figure>';
+        }).join('') + '</div>';
+      });
+      if (!logos.length) html += '<p class="dim">No logos yet. Add the vendors and car groups that show up on your flyers.</p>';
+      view(html);
+      $('kitForm').onsubmit = function (e) {
+        e.preventDefault();
+        var f = $('kFile').files[0], nm = $('kName').value.trim();
+        if (!f || !nm) return say($('kitMsg'), 'Add a name and pick the logo.');
+        say($('kitMsg'), 'Adding…', true);
+        api('POST', '/kit?kind=' + encodeURIComponent($('kKind').value) + '&name=' + encodeURIComponent(nm), null, f).then(function (r2) { if (!r2.ok) return say($('kitMsg'), r2.d.error); drawKit(); });
+      };
+      $('view').onclick = function (e) {
+        var b;
+        if ((b = e.target.closest('[data-kit-copy]'))) {
+          var url = b.getAttribute('data-kit-copy');
+          // Copied as an image, ready to paste into a flyer app (falls back to Save where copying images isn't allowed).
+          try {
+            var item = new ClipboardItem({ 'image/png': fetch(url).then(function (x) { return x.blob(); }).then(function (blob) {
+              if (blob.type === 'image/png') return blob;
+              return createImageBitmap(blob).then(function (bm) { var c = document.createElement('canvas'); c.width = bm.width; c.height = bm.height; c.getContext('2d').drawImage(bm, 0, 0); return new Promise(function (ok) { c.toBlob(ok, 'image/png'); }); });
+            }) });
+            navigator.clipboard.write([item]).then(function () { b.textContent = 'Copied'; setTimeout(function () { b.textContent = 'Copy'; }, 1500); }, function () { b.textContent = 'Use Save'; });
+          } catch (er) { b.textContent = 'Use Save'; }
+        } else if ((b = e.target.closest('[data-kit-del]'))) {
+          if (confirm('Delete this logo from your kit?')) api('DELETE', '/kit/' + b.getAttribute('data-kit-del')).then(drawKit);
+        }
+      };
+    });
+  }
 
   /* ---------- trucks for one meet ---------- */
   function trucksHtml(m, trucks, known) {
@@ -229,7 +286,7 @@
       if (editing) html += meetForm(editing);
       else if (detail) html += '<p class="small"><button class="link" data-back>All meets</button></p><div class="card"><h3>' + esc(detail.title || detail.label) + '</h3><p class="dim">' + esc(detail.label) + ' · ' + esc(detail.place) + (detail.status === 'canceled' ? ' · canceled' : '') + '</p>' +
         '<div class="bar"><button class="btn sm" data-edit="' + detail.id + '">Edit</button><button class="btn sm" data-again="' + detail.id + '">Repeat next week</button>' +
-        (detail.status === 'canceled' ? '<button class="btn sm" data-uncancel="' + detail.id + '">Put it back on</button>' : '<button class="btn sm" data-cancel="' + detail.id + '">Cancel meet</button>') + '</div></div><div id="trucksBox"></div>' + videoCard(detail.video, 'meet', detail.id);
+        (detail.status === 'canceled' ? '<button class="btn sm" data-uncancel="' + detail.id + '">Put it back on</button>' : '<button class="btn sm" data-cancel="' + detail.id + '">Cancel meet</button>') + '</div></div>' + flyerCard(detail) + '<div id="trucksBox"></div>' + videoCard(detail.video, 'meet', detail.id);
       else html += '<div class="bar" style="margin:16px 0"><button class="btn go" data-new>Post a meet</button></div>' + (list.length ? list.map(function (m) {
         return '<div class="rowx"><div><div><b>' + esc(m.label) + '</b></div><div class="tag">' + esc(m.place) + (m.title ? ' · ' + esc(m.title) : '') + (m.status === 'canceled' ? ' · canceled' : '') + '</div></div><button class="btn sm" data-open="' + m.id + '">Open</button></div>';
       }).join('') : '<p class="dim">Nothing coming up.</p>');
@@ -245,9 +302,18 @@
         });
       };
       Array.prototype.forEach.call(document.querySelectorAll('[data-video-file]'), function (inp) { inp.onchange = function () { uploadVideo(inp, drawMeets); }; });
+      var ff = document.getElementById('flyerFile');
+      if (ff) ff.onchange = function () {
+        var f = ff.files[0]; if (!f) return;
+        if (f.size > 12 * 1024 * 1024) return say($('flyerMsg'), 'That flyer is over 12 MB. A screenshot of it works.');
+        say($('flyerMsg'), 'Uploading…', true);
+        api('POST', '/meets/' + ff.getAttribute('data-id') + '/flyer', null, f).then(function (r2) { if (!r2.ok) return say($('flyerMsg'), r2.d.error); drawMeets(); });
+      };
       if (detail && detail.video && detail.video.status === 'processing') poll(drawMeets);
       $('view').onclick = function (e) {
         if (detail && truckActions(e, detail, drawMeets)) return;
+        var fd = e.target.closest('[data-flyer-drop]');
+        if (fd) { api('DELETE', '/meets/' + fd.getAttribute('data-flyer-drop') + '/flyer').then(drawMeets); return; }
         var vd = e.target.closest('[data-video-drop]');
         if (vd) { if (confirm('Remove this meet’s video?')) api('DELETE', '/meets/' + vd.getAttribute('data-id') + '/video').then(drawMeets); return; }
         var b;

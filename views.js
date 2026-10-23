@@ -7,6 +7,16 @@ const SITE = () => process.env.SITE_NAME || 'Meet Night';
 // A new version on every restart, so phones never keep an old stylesheet after an update.
 const STARTED = Date.now().toString(36);
 const ver = () => process.env.ASSET_VERSION || STARTED;
+// The flyer's own font, only when its file has been put in public/fonts (see the README there).
+const fs = require('fs');
+const path = require('path');
+function ownFont() {
+  const dir = path.join(__dirname, 'public', 'fonts');
+  const f = ['good-times.woff2', 'good-times.otf', 'good-times.ttf'].find((n) => fs.existsSync(path.join(dir, n)));
+  if (!f) return '';
+  const fmt = f.endsWith('woff2') ? 'woff2' : f.endsWith('otf') ? 'opentype' : 'truetype';
+  return `<style>@font-face{font-family:"Good Times";src:url("/static/fonts/${f}") format("${fmt}");font-display:swap}</style>`;
+}
 
 function layout({ title, description, host, body, scripts = [], noindex, image }) {
   const accent = host && /^#[0-9a-f]{6}$/i.test(host.accent || '') ? host.accent : null;
@@ -23,8 +33,9 @@ ${image ? `<meta property="og:image" content="${esc(image)}">` : ''}
 ${noindex ? '<meta name="robots" content="noindex">' : ''}
 <meta name="theme-color" content="#07060b">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pirata+One&family=Cormorant+Garamond:ital,wght@1,500;1,600&family=Instrument+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Michroma&family=Instrument+Sans:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="/static/site.css?v=${ver()}">
+${ownFont()}
 ${accent ? `<style>:root{--accent:${accent}}</style>` : ''}
 </head>
 <body>
@@ -104,10 +115,11 @@ function meetPage(host, m, ctx) {
   // The background loop: this meet's own clip, or the host's usual one.
   const vid = m.video && m.video_status === 'ready' ? m : host.video && host.video_status === 'ready' ? host : null;
   let body = top(host, base) + `<main class="wrap">
-<section class="hero${vid ? ' has-video' : ''}">
+<section class="hero${vid ? ' has-video' : ''}${m.flyer ? ' with-flyer' : ''}">
   ${heroBg(vid)}
   ${ctx.isHome ? '' : `<p class="small dim"><a href="${esc(base || '/')}">Next meet</a></p>`}
-  ${stall(m, tz, { live: !over, logo: host.logo })}
+  ${m.flyer ? `<figure class="flyer"><img src="/uploads/${esc(m.flyer)}" alt="${esc(host.name)} flyer for ${esc(U.dayLong(t.startsAt, tz))}"></figure>` : ''}
+  ${stall(m, tz, { live: !over, logo: m.flyer ? null : host.logo })}
   ${over ? '<p class="dim">This meet is over.</p>' : ''}
   ${!over && m.status === 'on' ? `<div class="actions">
     ${anyPreorder ? `<a class="btn go" href="#food">Pre-order food</a>` : ''}
@@ -153,7 +165,7 @@ function meetPage(host, m, ctx) {
     }).join('')}</div></section>`;
   }
   body += `</main>` + footer(host, base, ctx);
-  return layout({ title: `${host.name}: ${U.dayShort(t.startsAt, tz)}${m.title ? ' · ' + m.title : ''}`, description: desc, host, body, scripts: ['site.js'], image: vid && ctx.origin ? `${ctx.origin}/uploads/${vid.video_poster}` : null });
+  return layout({ title: `${host.name}: ${U.dayShort(t.startsAt, tz)}${m.title ? ' · ' + m.title : ''}`, description: desc, host, body, scripts: ['site.js'], image: !ctx.origin ? null : m.flyer ? `${ctx.origin}/uploads/${m.flyer}` : vid ? `${ctx.origin}/uploads/${vid.video_poster}` : null });
 }
 
 /** A host with nothing scheduled yet. */

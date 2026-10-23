@@ -81,6 +81,12 @@ async function ensureSchema() {
   // The site's own front page (one row): its background video, set by the site owner (SITE_OWNER_EMAIL).
   await exec("CREATE TABLE IF NOT EXISTS site (id INTEGER PRIMARY KEY CHECK (id = 1), updated_at INTEGER)");
   await run('INSERT OR IGNORE INTO site (id, updated_at) VALUES (1, 0)');
+  // Each meet's flyer (the one they post on Instagram), shown as the page's main picture.
+  await addColumn('meets', 'flyer', 'TEXT');
+  // The flyer kit: vendor and car group logos a host keeps on hand to paste onto each week's flyer.
+  await exec(`CREATE TABLE IF NOT EXISTS kit_logos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, host_id INTEGER NOT NULL, kind TEXT NOT NULL, name TEXT NOT NULL, file TEXT NOT NULL, created_at INTEGER NOT NULL
+  )`);
   for (const t of ['hosts', 'meets', 'site']) {
     await addColumn(t, 'video', 'TEXT');
     await addColumn(t, 'video_poster', 'TEXT');
