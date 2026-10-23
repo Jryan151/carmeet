@@ -21,7 +21,9 @@ function fakeKitchen() {
     let raw = '';
     req.on('data', (c) => { raw += c; });
     req.on('end', () => {
-      const body = raw ? JSON.parse(raw) : {};
+      let body = {}; try { body = raw ? JSON.parse(raw) : {}; } catch (e) { body = {}; }
+      // Meet mode: echo what came through the proxy.
+      if (req.url.startsWith('/meet/')) return send(res, 200, { url: req.url, method: req.method, headers: req.headers, raw });
       state.calls.push({ method: req.method, url: req.url, body });
       if (req.headers['x-meet-key'] !== KEY) return send(res, 401, { error: 'Wrong key.' });
       const p = req.url.replace(/^\/api\/meets\/partner/, '').split('/').filter(Boolean).map(decodeURIComponent);

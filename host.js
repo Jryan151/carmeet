@@ -128,6 +128,13 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     truckCache.delete(m.ref);
     return s;
   }
+  // The look of the trucks' menus follows the host's page (logo, video, colors): re-send upcoming meets when it changes.
+  async function refreshLook(hostId) {
+    try {
+      const h = await get('SELECT * FROM hosts WHERE id = ?', [hostId]);
+      for (const m of await all("SELECT * FROM meets WHERE host_id = ? AND day >= ? AND status = 'on'", [h.id, U.addDays(U.dayKey(Date.now(), tzOf(h)), -1)])) await sync(h, m);
+    } catch (e) { console.error('refresh look:', e.message); }
+  }
   const own = (req, id) => get('SELECT * FROM meets WHERE id = ? AND host_id = ?', [parseInt(id, 10) || 0, req.me.id]);
   async function nextMeet(h) {
     const tz = tzOf(h);
@@ -456,6 +463,18 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     await run('UPDATE kit_logos SET name = ?, kind = ? WHERE id = ?', [nm, kind, k.id]);
     res.json({ logo: kitShape(await get('SELECT * FROM kit_logos WHERE id = ?', [k.id])) });
   });
+  // A new picture for a logo already in the kit (same name and type).
+  r.post('/kit/:id/image', signedIn, rawImage, async (req, res) => {
+    const k = await get('SELECT * FROM kit_logos WHERE id = ? AND host_id = ?', [parseInt(req.params.id, 10) || 0, req.me.id]);
+    if (!k) return res.status(404).json({ error: 'That logo is gone.' });
+    let name = Buffer.isBuffer(req.body) ? await saveImage(req.body) : null;
+    if (!name) return res.status(400).json({ error: 'Use a JPEG or PNG logo.' });
+    const trimmed = await V.trimLogo(path.join(UPLOAD_DIR, name), UPLOAD_DIR);
+    if (trimmed) { fs.promises.unlink(path.join(UPLOAD_DIR, name)).catch(() => {}); name = trimmed; }
+    await run('UPDATE kit_logos SET file = ? WHERE id = ?', [name, k.id]);
+    fs.promises.unlink(path.join(UPLOAD_DIR, k.file)).catch(() => {});
+    res.json({ logo: kitShape(await get('SELECT * FROM kit_logos WHERE id = ?', [k.id])) });
+  });
   r.delete('/kit/:id', signedIn, async (req, res) => {
     const k = await get('SELECT * FROM kit_logos WHERE id = ? AND host_id = ?', [parseInt(req.params.id, 10) || 0, req.me.id]);
     if (!k) return res.status(404).json({ error: 'That logo is gone.' });
@@ -472,6 +491,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     if (trimmed) { fs.promises.unlink(path.join(UPLOAD_DIR, name)).catch(() => {}); name = trimmed; }
     if (req.me.logo && req.me.logo.startsWith('/uploads/')) fs.promises.unlink(path.join(UPLOAD_DIR, path.basename(req.me.logo))).catch(() => {});
     await run('UPDATE hosts SET logo = ?, updated_at = ? WHERE id = ?', ['/uploads/' + name, Date.now(), req.me.id]);
+    refreshLook(req.me.id);
     res.json({ host: hostShape(await get('SELECT * FROM hosts WHERE id = ?', [req.me.id])) });
   });
 
@@ -494,6 +514,8 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
         const old = await get(`SELECT video, video_poster FROM ${table} WHERE id = ?`, [id]);
         await run(`UPDATE ${table} SET video = ?, video_poster = ?, video_status = 'ready', video_error = NULL WHERE id = ?`, [out.video, out.poster, id]);
         if (old) { unlinkUpload(old.video); unlinkUpload(old.video_poster); }
+        if (table === 'hosts') refreshLook(id);
+        else if (table === 'meets') { const m = await get('SELECT * FROM meets WHERE id = ?', [id]); if (m) sync(await get('SELECT * FROM hosts WHERE id = ?', [m.host_id]), m).catch(() => {}); }
       } catch (e) {
         console.error('video:', e.message);
         await run(`UPDATE ${table} SET video_status = 'failed', video_error = ? WHERE id = ?`, ['That file couldn’t be read as a video. Try another clip.', id]);
@@ -517,7 +539,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     await dropVideo('site', 1);
     res.json({ video: videoShape(await get('SELECT * FROM site WHERE id = 1')) });
   });
-  r.delete('/video', signedIn, async (req, res) => { await dropVideo('hosts', req.me.id); res.json({ host: hostShape(await get('SELECT * FROM hosts WHERE id = ?', [req.me.id])) }); });
+  r.delete('/video', signedIn, async (req, res) => { await dropVideo('hosts', req.me.id); refreshLook(req.me.id); res.json({ host: hostShape(await get('SELECT * FROM hosts WHERE id = ?', [req.me.id])) }); });
   r.post('/meets/:id/video', signedIn, async (req, res) => {
     const m = await own(req, req.params.id);
     if (!m) return res.status(404).json({ error: 'That meet is gone.' });
@@ -527,6 +549,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     const m = await own(req, req.params.id);
     if (!m) return res.status(404).json({ error: 'That meet is gone.' });
     await dropVideo('meets', m.id);
+    sync(req.me, await get('SELECT * FROM meets WHERE id = ?', [m.id])).catch(() => {});
     res.json({ meet: meetShape(await get('SELECT * FROM meets WHERE id = ?', [m.id]), req.me) });
   });
 
@@ -549,7 +572,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
       [name, U.clean(pick('tagline', 'tagline'), 120), U.clean(pick('city', 'city'), 60), accent, U.handle(pick('instagram', 'instagram')), U.handle(pick('tiktok', 'tiktok')), U.handle(pick('youtube', 'youtube')),
         U.cleanBlock(pick('rules', 'rules'), 600), close, domain || null, domainOn, Date.now(), h.id]);
     const fresh = await get('SELECT * FROM hosts WHERE id = ?', [h.id]);
-    if (closeChanged || name !== h.name) { for (const m of await all("SELECT * FROM meets WHERE host_id = ? AND day >= ? AND status = 'on'", [h.id, U.dayKey(Date.now(), tzOf(h))])) await sync(fresh, m); }
+    if (closeChanged || name !== h.name || accent !== h.accent) { for (const m of await all("SELECT * FROM meets WHERE host_id = ? AND day >= ? AND status = 'on'", [h.id, U.dayKey(Date.now(), tzOf(h))])) await sync(fresh, m); }
     res.json({ host: hostShape(fresh) });
   });
 

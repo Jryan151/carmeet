@@ -83,6 +83,16 @@ function heroBg(vid) {
   </div>`;
 }
 
+/** The host's logo as a round profile picture: the top of their main page, no words. */
+function avatar(host) {
+  return host.logo ? `<div class="avatar"><img src="${esc(host.logo)}" alt="${esc(host.name)}"></div>` : '';
+}
+/** Where a truck's menu opens: the food side's own page through this site (meet mode), or the old page here. */
+function menuLink(v, m, mpath, ctx, canOrder) {
+  if (ctx.meetMode) return `/meet/${encodeURIComponent(m.ref)}/${encodeURIComponent(v.slug)}/`;
+  return canOrder ? `${mpath}/food/${encodeURIComponent(v.slug)}` : null;
+}
+
 /** The meet in its parking space: day, date, time, spot, and how soon. */
 function stall(m, tz, { live, logo } = {}) {
   const t = U.meetTimes(m, tz);
@@ -114,12 +124,15 @@ function meetPage(host, m, ctx) {
   const desc = `${U.dayLong(t.startsAt, tz)}, ${U.time12(t.startsAt, tz)} at ${m.place}.${trucks.length ? ' Food: ' + trucks.map((v) => v.name).join(', ') + '.' : ''}`;
   // The background loop: this meet's own clip, or the host's usual one.
   const vid = m.video && m.video_status === 'ready' ? m : host.video && host.video_status === 'ready' ? host : null;
-  let body = top(host, base) + `<main class="wrap">
-<section class="hero${vid ? ' has-video' : ''}${m.flyer ? ' with-flyer' : ''}">
+  // The main page opens on the round logo (no header text); the other meet pages keep the name at the top.
+  const round = ctx.isHome && host.logo;
+  let body = (round ? '' : top(host, base)) + `<main class="wrap">
+<section class="hero${vid ? ' has-video' : ''}${m.flyer ? ' with-flyer' : ''}${round ? ' has-avatar' : ''}">
   ${heroBg(vid)}
+  ${round ? avatar(host) : ''}
   ${ctx.isHome ? '' : `<p class="small dim"><a href="${esc(base || '/')}">Next meet</a></p>`}
   ${m.flyer ? `<figure class="flyer"><img src="/uploads/${esc(m.flyer)}" alt="${esc(host.name)} flyer for ${esc(U.dayLong(t.startsAt, tz))}"></figure>` : ''}
-  ${stall(m, tz, { live: !over, logo: m.flyer ? null : host.logo })}
+  ${stall(m, tz, { live: !over, logo: m.flyer || round ? null : host.logo })}
   ${over ? '<p class="dim">This meet is over.</p>' : ''}
   ${!over && m.status === 'on' ? `<div class="actions">
     ${anyPreorder ? `<a class="btn go" href="#food">Pre-order food</a>` : ''}
@@ -127,19 +140,22 @@ function meetPage(host, m, ctx) {
   </div>` : ''}
   ${m.notes ? `<p class="dim" style="margin-top:10px">${esc(m.notes)}</p>` : ''}
 </section>`;
-  if (ctx.last && ctx.last.people) {
-    body += `<section><p class="turnout">Last meet: about ${ctx.last.people} people${ctx.last.cars ? `, ${ctx.last.cars} cars` : ''}</p>
-    <p class="small dim">${esc(U.dayShort(ctx.last.at, tz))}${ctx.last.place ? ` at ${esc(ctx.last.place)}` : ''}</p></section>`;
-  }
   body += `<section id="food"><h2>Food</h2>`;
   if (!trucks.length) body += `<p class="dim">${over ? 'No food trucks were listed for this meet.' : 'Food trucks will show here once they’re confirmed.'}</p>`;
   for (const v of trucks) {
     const can = anyPreorder && v.cardReady;
-    body += `<div class="truck"><div><div class="name">${esc(v.emoji ? v.emoji + ' ' : '')}${esc(v.name)}</div>
-      <div class="note">${can ? 'Pre-order, pay now, pick up at the meet' : 'Order at the truck'}</div></div>
-      ${can ? `<a class="btn go" href="${esc(mpath)}/food/${esc(v.slug)}">Pre-order</a>` : ''}</div>`;
+    const href = over || m.status !== 'on' ? null : menuLink(v, m, mpath, ctx, can);
+    const note = can ? 'Pre-order, pick up at the meet' : href ? 'See the menu' : 'Order at the truck';
+    const inner = `${v.logo ? `<img class="tlogo" src="${esc(v.logo)}" alt="" loading="lazy">` : `<span class="tlogo emoji" aria-hidden="true">${esc(v.emoji || '🍽')}</span>`}
+      <div class="tinfo"><div class="name">${esc(v.name)}</div><div class="note">${note}</div></div>
+      ${href ? `<span class="btn${can ? ' go' : ''}">${can ? 'Pre-order' : 'Menu'}</span>` : ''}`;
+    body += href ? `<a class="truck" href="${esc(href)}">${inner}</a>` : `<div class="truck">${inner}</div>`;
   }
   body += `</section>`;
+  if (ctx.last && ctx.last.people) {
+    body += `<section><p class="turnout">Last meet: about ${ctx.last.people} people${ctx.last.cars ? `, ${ctx.last.cars} cars` : ''}</p>
+    <p class="small dim">${esc(U.dayShort(ctx.last.at, tz))}${ctx.last.place ? ` at ${esc(ctx.last.place)}` : ''}</p></section>`;
+  }
   if (m.address || rules.length) {
     body += `<section><h2>The spot</h2><p>${esc(m.place)}${m.address ? `<br><span class="dim">${esc(m.address)}</span>` : ''}</p>
     ${rules.length ? `<h3 style="margin:16px 0 8px">House rules</h3><ul class="rules">${rules.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>` : ''}</section>`;
@@ -171,9 +187,10 @@ function meetPage(host, m, ctx) {
 /** A host with nothing scheduled yet. */
 function hostEmpty(host, ctx) {
   const vid = host.video && host.video_status === 'ready' ? host : null;
-  const body = top(host, ctx.base) + `<main class="wrap"><section class="hero${vid ? ' has-video' : ''}">
+  const body = (host.logo ? '' : top(host, ctx.base)) + `<main class="wrap"><section class="hero${vid ? ' has-video' : ''}${host.logo ? ' has-avatar' : ''}">
   ${heroBg(vid)}
-  <div class="stall"><div class="halo" aria-hidden="true"></div>${host.logo ? `<img class="mark" src="${esc(host.logo)}" alt="">` : ''}<div class="dow">Next meet</div><div class="date">Soon</div><div class="time">Get an alert when it’s posted</div></div>
+  ${avatar(host)}
+  <div class="stall"><div class="halo" aria-hidden="true"></div><div class="dow">Next meet</div><div class="date">Soon</div><div class="time">Get an alert when it’s posted</div></div>
   <div class="actions"><a class="btn go" href="#alerts">Get alerts</a></div>
   </section>
   <section id="alerts"><h2>Get alerts</h2><p class="dim">An email when the next meet is posted. Nothing else.</p>
@@ -217,7 +234,7 @@ function home(list, site) {
 <main class="wrap">
 <section class="hero${site && site.video && site.video_status === 'ready' ? ' has-video' : ''}">
   ${heroBg(site && site.video && site.video_status === 'ready' ? site : null)}
-  <div class="stall"><div class="halo" aria-hidden="true"></div><div class="dow">Car meets</div><div class="date">${esc(SITE())}</div><div class="time">Where they are, when, and what’s to eat</div></div>
+  <div class="stall"><div class="halo" aria-hidden="true"></div><div class="dow">Car meets</div><div class="date word">${esc(SITE())}</div><div class="time">Where they are, when, and what’s to eat</div></div>
 </section>
 <section><h2>Coming up</h2>
 ${list.length ? `<div class="list-meets">${list.map((r) => {
@@ -225,9 +242,6 @@ ${list.length ? `<div class="list-meets">${list.map((r) => {
     return `<a href="/${esc(r.slug)}/${esc(r.day)}"><b>${esc(r.host_name)}</b><span class="dim">${esc(U.dayShort(t.startsAt, r.timezone || tz))}, ${esc(U.time12(t.startsAt, r.timezone || tz))} · ${esc(r.place)}</span></a>`;
   }).join('')}</div>` : '<p class="dim">Nothing posted yet.</p>'}
 </section>
-<section><h2>Run a meet?</h2>
-<p class="dim">Get a page for your meets: the next date and spot, food trucks people can pre-order from, and alerts when you post. Free.</p>
-<p><a class="btn go" href="/host">Make your page</a></p></section>
 </main>
 <footer><div class="wrap">${esc(SITE())}</div></footer>`;
   return layout({ title: `${SITE()}: car meets`, description: 'Car meets: where, when, and food you can pre-order.', body });

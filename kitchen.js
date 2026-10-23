@@ -35,7 +35,22 @@ function syncMeet(host, m) {
     hostKey: 'host_' + host.id, hostName: host.name, title: m.title || '', day: m.day, start: m.start_time, end: m.end_time,
     timezone: host.timezone || tz(), place: m.place, address: m.address || '', closeMinutes: host.close_minutes || 120,
     status: m.status === 'canceled' ? 'canceled' : 'on',
+    theme: themeOf(host, m),
   });
+}
+/** How a truck's menu looks in meet mode: this host's background loop, logo, colors and fonts, and the way back. */
+function themeOf(host, m) {
+  const vid = m.video && m.video_status === 'ready' ? m : host.video && host.video_status === 'ready' ? host : null;
+  const up = (f) => (f ? '/uploads/' + f : '');
+  return {
+    siteName: host.name,
+    accent: /^#[0-9a-f]{6}$/i.test(host.accent || '') ? host.accent : '#c9adff',
+    videoUrl: vid ? up(vid.video) : '', posterUrl: vid ? up(vid.video_poster) : '',
+    logoUrl: host.logo || '',
+    backUrl: '/' + host.slug + '/' + m.day,
+    fontsHref: 'https://fonts.googleapis.com/css2?family=Michroma&family=Instrument+Sans:wght@400;500;600&display=swap',
+    fontDisplay: 'Michroma', fontBody: 'Instrument Sans',
+  };
 }
 const meetVendors = (ref) => call('GET', '/' + encodeURIComponent(ref));
 const inviteLink = (ref) => call('POST', '/' + encodeURIComponent(ref) + '/invites', {});
@@ -73,4 +88,4 @@ function photoSource(sub, rest) {
   return `${k.protocol}//${sub === '_' ? '' : sub + '.'}${k.host}${rest}`;
 }
 
-module.exports = { on, call, syncMeet, meetVendors, inviteLink, addKnown, dropInvite, notice, menu, order, orderStatus, confirmOrder, cancelOrder, verify, photoPath, photoSource };
+module.exports = { themeOf, on, call, syncMeet, meetVendors, inviteLink, addKnown, dropInvite, notice, menu, order, orderStatus, confirmOrder, cancelOrder, verify, photoPath, photoSource };

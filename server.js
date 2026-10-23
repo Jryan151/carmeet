@@ -30,6 +30,11 @@ app.use((req, res, next) => {
   next();
 });
 
+/* ---------- meet mode: trucks' menus and order tracking, served by the food side under this site's address ---------- */
+// Before any body parsing: requests pass through untouched.
+app.use('/meet', require('./meetproxy').middleware(SCHEME));
+const MEET_MODE = () => process.env.MEET_MODE === '1';
+
 /* ---------- rate limits (per network) ---------- */
 function limit(windowMs, max, name) {
   const hits = new Map();
@@ -97,7 +102,8 @@ app.get(/^\/food-photo\/([a-z0-9_-]{1,63})(\/.+)$/, limitRead, async (req, res) 
 
 /* ---------- helpers for pages ---------- */
 const baseOf = (req, host) => (req.own && req.own.id === host.id ? '' : '/' + host.slug);
-const badgeOf = (host) => !host.domain_on;
+// The "Page by" line: not on a host's own domain, and not when the site itself opens on this host.
+const badgeOf = (host, req) => !host.domain_on && !(req && req.isMain);
 const truckCache = new Map(); // meet ref → { at, list }: the public page asks at most once a minute
 async function trucksFor(m, { fresh } = {}) {
   const c = truckCache.get(m.ref);
@@ -130,14 +136,14 @@ async function latestRecap(host) {
 }
 async function renderMeet(req, res, host, m, isHome) {
   const [trucks, last, recap, upcoming] = await Promise.all([trucksFor(m), lastTurnout(host), latestRecap(host), upcomingOf(host)]);
-  res.set('Cache-Control', 'no-cache').type('html').send(V.meetPage(host, m, { tz: tzOf(host), base: baseOf(req, host), trucks, last, recap, upcoming, isHome, badge: badgeOf(host), origin: `${SCHEME}://${req.get('host')}` }));
+  res.set('Cache-Control', 'no-cache').type('html').send(V.meetPage(host, m, { tz: tzOf(host), base: baseOf(req, host), trucks, last, recap, upcoming, isHome, badge: badgeOf(host, req), meetMode: MEET_MODE(), origin: `${SCHEME}://${req.get('host')}` }));
 }
 const notFound = (req, res, host) => res.status(404).type('html').send(V.message(host || null, { title: 'Nothing here', text: 'The link may be old, or the address may have a typo.', href: host ? baseOf(req, host) || '/' : '/', cta: host ? 'See the next meet' : 'Go to the main page' }));
 
 async function hostHome(req, res, host) {
   const up = await upcomingOf(host);
   const next = up.find((m) => m.status === 'on') || up[0];
-  if (!next) return res.set('Cache-Control', 'no-cache').type('html').send(V.hostEmpty(host, { base: baseOf(req, host), badge: badgeOf(host) }));
+  if (!next) return res.set('Cache-Control', 'no-cache').type('html').send(V.hostEmpty(host, { base: baseOf(req, host), badge: badgeOf(host, req) }));
   return renderMeet(req, res, host, next, true);
 }
 async function meetOn(host, day) {
@@ -323,8 +329,18 @@ app.get('/o', async (req, res) => {
   res.redirect(303, `/o/${t}?${req.query.paid ? 'paid=1' : 'canceled=1'}`);
 });
 
+// The site's own front page can be one host's page: HOME_HOST=<slug>, or the only host when there's just one.
+async function homeHost() {
+  if (process.env.HOME_HOST) return get('SELECT * FROM hosts WHERE slug = ?', [String(process.env.HOME_HOST).toLowerCase()]);
+  const rows = await all('SELECT * FROM hosts WHERE slug IS NOT NULL LIMIT 2');
+  return rows.length === 1 ? rows[0] : null;
+}
 app.get('/', async (req, res) => {
   if (req.own) return hostHome(req, res, req.own);
+  // Not on a host's own domain that's still waiting to be turned on.
+  const onSite = !(await get('SELECT 1 AS x FROM hosts WHERE custom_domain = ?', [String(req.hostname || '').toLowerCase()]));
+  const main = onSite ? await homeHost() : null;
+  if (main && !(main.domain_on && main.custom_domain)) { req.isMain = true; return hostHome(req, res, main); }
   const rows = await all(`SELECT m.*, h.slug, h.name AS host_name, h.timezone FROM meets m JOIN hosts h ON h.id = m.host_id
     WHERE m.status = 'on' AND m.day >= ? ORDER BY m.day, m.start_time LIMIT 30`, [U.addDays(U.dayKey(Date.now(), TZ()), -1)]);
   const list = rows.filter((m) => U.meetTimes(m, m.timezone || TZ()).endsAt > Date.now()).slice(0, 12);

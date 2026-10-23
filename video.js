@@ -74,19 +74,53 @@ async function process_(input, dir) {
  * kept to at most 900 px wide, as a PNG. A logo posted as a tall phone-sized image with black above and below
  * becomes just the crest. Returns the new file name, or null when ffmpeg isn't there or can't read it.
  */
-async function trimLogo(input, dir) {
-  if (!ffmpegOk()) return null;
-  const crop = await new Promise((ok) => {
-    const p = spawn(process.env.FFMPEG || 'ffmpeg', ['-hide_banner', '-loop', '1', '-i', input, '-vf', 'format=yuv420p,cropdetect=limit=0.12:round=2:reset=0', '-frames:v', '5', '-f', 'null', '-'], { stdio: ['ignore', 'ignore', 'pipe'] });
-    let err = '';
-    p.stderr.on('data', (d) => { err += d; });
+// The image read back as a small grid of RGBA pixels (S×S, stretched), plus its real size. ffmpeg's own
+// cropdetect gets the edges wrong on some images (it kept a thin middle strip of a crest), so the edges are
+// worked out here from the pixels instead.
+const S = 400;
+function pixels(input) {
+  return new Promise((ok) => {
+    const p = spawn(process.env.FFMPEG || 'ffmpeg', ['-hide_banner', '-i', input, '-frames:v', '1', '-vf', `scale=${S}:${S},format=rgba`, '-f', 'rawvideo', '-'], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const out = []; let err = '';
+    p.stdout.on('data', (d) => out.push(d));
+    p.stderr.on('data', (d) => { err = (err + d).slice(-8000); });
     const t = setTimeout(() => p.kill('SIGKILL'), 30000);
-    // Only a positive size counts: a negative one means nothing but margin was found.
-    p.on('close', () => { clearTimeout(t); const m = err.match(/crop=\d+:\d+:\d+:\d+/g); ok(m ? m[m.length - 1] : null); });
+    p.on('close', () => {
+      clearTimeout(t);
+      const buf = Buffer.concat(out), m = err.match(/Video:[^\n]*?, (\d{1,5})x(\d{1,5})[,\s]/);
+      ok(buf.length === S * S * 4 && m ? { buf, w: +m[1], h: +m[2] } : null);
+    });
     p.on('error', () => { clearTimeout(t); ok(null); });
   });
+}
+/** The logo's box inside the image: everything that isn't near-black (or see-through) margin. Null = keep it all. */
+function logoBox(px) {
+  const { buf, w, h } = px;
+  const at = (x, y) => (y * S + x) * 4;
+  // A see-through background (PNG with transparent corners): anything visible counts. Otherwise anything not near-black.
+  const corners = [at(0, 0), at(S - 1, 0), at(0, S - 1), at(S - 1, S - 1)];
+  const clear = corners.filter((i) => buf[i + 3] < 128).length >= 2;
+  const on = (i) => (clear ? buf[i + 3] > 40 : buf[i + 3] > 40 && Math.max(buf[i], buf[i + 1], buf[i + 2]) > 40);
+  const rows = new Array(S).fill(0), cols = new Array(S).fill(0);
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) if (on(at(x, y))) { rows[y]++; cols[x]++; }
+  const first = (a) => a.findIndex((n) => n >= 2), last = (a) => a.length - 1 - [...a].reverse().findIndex((n) => n >= 2);
+  const y0 = first(rows), x0 = first(cols);
+  if (y0 < 0 || x0 < 0) return null;
+  const y1 = last(rows), x1 = last(cols);
+  const pad = 0.02 * S;
+  const bx0 = Math.max(0, x0 - pad), by0 = Math.max(0, y0 - pad), bx1 = Math.min(S, x1 + 1 + pad), by1 = Math.min(S, y1 + 1 + pad);
+  const cw = Math.round(((bx1 - bx0) / S) * w), ch = Math.round(((by1 - by0) / S) * h);
+  const cx = Math.round((bx0 / S) * w), cy = Math.round((by0 / S) * h);
+  if (cw < 8 || ch < 8 || (cw >= w - 2 && ch >= h - 2)) return null;
+  return { w: Math.min(cw, w - cx), h: Math.min(ch, h - cy), x: cx, y: cy };
+}
+
+async function trimLogo(input, dir) {
+  if (!ffmpegOk()) return null;
+  const px = await pixels(input);
+  const box = px && logoBox(px);
   const name = `logo-${crypto.randomBytes(8).toString('hex')}.png`;
-  const vf = (crop && !/crop=0:0/.test(crop) ? crop + ',' : '') + "scale='min(900,iw)':-2";
+  const vf = (box ? `crop=${box.w}:${box.h}:${box.x}:${box.y},` : '') + "scale='min(900,iw)':-2";
   try {
     await run(['-hide_banner', '-loglevel', 'error', '-y', '-i', input, '-map_metadata', '-1', '-vf', vf, '-frames:v', '1', path.join(dir, name)], 60000);
     return name;

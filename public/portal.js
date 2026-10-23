@@ -124,6 +124,7 @@
     api('GET', '/kit').then(function (r) {
       if (!r.ok) return view('<p class="msg bad">' + esc(r.d.error) + '</p>');
       var logos = r.d.logos;
+      var byId = {}; logos.forEach(function (l) { byId[l.id] = l; });
       var html = '<div id="splitBox"></div><div class="card"><h3>Add a logo</h3><p class="small dim">Keep every vendor’s and car group’s logo here. When you make this week’s flyer, copy the ones you need and paste them in. A PNG with a see-through background works best; a black square around a logo is trimmed off.</p>' +
         '<form id="kitForm"><label for="kName">Name</label><input id="kName" maxlength="60" placeholder="Taqueria Obregon" required>' +
         '<label for="kKind">Type</label><select id="kKind"><option value="vendor">Food vendor</option><option value="group">Car group</option><option value="sponsor">Sponsor</option><option value="title">Meet title (like the Tasty Tuesday logo)</option></select>' +
@@ -133,9 +134,9 @@
         var list = logos.filter(function (l) { return l.kind === k; });
         if (!list.length) return;
         html += '<h3 style="margin:22px 0 10px">' + KIND_NAMES[k] + ' (' + list.length + ')</h3><div class="kit">' + list.map(function (l) {
-          return '<figure><div class="art"><img src="' + esc(l.url) + '" alt="' + esc(l.name) + '" loading="lazy"></div><figcaption>' + esc(l.name) + '</figcaption>' +
+          return '<figure data-kit-id="' + l.id + '"><div class="art"><img src="' + esc(l.url) + '" alt="' + esc(l.name) + '" loading="lazy"></div><figcaption>' + esc(l.name) + '</figcaption>' +
             '<div class="bar"><button class="btn sm go" data-kit-copy="' + esc(l.url) + '">Copy</button><a class="btn sm" href="' + esc(l.url) + '" download="' + esc(l.name.replace(/[^A-Za-z0-9 _-]/g, '')) + '.png">Save</a></div>' +
-            '<button class="link small" data-kit-del="' + l.id + '">Delete</button></figure>';
+            '<button class="link small" data-kit-edit="' + l.id + '">Edit</button></figure>';
         }).join('') + '</div>';
       });
       if (!logos.length) html += '<p class="dim">No logos yet. Add the vendors and car groups that show up on your flyers.</p>';
@@ -160,11 +161,43 @@
             }) });
             navigator.clipboard.write([item]).then(function () { b.textContent = 'Copied'; setTimeout(function () { b.textContent = 'Copy'; }, 1500); }, function () { b.textContent = 'Use Save'; });
           } catch (er) { b.textContent = 'Use Save'; }
+        } else if ((b = e.target.closest('[data-kit-edit]'))) {
+          editKit(b.closest('figure'), byId[b.getAttribute('data-kit-edit')]);
         } else if ((b = e.target.closest('[data-kit-del]'))) {
           if (confirm('Delete this logo from your kit?')) api('DELETE', '/kit/' + b.getAttribute('data-kit-del')).then(drawKit);
         }
       };
     });
+  }
+
+  // One logo's details, edited in place: its name, its type, a new picture, or delete it.
+  function editKit(fig, l) {
+    if (!fig || !l) return;
+    var ONE = { vendor: 'Food vendor', group: 'Car group', sponsor: 'Sponsor', title: 'Meet title' };
+    var opts = ['vendor', 'group', 'sponsor', 'title'].map(function (k) { return '<option value="' + k + '"' + (l.kind === k ? ' selected' : '') + '>' + ONE[k] + '</option>'; }).join('');
+    fig.classList.add('editing');
+    fig.innerHTML = '<div class="art"><img src="' + esc(l.url) + '" alt=""></div>' +
+      '<label>Name<input data-e="name" maxlength="60" value="' + esc(l.name) + '"></label>' +
+      '<label>Type<select data-e="kind">' + opts + '</select></label>' +
+      '<label>New picture (optional)<input data-e="file" type="file" accept="image/png,image/jpeg"></label>' +
+      '<div class="bar"><button class="btn sm go" data-e="save">Save</button><button class="btn sm" data-e="cancel">Cancel</button></div>' +
+      '<button class="link small" data-kit-del="' + l.id + '">Delete</button><div class="msg" role="status"></div>';
+    var q = function (k) { return fig.querySelector('[data-e="' + k + '"]'); }, msg = fig.querySelector('.msg');
+    q('name').focus();
+    q('cancel').onclick = function (e) { e.stopPropagation(); drawKit(); };
+    q('save').onclick = function (e) {
+      e.stopPropagation();
+      var nm = q('name').value.trim();
+      if (!nm) return say(msg, 'Name the logo.');
+      say(msg, 'Saving…', true);
+      api('PUT', '/kit/' + l.id, { name: nm, kind: q('kind').value }).then(function (r) {
+        if (!r.ok) return say(msg, r.d.error);
+        var f = q('file').files[0];
+        if (!f) return drawKit();
+        say(msg, 'Trimming the new picture…', true);
+        api('POST', '/kit/' + l.id + '/image', null, f).then(function (r2) { if (!r2.ok) return say(msg, r2.d.error); drawKit(); });
+      });
+    };
   }
 
   /* ---------- trucks for one meet ---------- */
