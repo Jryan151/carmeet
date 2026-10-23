@@ -461,7 +461,8 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
 
   /* ---------- the flyer kit: vendor and car group logos, ready to paste onto a flyer ---------- */
   const KINDS = ['vendor', 'group', 'sponsor', 'title'];
-  const kitShape = (k) => ({ id: k.id, kind: k.kind, name: k.name, url: k.file ? '/uploads/' + k.file : '', instagram: k.instagram || '', note: k.note || '', truckSlug: k.truck_slug || null });
+  const kitShape = (k) => ({ id: k.id, kind: k.kind, name: k.name, url: k.file ? '/uploads/' + k.file : '', instagram: k.instagram || '', note: k.note || '', truckSlug: k.truck_slug || null,
+    pageSlug: k.page_slug || null, pageOn: !!k.page_on, pageUrl: k.page_slug ? U.vendorUrl(k.page_slug, { absolute: true }) : null });
   const hostKey = (h) => 'host_' + h.id;
   // A Food vendor's truck profile on the food side (name and menu, no email or phone), made the first time it's needed.
   async function ensureProfile(h, k) {
@@ -532,6 +533,10 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     const k = await get('SELECT * FROM kit_logos WHERE id = ? AND host_id = ?', [parseInt(req.params.id, 10) || 0, req.me.id]);
     if (!k) return res.status(404).json({ error: 'That logo is gone.' });
     if (k.file) fs.promises.unlink(path.join(UPLOAD_DIR, k.file)).catch(() => {});
+    // Its profile goes with it: pictures, clip, spots, meet history, old addresses.
+    for (const x of await all('SELECT file FROM kit_media WHERE kit_id = ?', [k.id])) unlinkUpload(x.file);
+    unlinkUpload(k.video); unlinkUpload(k.video_poster);
+    for (const t of ['kit_media', 'kit_spots', 'kit_meets', 'kit_old_slugs']) await run(`DELETE FROM ${t} WHERE kit_id = ?`, [k.id]);
     await run('DELETE FROM kit_logos WHERE id = ?', [k.id]);
     await run('DELETE FROM meet_kit_vendors WHERE kit_id = ?', [k.id]);
     res.json({ ok: true });
@@ -564,6 +569,119 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     const items = Array.isArray((req.body || {}).items) ? req.body.items.slice(0, 80) : [];
     const r2 = await K.profileMenu(hostKey(req.me), pf.slug, items);
     res.status(r2.ok ? 200 : r2.status || 502).json(r2.ok ? { ok: true, added: r2.data.added } : r2.data);
+  });
+
+  /* ---------- a Food vendor's profile page: their story, clip, past logos, food photos, spots ---------- */
+  async function profileShape(k) {
+    const [media, spots, served] = await Promise.all([
+      all('SELECT id, kind, file, label FROM kit_media WHERE kit_id = ? ORDER BY id', [k.id]),
+      all('SELECT id, name, address, when_text FROM kit_spots WHERE kit_id = ? ORDER BY id', [k.id]),
+      get('SELECT COUNT(*) AS n FROM (SELECT meet_id FROM kit_meets WHERE kit_id = ? UNION SELECT meet_id FROM meet_kit_vendors WHERE kit_id = ?)', [k.id, k.id])]);
+    const pic = (x) => ({ id: x.id, url: '/uploads/' + x.file, label: x.label || '' });
+    return Object.assign(kitShape(k), { about: k.about || '', serves: k.serves || '', signature: k.signature || '', since: k.since || '',
+      suggestSlug: k.page_slug || await freeSlug(U.pageSlugFrom(k.name), k.id), previewUrl: k.page_slug ? '/v/' + k.page_slug : null,
+      video: videoShape(k), logos: media.filter((x) => x.kind === 'logo').reverse().map(pic), photos: media.filter((x) => x.kind === 'photo').map(pic),
+      spots: spots.map((x) => ({ id: x.id, name: x.name, address: x.address || '', when: x.when_text || '' })), meets: served ? served.n : 0 });
+  }
+  /** A page address nobody else has: the one asked for, or with -2, -3… on the end. */
+  async function freeSlug(base, kitId) {
+    for (let i = 1; i < 50; i++) {
+      const s = i === 1 ? base : (base.slice(0, 36) + '-' + i);
+      if (!U.pageSlugOk(s)) continue;
+      const a = await get('SELECT id FROM kit_logos WHERE page_slug = ?', [s]);
+      const b = await get('SELECT kit_id FROM kit_old_slugs WHERE slug = ?', [s]);
+      if ((!a || a.id === kitId) && (!b || b.kit_id === kitId)) return s;
+    }
+    return null;
+  }
+  const ownVendor = async (req) => { const k = await ownKit(req, req.params.id); return k && k.kind !== 'group' && k.kind !== 'title' ? k : null; };
+  r.get('/kit/:id/profile', signedIn, async (req, res) => {
+    const k = await ownVendor(req);
+    if (!k) return res.status(404).json({ error: 'That vendor is gone.' });
+    res.set('Cache-Control', 'no-store').json({ profile: await profileShape(k), videoReady: V.ffmpegOk(), subdomains: U.subdomainsOn() });
+  });
+  r.put('/kit/:id/profile', signedIn, async (req, res) => {
+    const k = await ownVendor(req);
+    if (!k) return res.status(404).json({ error: 'That vendor is gone.' });
+    const b = req.body || {};
+    const f = (v, n, block) => (v === undefined ? undefined : (block ? U.cleanBlock(v, n) : U.clean(v, n)) || null);
+    const about = f(b.about, 800, true), serves = f(b.serves, 90), signature = f(b.signature, 60), since = f(b.since, 24);
+    let slug = k.page_slug;
+    if (b.pageSlug !== undefined || (b.pageOn && !slug)) {
+      const want = String(b.pageSlug || '').toLowerCase().trim() || k.page_slug || await freeSlug(U.pageSlugFrom(k.name), k.id) || '';
+      if (!U.pageSlugOk(want)) return res.status(400).json({ error: 'Page address: 3 to 40 letters, numbers or single dashes (some words are taken by the site).' });
+      if (want !== k.page_slug) {
+        const free = await freeSlug(want, k.id);
+        if (free !== want) return res.status(409).json({ error: `${want} is taken. Try ${free || 'another'}.` });
+        // The old address keeps working: it moves to the new one.
+        if (k.page_slug) await run('INSERT OR REPLACE INTO kit_old_slugs (slug, kit_id, created_at) VALUES (?, ?, ?)', [k.page_slug, k.id, Date.now()]);
+        await run('DELETE FROM kit_old_slugs WHERE slug = ?', [want]);
+        slug = want;
+      }
+    }
+    const on = b.pageOn === undefined ? k.page_on : (b.pageOn ? 1 : 0);
+    await run(`UPDATE kit_logos SET about = COALESCE(?, CASE WHEN ? THEN NULL ELSE about END), serves = COALESCE(?, CASE WHEN ? THEN NULL ELSE serves END),
+      signature = COALESCE(?, CASE WHEN ? THEN NULL ELSE signature END), since = COALESCE(?, CASE WHEN ? THEN NULL ELSE since END), page_slug = ?, page_on = ? WHERE id = ?`,
+    [about, b.about !== undefined ? 1 : 0, serves, b.serves !== undefined ? 1 : 0, signature, b.signature !== undefined ? 1 : 0, since, b.since !== undefined ? 1 : 0, slug, on, k.id]);
+    res.json({ profile: await profileShape(await get('SELECT * FROM kit_logos WHERE id = ?', [k.id])) });
+  });
+  // Their clip: any phone clip becomes the same 15-second 1080p loop as the meet page's.
+  r.post('/kit/:id/video', signedIn, async (req, res) => {
+    const k = await ownVendor(req);
+    if (!k) return res.status(404).json({ error: 'That vendor is gone.' });
+    return takeVideo(req, res, 'kit_logos', k.id);
+  });
+  r.delete('/kit/:id/video', signedIn, async (req, res) => {
+    const k = await ownVendor(req);
+    if (!k) return res.status(404).json({ error: 'That vendor is gone.' });
+    await dropVideo('kit_logos', k.id);
+    res.json({ profile: await profileShape(await get('SELECT * FROM kit_logos WHERE id = ?', [k.id])) });
+  });
+  // A past logo (kind=logo, trimmed like the current one) or a food photo (kind=photo), with an optional label.
+  r.post('/kit/:id/media', signedIn, rawImage, async (req, res) => {
+    const k = await ownVendor(req);
+    if (!k) return res.status(404).json({ error: 'That vendor is gone.' });
+    const kind = req.query.kind === 'logo' ? 'logo' : 'photo';
+    const n = await get('SELECT COUNT(*) AS n FROM kit_media WHERE kit_id = ? AND kind = ?', [k.id, kind]);
+    if (n.n >= 12) return res.status(400).json({ error: kind === 'logo' ? '12 past logos max. Remove one first.' : '12 photos max. Remove one first.' });
+    let name = Buffer.isBuffer(req.body) ? await saveImage(req.body) : null;
+    if (!name) return res.status(400).json({ error: 'Use a JPEG or PNG image.' });
+    if (kind === 'logo') {
+      const trimmed = await V.trimLogo(path.join(UPLOAD_DIR, name), UPLOAD_DIR);
+      if (trimmed) { fs.promises.unlink(path.join(UPLOAD_DIR, name)).catch(() => {}); name = trimmed; }
+    }
+    await run('INSERT INTO kit_media (kit_id, host_id, kind, file, label, created_at) VALUES (?, ?, ?, ?, ?, ?)', [k.id, req.me.id, kind, name, U.clean(req.query.label, 40) || null, Date.now()]);
+    res.status(201).json({ profile: await profileShape(k) });
+  });
+  r.put('/kit/:id/media/:mid', signedIn, async (req, res) => {
+    const k = await ownVendor(req);
+    if (!k) return res.status(404).json({ error: 'That vendor is gone.' });
+    await run('UPDATE kit_media SET label = ? WHERE id = ? AND kit_id = ?', [U.clean((req.body || {}).label, 40) || null, parseInt(req.params.mid, 10) || 0, k.id]);
+    res.json({ profile: await profileShape(k) });
+  });
+  r.delete('/kit/:id/media/:mid', signedIn, async (req, res) => {
+    const k = await ownVendor(req);
+    if (!k) return res.status(404).json({ error: 'That vendor is gone.' });
+    const x = await get('SELECT * FROM kit_media WHERE id = ? AND kit_id = ?', [parseInt(req.params.mid, 10) || 0, k.id]);
+    if (x) { unlinkUpload(x.file); await run('DELETE FROM kit_media WHERE id = ?', [x.id]); }
+    res.json({ profile: await profileShape(k) });
+  });
+  r.post('/kit/:id/spots', signedIn, async (req, res) => {
+    const k = await ownVendor(req);
+    if (!k) return res.status(404).json({ error: 'That vendor is gone.' });
+    const b = req.body || {};
+    const name = U.clean(b.name, 60);
+    if (!name) return res.status(400).json({ error: 'Name the spot (like "Maryvale" or the lot they park at).' });
+    const n = await get('SELECT COUNT(*) AS n FROM kit_spots WHERE kit_id = ?', [k.id]);
+    if (n.n >= 8) return res.status(400).json({ error: '8 spots max. Remove one first.' });
+    await run('INSERT INTO kit_spots (kit_id, host_id, name, address, when_text, created_at) VALUES (?, ?, ?, ?, ?, ?)', [k.id, req.me.id, name, U.clean(b.address, 120) || null, U.clean(b.when, 60) || null, Date.now()]);
+    res.status(201).json({ profile: await profileShape(k) });
+  });
+  r.delete('/kit/:id/spots/:sid', signedIn, async (req, res) => {
+    const k = await ownVendor(req);
+    if (!k) return res.status(404).json({ error: 'That vendor is gone.' });
+    await run('DELETE FROM kit_spots WHERE id = ? AND kit_id = ?', [parseInt(req.params.sid, 10) || 0, k.id]);
+    res.json({ profile: await profileShape(k) });
   });
 
   /* ---------- vendors from the kit listed on a meet's page (with their logo, under Food) ---------- */

@@ -77,10 +77,10 @@
 
   /* ---------- background video: upload with progress, then it processes on the server ---------- */
   function videoCard(v, scope, id) {
-    var where = scope === 'meet' ? 'this meet' : scope === 'site' ? 'the front page' : scope === 'portal' ? 'your portal' : 'your page';
+    var where = scope === 'meet' ? 'this meet' : scope === 'site' ? 'the front page' : scope === 'portal' ? 'your portal' : scope === 'vendor' ? 'their profile' : 'your page';
     var st = v && v.status;
-    return '<div class="card"><h3>' + (scope === 'site' ? 'Front page video' : scope === 'portal' ? 'Portal background' : 'Background video' + (scope === 'meet' ? ' for this meet' : '')) + '</h3>' +
-      '<p class="small dim">' + (scope === 'portal' ? 'Plays behind this portal, only for you.' : scope === 'meet' ? 'Plays behind this meet’s date instead of your usual one. Last week’s recap footage works well.' : scope === 'site' ? 'Plays at the top of ' + esc(location.host) + ', the site’s own front page. Only you see this.' : 'Plays behind the date at the top of your page, silent and on repeat.') +
+    return '<div class="card"><h3>' + (scope === 'site' ? 'Front page video' : scope === 'portal' ? 'Portal background' : scope === 'vendor' ? 'Their clip' : 'Background video' + (scope === 'meet' ? ' for this meet' : '')) + '</h3>' +
+      '<p class="small dim">' + (scope === 'vendor' ? 'Plays behind their profile and their menu. Pick footage that fits them (their truck at a meet is the best). Without one, your usual background plays.' : scope === 'portal' ? 'Plays behind this portal, only for you.' : scope === 'meet' ? 'Plays behind this meet’s date instead of your usual one. Last week’s recap footage works well.' : scope === 'site' ? 'Plays at the top of ' + esc(location.host) + ', the site’s own front page. Only you see this.' : 'Plays behind the date at the top of your page, silent and on repeat.') +
       ' Any clip from your phone: it becomes a 15-second 1080p loop.</p>' +
       (st === 'ready' ? '<img src="' + esc(v.poster) + '" alt="" style="width:100%;border-radius:8px;margin:6px 0">' : '') +
       (st === 'processing' ? '<p class="msg ok">Processing. It shows on ' + where + ' in a minute or two.</p>' : '') +
@@ -95,7 +95,7 @@
     var msg = document.querySelector('[data-video-msg="' + scope + '"]');
     if (f.size > 400 * 1024 * 1024) return say(msg, 'That video is over 400 MB. Trim it on your phone first.');
     var x = new XMLHttpRequest();
-    x.open('POST', '/api/host' + (scope === 'meet' ? '/meets/' + id + '/video' : scope === 'site' ? '/site-video' : scope === 'portal' ? '/portal-video' : '/video'));
+    x.open('POST', '/api/host' + (scope === 'vendor' ? '/kit/' + id + '/video' : scope === 'meet' ? '/meets/' + id + '/video' : scope === 'site' ? '/site-video' : scope === 'portal' ? '/portal-video' : '/video'));
     x.setRequestHeader('Content-Type', f.type || 'video/mp4');
     x.upload.onprogress = function (e) { if (e.lengthComputable) say(msg, 'Uploading… ' + Math.round(e.loaded / e.total * 100) + '%', true); };
     x.onload = function () {
@@ -512,6 +512,7 @@
             '<label>Instagram</label><input name="instagram" maxlength="60" placeholder="@handle" value="' + esc(l.instagram ? '@' + l.instagram : '') + '">' +
             (club ? '<label>A short line (optional)</label><input name="note" maxlength="80" value="' + esc(l.note) + '">' : '') +
             '<label>Logo</label><input type="file" accept="image/jpeg,image/png" data-ent-logo="' + l.id + '">' +
+            (club ? '' : '<label>Profile page</label><p class="small dim" style="margin:0 0 6px">' + (l.pageOn ? 'On: ' + esc(l.pageUrl.replace(/^https?:\/\//, '')) : 'Off. Build it from their Instagram, then turn it on.') + '</p><button class="btn sm" type="button" data-profile="' + l.id + '">Edit profile page</button>') +
             (club ? '' : '<label>Menu</label><p class="small dim" data-menu-count="' + l.id + '">…</p>' + menuDraftHtml(l) +
               '<label class="btn sm" style="display:inline-flex;margin:0">Snap their menu board<input type="file" accept="image/jpeg,image/png" data-ent-menu="' + l.id + '" hidden></label>' +
               '<p class="small dim" style="margin:6px 0 0">Optional. They check it when they open their link.</p>') +
@@ -519,7 +520,7 @@
             '<div class="msg" data-ent-msg="' + l.id + '" role="status"></div></form></div>';
         }
         return '<div class="entry"><div class="ent-face">' + face(l) + '</div><div style="flex:1;min-width:0"><b>' + esc(l.name) + '</b>' + (l.instagram ? '<div class="small dim">@' + esc(l.instagram) + '</div>' : '') +
-          (l.note ? '<div class="small dim">' + esc(l.note) + '</div>' : '') + '</div><button class="btn sm" data-ent-open="' + l.id + '">Edit</button></div>';
+          (l.note ? '<div class="small dim">' + esc(l.note) + '</div>' : '') + (!club && l.pageOn ? '<div class="small" style="color:var(--ok)">Profile page on</div>' : '') + '</div><button class="btn sm" data-ent-open="' + l.id + '">Edit</button></div>';
       }).join('') : '<p class="small dim">None yet.</p>') +
       '<form class="ent-add" data-ent-add="' + kind + '"><input name="name" maxlength="60" placeholder="' + (club ? 'Club name' : 'Truck name') + '" aria-label="Name"><input name="instagram" maxlength="60" placeholder="@instagram" aria-label="Instagram">' +
       '<button class="btn sm" type="submit">Add</button></form><div class="msg" data-add-msg="' + kind + '" role="status"></div></div>';
@@ -534,6 +535,7 @@
   function listClick(e) {
     var b, t = e.target;
     if ((b = t.closest('[data-ent-open]'))) { listOpen = +b.getAttribute('data-ent-open'); menuDraft = null; drawLists(); return; }
+    if ((b = t.closest('[data-profile]'))) { drawProfile(+b.getAttribute('data-profile')); return; }
     if (t.closest('[data-ent-close]')) { listOpen = null; menuDraft = null; drawLists(); return; }
     if ((b = t.closest('[data-ent-del]'))) {
       if (!confirm('Remove this from your list? It comes off your pages too.')) return;
@@ -586,6 +588,92 @@
       });
     }
   });
+
+  /* ---------- a Food vendor's profile page: built from their Instagram, turned on once they say yes ---------- */
+  function drawProfile(id) {
+    api('GET', '/kit/' + id + '/profile').then(function (r) {
+      if (!r.ok) return view('<p class="msg bad">' + esc(r.d.error) + '</p>');
+      var p = r.d.profile, sub = r.d.subdomains;
+      me.videoReady = r.d.videoReady;
+      var where = sub ? '.' + location.host.replace(/^www\./, '') : '';
+      var pics = function (list, kind) {
+        return '<div class="kit">' + list.map(function (x) {
+          return '<figure><div class="art"><img src="' + esc(x.url) + '" alt="" loading="lazy"></div>' +
+            '<input data-media-label="' + x.id + '" maxlength="40" placeholder="' + (kind === 'logo' ? 'Year, like 2021' : 'What it is') + '" value="' + esc(x.label) + '" aria-label="Label">' +
+            '<button class="link small" type="button" data-media-del="' + x.id + '">Remove</button></figure>';
+        }).join('') + '</div>';
+      };
+      var html = '<p style="margin:14px 0 0"><button class="link" type="button" id="pfBack">← Back to Settings</button></p>' +
+        '<div class="card"><div style="display:flex;gap:12px;align-items:center"><div class="ent-face">' + face(p) + '</div><div style="min-width:0"><h3 style="margin:0">' + esc(p.name) + '</h3>' +
+        (p.instagram ? '<a class="small dim" href="https://instagram.com/' + esc(p.instagram) + '" target="_blank" rel="noopener">@' + esc(p.instagram) + ' ↗</a>' : '<span class="small dim">No Instagram yet (Settings › Food vendors › Edit)</span>') + '</div></div>' +
+        '<p class="small dim" style="margin-top:10px">' + (p.meets ? 'At ' + p.meets + ' of your meets so far.' : 'No meets yet.') + ' Logo, name and Instagram are edited in Settings.</p></div>';
+      html += '<div class="card"><h3>Page</h3>' +
+        '<label class="checks" style="display:flex;align-items:center;gap:8px;color:var(--ink)"><input type="checkbox" id="pfOn"' + (p.pageOn ? ' checked' : '') + ' style="width:auto;min-height:0"> Page is on (ask them first)</label>' +
+        '<label for="pfSlug">Address</label><div style="display:flex;align-items:center;gap:6px">' + (sub ? '' : '<span class="small dim">' + esc(location.host) + '/v/</span>') +
+        '<input id="pfSlug" maxlength="40" autocapitalize="off" value="' + esc(p.pageSlug || p.suggestSlug || '') + '">' + (sub ? '<span class="small dim">' + esc(where) + '</span>' : '') + '</div>' +
+        '<div class="bar">' + (p.previewUrl ? '<a class="btn sm" href="' + esc(p.previewUrl) + '" target="_blank" rel="noopener">' + (p.pageOn ? 'Open page' : 'Preview') + '</a>' : '') +
+        (p.pageOn && p.pageUrl ? '<button class="btn sm" type="button" id="pfCopy">Copy link</button>' : '') + '</div></div>';
+      html += '<div class="card"><h3>Their story</h3><form id="pfForm">' +
+        '<label for="pfServes">What they sell (one line)</label><input id="pfServes" maxlength="90" placeholder="Birria tacos · quesabirria · consomé" value="' + esc(p.serves) + '">' +
+        '<label for="pfSig">Known for</label><input id="pfSig" maxlength="60" placeholder="Their best seller" value="' + esc(p.signature) + '">' +
+        '<label for="pfSince">Serving since</label><input id="pfSince" maxlength="24" placeholder="2019" value="' + esc(p.since) + '">' +
+        '<label for="pfAbout">About (in their words: their bio, how they talk about themselves)</label><textarea id="pfAbout" maxlength="800" style="min-height:130px">' + esc(p.about) + '</textarea>' +
+        '<div class="bar"><button class="btn go" type="submit">Save</button></div><div class="msg" id="pfMsg" role="status"></div></form></div>';
+      html += videoCard(p.video, 'vendor', p.id);
+      html += '<div class="card"><h3>Food photos (' + p.photos.length + '/12)</h3><p class="small dim">Their best shots from Instagram. Save them from their posts, then add them here.</p>' + pics(p.photos, 'photo') +
+        '<label class="btn sm" style="display:inline-flex;margin:10px 0 0">Add photos<input type="file" accept="image/jpeg,image/png" multiple data-media-add="photo" hidden></label><div class="msg" data-media-msg="photo" role="status"></div></div>';
+      html += '<div class="card"><h3>Logos through the years (' + p.logos.length + '/12)</h3><p class="small dim">Their older logos, from past flyers and old posts. Label each with the year. Their current logo shows first as “Now”.</p>' + pics(p.logos, 'logo') +
+        '<label class="btn sm" style="display:inline-flex;margin:10px 0 0">Add past logos<input type="file" accept="image/jpeg,image/png" multiple data-media-add="logo" hidden></label><div class="msg" data-media-msg="logo" role="status"></div></div>';
+      html += '<div class="card"><h3>Their spots (' + p.spots.length + '/8)</h3><p class="small dim">Where they park regularly, from their location tags and “find us” posts.</p>' +
+        p.spots.map(function (x) { return '<div class="rowx"><div><div>' + esc(x.name) + '</div><div class="tag">' + esc([x.when, x.address].filter(Boolean).join(' · ')) + '</div></div><button class="btn sm" type="button" data-spot-del="' + x.id + '">Remove</button></div>'; }).join('') +
+        '<form id="spotForm"><label for="spName">Spot</label><input id="spName" maxlength="60" placeholder="Maryvale">' +
+        '<label for="spWhen">When (optional)</label><input id="spWhen" maxlength="60" placeholder="Fri–Sun, 6–11 PM">' +
+        '<label for="spAddr">Address (optional, for directions)</label><input id="spAddr" maxlength="120" placeholder="51st Ave & Indian School Rd, Phoenix">' +
+        '<div class="bar"><button class="btn sm" type="submit">Add spot</button></div><div class="msg" id="spMsg" role="status"></div></form></div>';
+      view(html);
+      var again = function () { drawProfile(id); };
+      if (p.video.status === 'processing') poll(again);
+      $('pfBack').onclick = function () { listOpen = id; drawSettings(); };
+      Array.prototype.forEach.call(document.querySelectorAll('[data-video-file]'), function (inp) { inp.onchange = function () { uploadVideo(inp, again); }; });
+      var save = function (body, msg, done) { api('PUT', '/kit/' + id + '/profile', body).then(function (x) { if (!x.ok) { say(msg, x.d.error); if (done) done(false); return; } if (done) done(true); else again(); }); };
+      $('pfOn').onchange = function () {
+        var on = this.checked;
+        if (on && !confirm('Turn ' + p.name + '’s page on? Make sure they’re good with it first.')) { this.checked = false; return; }
+        save({ pageOn: on, pageSlug: $('pfSlug').value.trim() }, $('pfMsg'), function (ok) { if (!ok) $('pfOn').checked = !on; else again(); });
+      };
+      $('pfSlug').onchange = function () { save({ pageSlug: this.value.trim() }, $('pfMsg')); };
+      if ($('pfCopy')) $('pfCopy').onclick = function () { copy(p.pageUrl, this); };
+      $('pfForm').onsubmit = function (e) {
+        e.preventDefault();
+        save({ serves: $('pfServes').value, signature: $('pfSig').value, since: $('pfSince').value, about: $('pfAbout').value }, $('pfMsg'), function (ok) { if (ok) say($('pfMsg'), 'Saved.', true); });
+      };
+      $('spotForm').onsubmit = function (e) {
+        e.preventDefault();
+        api('POST', '/kit/' + id + '/spots', { name: $('spName').value.trim(), when: $('spWhen').value.trim(), address: $('spAddr').value.trim() }).then(function (x) { if (!x.ok) return say($('spMsg'), x.d.error); again(); });
+      };
+      $('view').onclick = function (e) {
+        var b;
+        if ((b = e.target.closest('[data-video-drop]'))) { if (confirm('Remove their clip? Your usual background plays instead.')) api('DELETE', '/kit/' + id + '/video').then(again); }
+        else if ((b = e.target.closest('[data-media-del]'))) { api('DELETE', '/kit/' + id + '/media/' + b.getAttribute('data-media-del')).then(again); }
+        else if ((b = e.target.closest('[data-spot-del]'))) { api('DELETE', '/kit/' + id + '/spots/' + b.getAttribute('data-spot-del')).then(again); }
+      };
+      $('view').onchange = function (e) {
+        var t = e.target;
+        if (t.hasAttribute('data-media-label')) api('PUT', '/kit/' + id + '/media/' + t.getAttribute('data-media-label'), { label: t.value.trim() });
+        if (t.hasAttribute('data-media-add')) {
+          var kind = t.getAttribute('data-media-add'), msg = document.querySelector('[data-media-msg="' + kind + '"]');
+          var files = Array.prototype.slice.call(t.files, 0, 12), i = 0, failed = [];
+          (function next() {
+            if (i >= files.length) { if (failed.length) { again(); setTimeout(function () { say(document.querySelector('[data-media-msg="' + kind + '"]'), failed.join(' ')); }, 400); } else again(); return; }
+            var f = files[i++];
+            say(msg, 'Adding ' + i + ' of ' + files.length + '…', true);
+            if (f.size > 8 * 1024 * 1024) { failed.push(f.name + ' is over 8 MB.'); return next(); }
+            api('POST', '/kit/' + id + '/media?kind=' + kind, null, f).then(function (x) { if (!x.ok) failed.push(x.d.error); next(); });
+          })();
+        }
+      };
+    });
+  }
 
   function drawSettings() {
     Promise.all([api('GET', '/me'), api('GET', '/recaps'), api('GET', '/meets'), api('GET', '/site-video'), api('GET', '/portal-video')]).then(function (rs) {
