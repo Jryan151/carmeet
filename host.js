@@ -408,8 +408,11 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     res.status(201).json({ url: '/uploads/' + name });
   });
   r.post('/logo', signedIn, rawImage, async (req, res) => {
-    const name = Buffer.isBuffer(req.body) ? await saveImage(req.body) : null;
+    let name = Buffer.isBuffer(req.body) ? await saveImage(req.body) : null;
     if (!name) return res.status(400).json({ error: 'Use a JPEG or PNG image.' });
+    // Trimmed to the logo itself (no black margin around it); the untrimmed copy is dropped.
+    const trimmed = await V.trimLogo(path.join(UPLOAD_DIR, name), UPLOAD_DIR);
+    if (trimmed) { fs.promises.unlink(path.join(UPLOAD_DIR, name)).catch(() => {}); name = trimmed; }
     if (req.me.logo && req.me.logo.startsWith('/uploads/')) fs.promises.unlink(path.join(UPLOAD_DIR, path.basename(req.me.logo))).catch(() => {});
     await run('UPDATE hosts SET logo = ?, updated_at = ? WHERE id = ?', ['/uploads/' + name, Date.now(), req.me.id]);
     res.json({ host: hostShape(await get('SELECT * FROM hosts WHERE id = ?', [req.me.id])) });
