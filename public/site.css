@@ -305,3 +305,57 @@ main > section.v-about { padding: 18px; }
 .art .gone{display:block;padding:6px;text-align:center;font-size:12px;line-height:1.3}
 .suffix{display:flex;align-items:center;gap:6px}.suffix input{flex:1;min-width:0}.suffix span{opacity:.7;font-size:14px;white-space:nowrap}
 .ed-save{margin:14px 0 4px}.ed-save summary{cursor:pointer}
+
+/* ---------- a club member's page (/@handle) ---------- */
+.member { padding-top: 28px; padding-bottom: 40px; }
+.m-card { background: var(--lot); border: 1px solid var(--line); border-radius: 22px; padding: 22px var(--gutter) 18px; text-align: center;
+  backdrop-filter: blur(14px) saturate(1.2); -webkit-backdrop-filter: blur(14px) saturate(1.2); box-shadow: 0 20px 60px rgba(0, 0, 0, .45); }
+.m-face { width: clamp(132px, 40vw, 180px); aspect-ratio: 1; margin: 0 auto 14px; border-radius: 50%; overflow: hidden; background: #000;
+  border: 3px solid color-mix(in srgb, var(--accent) 70%, transparent); box-shadow: 0 0 0 6px rgba(0, 0, 0, .35), 0 0 40px color-mix(in srgb, var(--accent) 35%, transparent);
+  display: grid; place-items: center; }
+.m-face img { width: 100%; height: 100%; object-fit: cover; }
+.m-face span { font-size: 56px; }
+.m-name { font: 400 clamp(26px, 8vw, 40px)/1.1 var(--display); margin: 0; letter-spacing: .02em; text-wrap: balance; }
+.m-handle { margin: 4px 0 0; color: var(--dim); }
+.m-car { margin: 10px 0 0; font-weight: 600; font-size: 18px; }
+.m-club { display: inline-flex; align-items: center; gap: 8px; margin-top: 12px; padding: 5px 12px 5px 5px; border-radius: 999px; background: var(--lot-2);
+  border: 1px solid var(--line); text-decoration: none; font-size: 14px; }
+.m-club img { width: 28px; height: 28px; border-radius: 50%; object-fit: contain; background: #000; }
+.m-club:not([href]) { padding-left: 12px; }
+.m-club:not([href]) img { margin-left: -7px; }
+.m-card .actions { margin-top: 16px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+.m-box { margin-top: 16px; background: var(--lot); border: 1px solid var(--line); border-radius: 18px; padding: 16px var(--gutter);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+.m-box h2 { font: 400 13px/1.2 var(--display); letter-spacing: .12em; text-transform: uppercase; color: var(--accent); margin: 0 0 10px; }
+.m-box p { margin: 0 0 10px; } .m-box p:last-child { margin-bottom: 0; }
+.m-mods { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.m-mods li { padding: 5px 11px; border-radius: 999px; background: var(--lot-2); border: 1px solid var(--line); font-size: 14px; }
+.m-crew { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px 8px; }
+.m-crew a { text-decoration: none; text-align: center; font-size: 12px; line-height: 1.25; min-width: 0; }
+.m-crew .mini { width: 100%; aspect-ratio: 1; border-radius: 50%; overflow: hidden; background: #000; border: 1px solid var(--line); display: grid; place-items: center; margin-bottom: 6px; }
+.m-crew .mini img { width: 100%; height: 100%; object-fit: cover; }
+.m-crew span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The feed: each photo floats over the footage, one after another. */
+.m-feed { margin-top: 22px; display: grid; gap: 22px; }
+.m-shot { margin: 0; border-radius: 18px; overflow: hidden; background: rgba(0, 0, 0, .4); border: 1px solid var(--line);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .55); }
+.m-shot img { width: 100%; height: auto; }
+.m-shot figcaption { padding: 10px 14px 12px; font-size: 14px; color: var(--dim); background: var(--lot); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.m-shot.rise { opacity: 0; transform: translateY(28px) scale(.98); transition: opacity .6s ease, transform .6s cubic-bezier(.2, .7, .2, 1); }
+.m-shot.rise.in { opacity: 1; transform: none; }
+@media (min-width: 760px) { .member { max-width: 640px; } .m-crew { grid-template-columns: repeat(8, minmax(0, 1fr)); } }
+/* The editor (their link, and the portal's Members). */
+.member-edit { padding-bottom: 40px; }
+.me-photos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+.me-photos figure { margin: 0; display: grid; gap: 6px; }
+.me-photos img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 10px; }
+.mem-face { width: 44px; height: 44px; flex: none; border-radius: 50%; overflow: hidden; background: #000; display: grid; place-items: center; }
+.mem-face img { width: 100%; height: 100%; object-fit: cover; }
+.member-edit .card { background: var(--lot); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin: 12px 0; }
+.member-edit .card h3 { margin: 0 0 6px; }
+.member-edit .btn.sm { min-height: 38px; padding: 0 12px; font-size: 14px; }
+.member-edit .bar { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.member-edit label { display: block; margin-top: 12px; }
+.member-edit label.btn { margin-top: 6px; line-height: 38px; }
+.member-edit input:not([type=file]), .member-edit textarea, .member-edit select { width: 100%; }
+.member-edit .card > img, #memBox .card > img { max-height: 260px; object-fit: cover; }

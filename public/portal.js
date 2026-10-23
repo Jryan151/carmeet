@@ -92,7 +92,7 @@
     tab = t;
     Array.prototype.forEach.call(document.querySelectorAll('.tabs [data-tab]'), function (b) { b.setAttribute('aria-selected', String(b.getAttribute('data-tab') === t)); });
     view('<p class="dim" style="padding:20px 0">Loading…</p>');
-    ({ next: drawNext, meets: drawMeets, kit: drawKit, updates: drawUpdates, history: drawHistory, settings: drawSettings })[t]();
+    ({ next: drawNext, meets: drawMeets, kit: drawKit, updates: drawUpdates, members: drawMembers, history: drawHistory, settings: drawSettings })[t]();
   }
 
 
@@ -530,6 +530,71 @@
   }
 
   /* ---------- history ---------- */
+  /* ---------- club members' own pages (/@handle) ---------- */
+  var openMember = null, memberLink = null;
+  function drawMembers() {
+    Promise.all([api('GET', '/members'), api('GET', '/kit')]).then(function (rs) {
+      var r = rs[0], clubs = rs[1].ok ? (rs[1].d.logos || []).filter(function (l) { return l.kind === 'group'; }) : [];
+      if (!r.ok) return view('<p class="msg bad">' + esc(r.d.error) + '</p>');
+      var list = r.d.members;
+      if (openMember) {
+        var mm = list.filter(function (x) { return x.id === openMember; })[0];
+        if (mm) {
+          view('<p class="small"><button class="link" data-mem-back>All members</button></p>' + linkHtml(mm) + '<div id="memBox"></div>' +
+            '<div class="bar"><button class="btn sm" data-mem-del="' + mm.id + '">Delete this page</button></div>');
+          MemberEditor.mount($('memBox'), { id: mm.id, host: true, clubs: clubs });
+          return;
+        }
+        openMember = null;
+      }
+      var html = '<div class="card"><h3>Start a member’s page</h3><p class="small dim">Like a profile page for each member: their clip behind it, their car photos scrolling over it, their build and their club’s crew. Start it with a name, then text them their link to add the rest.</p>' +
+        '<form id="memForm"><label for="memName">Name</label><input id="memName" maxlength="60" required placeholder="Jay">' +
+        '<label for="memIg">Instagram (optional)</label><input id="memIg" maxlength="60" autocapitalize="off" placeholder="@jays_m3">' +
+        '<label for="memCar">Car (optional)</label><input id="memCar" maxlength="80" placeholder="2021 BMW M3 Competition">' +
+        '<label for="memClub">Club</label><select id="memClub"><option value="">None</option>' + clubs.map(function (c) { return '<option value="' + c.id + '">' + esc(c.name) + '</option>'; }).join('') + '</select>' +
+        (clubs.length ? '' : '<p class="small dim" style="margin:4px 0 0">Add clubs in Flyer kit or Settings › Clubs.</p>') +
+        '<div class="bar"><button class="btn go" type="submit">Start the page</button></div><div class="msg" id="memMsg" role="status"></div></form></div>';
+      // By club.
+      var groups = {}; list.forEach(function (x) { var k = x.clubName || 'No club'; (groups[k] = groups[k] || []).push(x); });
+      Object.keys(groups).sort().forEach(function (g) {
+        html += '<div class="card"><h3>' + esc(g) + '</h3>' + groups[g].map(function (x) {
+          return '<div class="rowx"><div style="display:flex;gap:10px;align-items:center;min-width:0"><div class="mem-face">' + (x.photos.length ? '<img src="' + esc(x.photos[0].url) + '" alt="" loading="lazy">' : '🚗') + '</div>' +
+            '<div style="min-width:0"><div>' + esc(x.name) + '</div><div class="tag">@' + esc(x.handle) + (x.car ? ' · ' + esc(x.car) : '') + ' · ' + x.photos.length + ' photo' + (x.photos.length === 1 ? '' : 's') + (x.video.status === 'ready' ? ' · clip' : '') + '</div></div></div>' +
+            '<button class="btn sm" data-mem-open="' + x.id + '">Open</button></div>';
+        }).join('') + '</div>';
+      });
+      if (!list.length) html += '<p class="dim">No member pages yet.</p>';
+      view(html);
+      $('memForm').onsubmit = function (e) {
+        e.preventDefault();
+        api('POST', '/members', { name: $('memName').value.trim(), instagram: $('memIg').value.trim(), car: $('memCar').value.trim(), clubId: $('memClub').value ? +$('memClub').value : null }).then(function (r2) {
+          if (!r2.ok) return say($('memMsg'), r2.d.error);
+          openMember = r2.d.member.id; memberLink = null; drawMembers();
+        });
+      };
+    });
+  }
+  function linkHtml(mm) {
+    var l = memberLink && memberLink.id === mm.id ? memberLink : null;
+    return '<div class="card"><h3>' + esc(mm.name) + '</h3><p class="small dim"><a href="' + esc(mm.url) + '" target="_blank" rel="noopener">' + esc(mm.url.replace(/^https?:\/\//, '')) + '</a></p>' +
+      (l ? '<p class="small dim">Text this to ' + esc(mm.name) + '. Their link edits only their page; a new link turns this one off.</p><div class="copybox" id="memText">' + esc(l.text) + '</div>' +
+        '<div class="bar"><button class="btn go sm" data-mem-copy>Copy message</button><a class="btn sm" href="sms:?&body=' + encodeURIComponent(l.text) + '">Text it</a></div>'
+        : '<div class="bar"><button class="btn go sm" data-mem-link="' + mm.id + '">Text them their link</button><a class="btn sm" href="' + esc(mm.url) + '" target="_blank" rel="noopener">See the page</a></div>') + '</div>';
+  }
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-mem-open],[data-mem-back],[data-mem-link],[data-mem-copy],[data-mem-del]'); if (!b) return;
+    if (b.hasAttribute('data-mem-open')) { openMember = +b.getAttribute('data-mem-open'); memberLink = null; drawMembers(); }
+    else if (b.hasAttribute('data-mem-back')) { openMember = null; drawMembers(); }
+    else if (b.hasAttribute('data-mem-copy')) copy($('memText').textContent, b);
+    else if (b.hasAttribute('data-mem-link')) {
+      var mid = +b.getAttribute('data-mem-link');
+      api('POST', '/members/' + mid + '/link', {}).then(function (r) { if (!r.ok) return alert(r.d.error); memberLink = { id: mid, text: r.d.text, url: r.d.url }; drawMembers(); });
+    } else if (b.hasAttribute('data-mem-del')) {
+      if (!confirm('Delete this member’s page, photos and clip?')) return;
+      api('DELETE', '/members/' + b.getAttribute('data-mem-del')).then(function () { openMember = null; drawMembers(); });
+    }
+  });
+
   function drawHistory() {
     api('GET', '/history').then(function (r) {
       if (!r.ok) return view('<p class="msg bad">' + esc(r.d.error) + '</p>');

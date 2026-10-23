@@ -552,6 +552,26 @@ app.get('/', async (req, res) => {
   const list = rows.filter((m) => U.meetTimes(m, m.timezone || TZ()).endsAt > Date.now()).slice(0, 12);
   res.set('Cache-Control', 'no-cache').type('html').send(V.home(list, await get('SELECT * FROM site WHERE id = 1')));
 });
+/* ---------- a club member's page (/@handle), and the editor their link opens ---------- */
+app.get(/^\/@([a-z0-9-]{3,40})(\/edit)?\/?$/i, async (req, res) => {
+  const mm = /^\/@([a-z0-9-]{3,40})(\/edit)?\/?$/i.exec(req.path);
+  if (req.own || req.vendorSub) return res.redirect(302, `${SCHEME}://${SITE_DOMAIN}${req.originalUrl}`);
+  const m = await get('SELECT * FROM members WHERE handle = ?', [mm[1].toLowerCase()]);
+  if (!m) return notFound(req, res, null);
+  if (mm[1] !== m.handle) return res.redirect(301, '/@' + m.handle + (mm[2] || ''));
+  const host = await get('SELECT * FROM hosts WHERE id = ?', [m.host_id]);
+  if (!host) return notFound(req, res, null);
+  if (mm[2]) return res.set({ 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex', 'Referrer-Policy': 'no-referrer' }).type('html').send(V.memberEdit(host, m));
+  const [photos, club] = await Promise.all([
+    all('SELECT id, file, caption FROM member_photos WHERE member_id = ? ORDER BY id DESC', [m.id]),
+    m.club_id ? get("SELECT id, name, file, instagram FROM kit_logos WHERE id = ? AND kind = 'group'", [m.club_id]) : null]);
+  // The crew: others in the same club (their first photo as their face), like a top 8.
+  const crew = club ? await all(`SELECT m.handle, m.name, (SELECT file FROM member_photos p WHERE p.member_id = m.id ORDER BY p.id LIMIT 1) AS face
+    FROM members m WHERE m.club_id = ? AND m.id != ? ORDER BY m.updated_at DESC LIMIT 8`, [club.id, m.id]) : [];
+  const vid = m.video_status === 'ready' && m.video ? m : host.video && host.video_status === 'ready' ? host : null;
+  res.set('Cache-Control', 'no-cache').type('html').send(V.memberPage(host, m, { photos, club, crew, vid, origin: `${SCHEME}://${req.get('host')}` }));
+});
+
 app.get('/:a', async (req, res, next) => {
   if (req.own) {
     const m = await meetOn(req.own, req.params.a, req.meetName);
@@ -601,7 +621,7 @@ app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
 async function tidyAtStart() {
   await nameMeets().catch((e) => console.error('meet names:', e.message));
   const Vid = require('./video');
-  for (const t of ['hosts', 'meets', 'site', 'host_portal', 'kit_logos']) {
+  for (const t of ['hosts', 'meets', 'site', 'host_portal', 'kit_logos', 'members']) {
     await D.run(`UPDATE ${t} SET video_status = 'failed', video_error = ? WHERE video_status = 'processing'`,
       ['The server restarted while this video was processing. Upload it again.']).catch(() => {});
   }

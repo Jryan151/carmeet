@@ -728,6 +728,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     await run('DELETE FROM kit_logos WHERE id = ?', [k.id]);
     await run('DELETE FROM meet_kit_vendors WHERE kit_id = ?', [k.id]);
     await run('UPDATE meets SET venue_id = NULL WHERE venue_id = ?', [k.id]);
+    await run('UPDATE members SET club_id = NULL WHERE club_id = ?', [k.id]);
     if (k.truck_slug) {
       // Its truck leaves every meet still to come, and isn't put back in the lists from an old invite.
       await run('INSERT OR IGNORE INTO kit_gone (host_id, truck_slug) VALUES (?, ?)', [req.me.id, k.truck_slug]);
@@ -1058,6 +1059,140 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
   });
 
   r.offOk = offOk;
+
+  /* ---------- club members' own pages (/@handle) ----------
+     The host starts one (name, club, car) in the portal and texts the member their link; the link opens the same
+     editor for that one page, no account: their clip, car photos, mods, Instagram. A new link turns the old one off. */
+  const MAX_MEMBER_PHOTOS = 30;
+  const memberUrl = (m) => `${SCHEME()}://${SITE_DOMAIN()}/@${m.handle}`;
+  async function memberShape(m) {
+    const [photos, club] = await Promise.all([
+      all('SELECT id, file, caption FROM member_photos WHERE member_id = ? ORDER BY id', [m.id]),
+      m.club_id ? get("SELECT id, name, file FROM kit_logos WHERE id = ? AND kind = 'group'", [m.club_id]) : null]);
+    return { id: m.id, handle: m.handle, name: m.name, car: m.car || '', mods: m.mods || '', instagram: m.instagram || '', about: m.about || '',
+      clubId: club ? club.id : null, clubName: club ? club.name : '', clubLogo: club && club.file ? Vw.small(club.file, 256) : '',
+      url: memberUrl(m), video: videoShape(m), videoReady: V.ffmpegOk(), maxPhotos: MAX_MEMBER_PHOTOS,
+      photos: photos.map((x) => ({ id: x.id, url: Vw.small(x.file, 480), caption: x.caption || '' })) };
+  }
+  /** The member a request may change: the host's own (signed in), or the one whose link key it carries. */
+  async function memberFor(req) {
+    const id = parseInt(req.params.id, 10) || 0;
+    const m = await get('SELECT * FROM members WHERE id = ?', [id]);
+    if (!m) return null;
+    const key = String(req.get('x-member-key') || '');
+    if (key && /^[a-f0-9]{40}$/.test(key) && m.edit_hash && D.sha('member:' + key) === m.edit_hash) { req.byMember = true; return m; }
+    const me = await session(req);
+    if (me && me.id === m.host_id) { req.me = me; return m; }
+    return null;
+  }
+  const memberOnly = async (req, res, next) => {
+    if (limited('member:' + (req.ip || ''), 300, 15 * 60000)) return res.status(429).json({ error: 'Too many changes at once. Wait a minute.' });
+    req.member = await memberFor(req);
+    if (!req.member) return res.status(404).json({ error: 'That link is old. Ask for a new one.' });
+    next();
+  };
+  async function freeHandle(base, id) {
+    for (let i = 1; i < 50; i++) {
+      const h = i === 1 ? base : base.slice(0, 36) + '-' + i;
+      if (!U.SLUG_RE.test(h)) continue;
+      const x = await get('SELECT id FROM members WHERE handle = ?', [h]);
+      if (!x || x.id === id) return h;
+    }
+    return null;
+  }
+  function readMember(b) {
+    const out = {};
+    if (b.name !== undefined) { out.name = U.clean(b.name, 60); if (!out.name) return { error: 'Add a name.' }; }
+    if (b.car !== undefined) out.car = U.clean(b.car, 80);
+    if (b.mods !== undefined) out.mods = U.cleanBlock(b.mods, 1200);
+    if (b.about !== undefined) out.about = U.cleanBlock(b.about, 600);
+    if (b.instagram !== undefined) out.instagram = U.handle(b.instagram) || null;
+    return out;
+  }
+  r.get('/members', signedIn, async (req, res) => {
+    const rows = await all('SELECT * FROM members WHERE host_id = ? ORDER BY name COLLATE NOCASE', [req.me.id]);
+    res.set('Cache-Control', 'no-store').json({ members: await Promise.all(rows.map(memberShape)) });
+  });
+  r.post('/members', signedIn, async (req, res) => {
+    const b = req.body || {};
+    const f = readMember(Object.assign({ name: '' }, b));
+    if (f.error) return res.status(400).json({ error: f.error });
+    const n = await get('SELECT COUNT(*) AS n FROM members WHERE host_id = ?', [req.me.id]);
+    if (n.n >= 500) return res.status(400).json({ error: '500 member pages at most for now.' });
+    let club = null;
+    if (b.clubId) { club = await get("SELECT id FROM kit_logos WHERE id = ? AND host_id = ? AND kind = 'group'", [parseInt(b.clubId, 10) || 0, req.me.id]); if (!club) return res.status(400).json({ error: 'Pick one of your Clubs.' }); }
+    const want = b.handle ? String(b.handle).toLowerCase().replace(/^@/, '').trim() : null;
+    if (want && !U.SLUG_RE.test(want)) return res.status(400).json({ error: 'Page name: 3 to 40 letters, numbers or dashes.' });
+    if (want && (await get('SELECT 1 AS x FROM members WHERE handle = ?', [want]))) return res.status(409).json({ error: `@${want} is taken. Try another.` });
+    const raw = U.pageSlugFrom(f.instagram || f.name).replace(/-food$/, '');
+    const handle = want || await freeHandle(raw.length >= 3 ? raw : (raw || 'member') + '-car', 0);
+    if (!handle) return res.status(400).json({ error: 'Pick a page name.' });
+    const now = Date.now();
+    const ins = await run('INSERT INTO members (host_id, club_id, handle, name, car, mods, instagram, about, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [req.me.id, club ? club.id : null, handle, f.name, f.car || null, f.mods || null, f.instagram || null, f.about || null, now, now]);
+    res.status(201).json({ member: await memberShape(await get('SELECT * FROM members WHERE id = ?', [ins.lastID])) });
+  });
+  r.get('/members/:id', memberOnly, async (req, res) => res.set('Cache-Control', 'no-store').json({ member: await memberShape(req.member), byMember: !!req.byMember }));
+  r.put('/members/:id', memberOnly, async (req, res) => {
+    const m = req.member; const b = req.body || {};
+    const f = readMember(b);
+    if (f.error) return res.status(400).json({ error: f.error });
+    // The host also picks the club and the page name.
+    if (!req.byMember && b.clubId !== undefined) {
+      const club = b.clubId ? await get("SELECT id FROM kit_logos WHERE id = ? AND host_id = ? AND kind = 'group'", [parseInt(b.clubId, 10) || 0, m.host_id]) : null;
+      f.club_id = club ? club.id : null;
+    }
+    if (!req.byMember && b.handle !== undefined && String(b.handle).toLowerCase() !== m.handle) {
+      const want = String(b.handle).toLowerCase().replace(/^@/, '').trim();
+      if (!U.SLUG_RE.test(want)) return res.status(400).json({ error: 'Page name: 3 to 40 letters, numbers or dashes.' });
+      if (await get('SELECT 1 AS x FROM members WHERE handle = ? AND id != ?', [want, m.id])) return res.status(409).json({ error: `@${want} is taken. Try another.` });
+      f.handle = want;
+    }
+    const keys = Object.keys(f);
+    if (keys.length) await run(`UPDATE members SET ${keys.map((k2) => k2 + ' = ?').join(', ')}, updated_at = ? WHERE id = ?`, keys.map((k2) => f[k2]).concat([Date.now(), m.id]));
+    res.json({ member: await memberShape(await get('SELECT * FROM members WHERE id = ?', [m.id])) });
+  });
+  r.delete('/members/:id', signedIn, async (req, res) => {
+    const m = await get('SELECT * FROM members WHERE id = ? AND host_id = ?', [parseInt(req.params.id, 10) || 0, req.me.id]);
+    if (!m) return res.status(404).json({ error: 'That page is gone.' });
+    for (const x of await all('SELECT file FROM member_photos WHERE member_id = ?', [m.id])) unlinkUpload(x.file);
+    unlinkUpload(m.video); unlinkUpload(m.video_poster); unlinkUpload(m.video_hevc);
+    await run('DELETE FROM member_photos WHERE member_id = ?', [m.id]);
+    await run('DELETE FROM members WHERE id = ?', [m.id]);
+    res.json({ ok: true });
+  });
+  // The member's own link (a new one turns the last one off), and a message to text them.
+  r.post('/members/:id/link', signedIn, async (req, res) => {
+    const m = await get('SELECT * FROM members WHERE id = ? AND host_id = ?', [parseInt(req.params.id, 10) || 0, req.me.id]);
+    if (!m) return res.status(404).json({ error: 'That page is gone.' });
+    const key = crypto.randomBytes(20).toString('hex');
+    await run('UPDATE members SET edit_hash = ? WHERE id = ?', [D.sha('member:' + key), m.id]);
+    const url = `${memberUrl(m)}/edit#${m.id}.${key}`;
+    const text = `Hey ${m.name.split(' ')[0]}! Your page on ${SITE()} is started: ${memberUrl(m)}. Add your car photos, a clip and your mods here (no account needed, keep this link to yourself): ${url}`;
+    res.status(201).json({ url, text });
+  });
+  r.post('/members/:id/photos', memberOnly, rawImage, async (req, res) => {
+    const m = req.member;
+    const n = await get('SELECT COUNT(*) AS n FROM member_photos WHERE member_id = ?', [m.id]);
+    if (n.n >= MAX_MEMBER_PHOTOS) return res.status(400).json({ error: `${MAX_MEMBER_PHOTOS} photos at most. Remove one first.` });
+    const name = Buffer.isBuffer(req.body) ? await saveImage(req.body) : null;
+    if (!name) return res.status(400).json({ error: 'Use a JPEG or PNG photo.' });
+    await run('INSERT INTO member_photos (member_id, file, caption, created_at) VALUES (?, ?, ?, ?)', [m.id, name, U.clean(req.query.caption, 120) || null, Date.now()]);
+    V.small(path.join(UPLOAD_DIR, name), UPLOAD_DIR, 1080).catch(() => {}); // the feed's size, ready before anyone looks
+    res.status(201).json({ member: await memberShape(m) });
+  });
+  r.put('/members/:id/photos/:pid', memberOnly, async (req, res) => {
+    await run('UPDATE member_photos SET caption = ? WHERE id = ? AND member_id = ?', [U.clean((req.body || {}).caption, 120) || null, parseInt(req.params.pid, 10) || 0, req.member.id]);
+    res.json({ member: await memberShape(req.member) });
+  });
+  r.delete('/members/:id/photos/:pid', memberOnly, async (req, res) => {
+    const x = await get('SELECT * FROM member_photos WHERE id = ? AND member_id = ?', [parseInt(req.params.pid, 10) || 0, req.member.id]);
+    if (x) { unlinkUpload(x.file); await run('DELETE FROM member_photos WHERE id = ?', [x.id]); }
+    res.json({ member: await memberShape(req.member) });
+  });
+  r.post('/members/:id/video', memberOnly, (req, res) => takeVideo(req, res, 'members', req.member.id));
+  r.delete('/members/:id/video', memberOnly, async (req, res) => { await dropVideo('members', req.member.id); res.json({ member: await memberShape(await get('SELECT * FROM members WHERE id = ?', [req.member.id])) }); });
+
   return r;
 };
 

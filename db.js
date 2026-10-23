@@ -142,7 +142,17 @@ async function ensureSchema() {
   await exec('CREATE INDEX IF NOT EXISTS idx_meets_page_name ON meets (page_name)');
   // A Food vendor the host deleted: its truck isn't put back in the lists from an old invite on the food side.
   await exec('CREATE TABLE IF NOT EXISTS kit_gone (host_id INTEGER NOT NULL, truck_slug TEXT NOT NULL, PRIMARY KEY (host_id, truck_slug))');
-  for (const t of ['hosts', 'meets', 'site', 'host_portal', 'kit_logos']) {
+  // Club members' own pages (/@handle): the host starts one, the member finishes it from their link.
+  await exec(`CREATE TABLE IF NOT EXISTS members (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, host_id INTEGER NOT NULL, club_id INTEGER, handle TEXT UNIQUE NOT NULL, name TEXT NOT NULL,
+    car TEXT, mods TEXT, instagram TEXT, about TEXT, edit_hash TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+  )`);
+  await exec('CREATE INDEX IF NOT EXISTS idx_members_host ON members (host_id, club_id)');
+  await exec(`CREATE TABLE IF NOT EXISTS member_photos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, member_id INTEGER NOT NULL, file TEXT NOT NULL, caption TEXT, created_at INTEGER NOT NULL
+  )`);
+  await exec('CREATE INDEX IF NOT EXISTS idx_member_photos ON member_photos (member_id, id)');
+  for (const t of ['hosts', 'meets', 'site', 'host_portal', 'kit_logos', 'members']) {
     await addColumn(t, 'video', 'TEXT');
     await addColumn(t, 'video_poster', 'TEXT');
     await addColumn(t, 'video_hevc', 'TEXT'); // the same loop in HEVC (about half the size), when made

@@ -26,7 +26,7 @@ async function cols(t) { return (await D.all(`PRAGMA table_info(${t})`)).map((c)
 
 async function clips() {
   let n = 0;
-  for (const t of ['hosts', 'meets', 'site', 'host_portal', 'kit_logos']) {
+  for (const t of ['hosts', 'meets', 'site', 'host_portal', 'kit_logos', 'members']) {
     if (!(await cols(t)).includes('video_hevc')) continue;
     const rows = await D.all(`SELECT id, video, video_poster FROM ${t} WHERE video IS NOT NULL AND video_hevc IS NULL`);
     for (const r of rows) {
@@ -52,10 +52,11 @@ async function pictures() {
   const mc = await cols('meets');
   for (const r of await D.all(`SELECT flyer${mc.includes('logo') ? ', logo' : ''} FROM meets`)) { add(r.flyer, 1080); if (r.logo) add(r.logo, 720); }
   for (const r of await D.all('SELECT logo FROM hosts WHERE logo IS NOT NULL')) if (/^\/uploads\//.test(r.logo)) add(r.logo, 720);
-  for (const t of ['hosts', 'meets', 'site', 'host_portal', 'kit_logos']) {
+  for (const t of ['hosts', 'meets', 'site', 'host_portal', 'kit_logos', 'members']) {
     for (const r of await D.all(`SELECT video_poster FROM ${t} WHERE video_poster IS NOT NULL`)) add(r.video_poster, 1280);
   }
   try { for (const r of await D.all('SELECT file FROM kit_media WHERE file IS NOT NULL')) add(r.file, 480); } catch (e) { /* no photos table yet */ }
+  try { for (const r of await D.all('SELECT file FROM member_photos')) { add(r.file, 480); add(r.file, 1080); } } catch (e) { /* none yet */ }
   let n = 0;
   for (const [f, size] of want) {
     const name = f.replace(/\.[A-Za-z0-9]+$/, '') + `.s${size}.webp`;

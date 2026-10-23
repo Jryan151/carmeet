@@ -116,6 +116,28 @@ Addresses: `/v/<name>` on the site. With `VENDOR_SUBDOMAINS=1` each one gets its
 Clips are saved on the phone the first time they play (`public/sw.js`) and play from there after: no second download,
 and it works with no signal. The truck's menu is on the same address, so its clip comes from that copy too.
 
+## Club member pages
+
+Each member gets a page at `<site>/@name`: their own clip playing behind it, their car photos scrolling over it as a
+feed, their build (one mod per line), their Instagram, their club's badge and the club's crew (others from the same
+club). Start one in the portal (Members: name, Instagram, car, club), then "Text them their link": the link opens an
+editor for that one page, no account. A new link turns the old one off. Photos are shrunk on the phone before they're
+sent.
+
+## Meet names and saved locations
+
+With `VENDOR_SUBDOMAINS=1`, every meet name has its own address: Fuel Friday at `fuel-friday.<domain>`, a week at
+`fuel-friday.<domain>/<date>`. It's made from the meet's name the first time it's saved and can be changed in the
+meet's form. Two different meets can be on the same night. Old `<site>/<host>/<date>` links forward.
+
+A parking map can be kept as a location (📍 Save this layout as a location, under the map). Pick that location for a
+meet and its map starts from it.
+
+## Password sign-in
+
+`DEMO_PASSWORD` and `DEMO_HOST` (a host's page address or email) in `.env` put a password box on the portal's sign-in
+that opens that host's workspace. Leave them empty to turn it off.
+
 ## Weak signal
 
 Built for a parking lot with one bar:
