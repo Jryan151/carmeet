@@ -62,6 +62,14 @@ function footer(host, base, { badge }) {
 </div></footer>`;
 }
 
+/** The background loop behind the top of the page (a meet's own clip, or the host's usual one). */
+function heroBg(vid) {
+  if (!vid) return '';
+  return `<div class="hero-bg" aria-hidden="true" style="background-image:url('/uploads/${esc(vid.video_poster)}')">
+    <video autoplay muted loop playsinline preload="auto" poster="/uploads/${esc(vid.video_poster)}" disablepictureinpicture><source src="/uploads/${esc(vid.video)}" type="video/mp4"></video>
+  </div>`;
+}
+
 /** The meet in its parking space: day, date, time, spot, and how soon. */
 function stall(m, tz, { live } = {}) {
   const t = U.meetTimes(m, tz);
@@ -93,9 +101,7 @@ function meetPage(host, m, ctx) {
   const vid = m.video && m.video_status === 'ready' ? m : host.video && host.video_status === 'ready' ? host : null;
   let body = top(host, base) + `<main class="wrap">
 <section class="hero${vid ? ' has-video' : ''}">
-  ${vid ? `<div class="hero-bg" aria-hidden="true" style="background-image:url('/uploads/${esc(vid.video_poster)}')">
-    <video autoplay muted loop playsinline preload="auto" poster="/uploads/${esc(vid.video_poster)}" disablepictureinpicture><source src="/uploads/${esc(vid.video)}" type="video/mp4"></video>
-  </div>` : ''}
+  ${heroBg(vid)}
   ${ctx.isHome ? '' : `<p class="small dim"><a href="${esc(base || '/')}">Next meet</a></p>`}
   ${stall(m, tz, { live: !over })}
   ${over ? '<p class="dim">This meet is over.</p>' : ''}
@@ -148,8 +154,11 @@ function meetPage(host, m, ctx) {
 
 /** A host with nothing scheduled yet. */
 function hostEmpty(host, ctx) {
-  const body = top(host, ctx.base) + `<main class="wrap"><section>
-  <div class="stall off"><div class="dow">Next meet</div><div class="date">TBA</div><div class="time">Get an alert when it’s posted</div></div>
+  const vid = host.video && host.video_status === 'ready' ? host : null;
+  const body = top(host, ctx.base) + `<main class="wrap"><section class="hero${vid ? ' has-video' : ''}">
+  ${heroBg(vid)}
+  <div class="stall"><div class="dow">Next meet</div><div class="date">Soon</div><div class="time">Get an alert when it’s posted</div></div>
+  <div class="actions"><a class="btn go" href="#alerts">Get alerts</a></div>
   </section>
   <section id="alerts"><h2>Get alerts</h2><p class="dim">An email when the next meet is posted. Nothing else.</p>
   <form class="row" data-form="alerts" data-host="${esc(host.slug)}"><input type="email" name="email" required maxlength="120" placeholder="you@email.com" aria-label="Your email">
