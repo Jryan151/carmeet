@@ -73,6 +73,42 @@
     ({ next: drawNext, meets: drawMeets, updates: drawUpdates, history: drawHistory, settings: drawSettings })[t]();
   }
 
+
+  /* ---------- background video: upload with progress, then it processes on the server ---------- */
+  function videoCard(v, scope, id) {
+    var where = scope === 'meet' ? 'this meet' : 'your page';
+    var st = v && v.status;
+    return '<div class="card"><h3>Background video' + (scope === 'meet' ? ' for this meet' : '') + '</h3>' +
+      '<p class="small dim">' + (scope === 'meet' ? 'Plays behind this meet’s date instead of your usual one. Last week’s recap footage works well.' : 'Plays behind the date at the top of your page, silent and on repeat.') +
+      ' Any clip from your phone: it becomes a 15-second 1080p loop.</p>' +
+      (st === 'ready' ? '<img src="' + esc(v.poster) + '" alt="" style="width:100%;border-radius:8px;margin:6px 0">' : '') +
+      (st === 'processing' ? '<p class="msg ok">Processing. It shows on ' + where + ' in a minute or two.</p>' : '') +
+      (st === 'failed' ? '<p class="msg bad">' + esc(v.error || 'That video didn’t work. Try another clip.') + '</p>' : '') +
+      (me.videoReady ? '<input type="file" accept="video/mp4,video/quicktime,video/webm,video/*" data-video-file="' + scope + '" data-id="' + (id || '') + '" aria-label="Choose a video">' : '<p class="small dim">Video processing isn’t set up on the server yet.</p>') +
+      '<div class="msg" data-video-msg="' + scope + '" role="status"></div>' +
+      (st === 'ready' || st === 'failed' ? '<div class="bar"><button class="btn sm" data-video-drop="' + scope + '" data-id="' + (id || '') + '">Remove video</button></div>' : '') + '</div>';
+  }
+  function uploadVideo(input, after) {
+    var f = input.files[0]; if (!f) return;
+    var scope = input.getAttribute('data-video-file'), id = input.getAttribute('data-id');
+    var msg = document.querySelector('[data-video-msg="' + scope + '"]');
+    if (f.size > 400 * 1024 * 1024) return say(msg, 'That video is over 400 MB. Trim it on your phone first.');
+    var x = new XMLHttpRequest();
+    x.open('POST', '/api/host' + (scope === 'meet' ? '/meets/' + id + '/video' : '/video'));
+    x.setRequestHeader('Content-Type', f.type || 'video/mp4');
+    x.upload.onprogress = function (e) { if (e.lengthComputable) say(msg, 'Uploading… ' + Math.round(e.loaded / e.total * 100) + '%', true); };
+    x.onload = function () {
+      var d = {}; try { d = JSON.parse(x.responseText); } catch (e) {}
+      if (x.status >= 400) return say(msg, d.error || 'The upload didn’t go through.');
+      after();
+    };
+    x.onerror = function () { say(msg, 'The upload stopped. Try again on a stronger signal.'); };
+    input.disabled = true; x.send(f);
+  }
+  var pollTimer = null;
+  // While a video processes, look again every 8 seconds (each redraw sets the next look only if it's still processing).
+  function poll(redraw) { clearTimeout(pollTimer); var t = tab; pollTimer = setTimeout(function () { if (tab === t) redraw(); }, 8000); }
+
   /* ---------- trucks for one meet ---------- */
   function trucksHtml(m, trucks, known) {
     var html = '<div class="card"><h3>Food trucks</h3>';
@@ -193,7 +229,7 @@
       if (editing) html += meetForm(editing);
       else if (detail) html += '<p class="small"><button class="link" data-back>All meets</button></p><div class="card"><h3>' + esc(detail.title || detail.label) + '</h3><p class="dim">' + esc(detail.label) + ' · ' + esc(detail.place) + (detail.status === 'canceled' ? ' · canceled' : '') + '</p>' +
         '<div class="bar"><button class="btn sm" data-edit="' + detail.id + '">Edit</button><button class="btn sm" data-again="' + detail.id + '">Repeat next week</button>' +
-        (detail.status === 'canceled' ? '<button class="btn sm" data-uncancel="' + detail.id + '">Put it back on</button>' : '<button class="btn sm" data-cancel="' + detail.id + '">Cancel meet</button>') + '</div></div><div id="trucksBox"></div>';
+        (detail.status === 'canceled' ? '<button class="btn sm" data-uncancel="' + detail.id + '">Put it back on</button>' : '<button class="btn sm" data-cancel="' + detail.id + '">Cancel meet</button>') + '</div></div><div id="trucksBox"></div>' + videoCard(detail.video, 'meet', detail.id);
       else html += '<div class="bar" style="margin:16px 0"><button class="btn go" data-new>Post a meet</button></div>' + (list.length ? list.map(function (m) {
         return '<div class="rowx"><div><div><b>' + esc(m.label) + '</b></div><div class="tag">' + esc(m.place) + (m.title ? ' · ' + esc(m.title) : '') + (m.status === 'canceled' ? ' · canceled' : '') + '</div></div><button class="btn sm" data-open="' + m.id + '">Open</button></div>';
       }).join('') : '<p class="dim">Nothing coming up.</p>');
@@ -208,8 +244,12 @@
           openMeet = { id: r2.d.meet.id }; drawMeets();
         });
       };
+      Array.prototype.forEach.call(document.querySelectorAll('[data-video-file]'), function (inp) { inp.onchange = function () { uploadVideo(inp, drawMeets); }; });
+      if (detail && detail.video && detail.video.status === 'processing') poll(drawMeets);
       $('view').onclick = function (e) {
         if (detail && truckActions(e, detail, drawMeets)) return;
+        var vd = e.target.closest('[data-video-drop]');
+        if (vd) { if (confirm('Remove this meet’s video?')) api('DELETE', '/meets/' + vd.getAttribute('data-id') + '/video').then(drawMeets); return; }
         var b;
         if (e.target.closest('[data-new]')) { openMeet = { edit: 'new' }; drawMeets(); }
         else if (e.target.closest('[data-close-form]') || e.target.closest('[data-back]')) { openMeet = editing && editing.id ? { id: editing.id } : null; invite = null; drawMeets(); }
@@ -282,6 +322,7 @@
         '<div class="bar"><button class="btn go" type="submit">Save</button></div><div class="msg" id="setMsg" role="status"></div></form></div>';
       html += '<div class="card"><h3>Logo</h3>' + (me.logo ? '<img src="' + esc(me.logo) + '" alt="" style="width:64px;height:64px;border-radius:10px;object-fit:cover;margin-bottom:8px">' : '') +
         '<input type="file" id="logoFile" accept="image/jpeg,image/png" aria-label="Logo image"><div class="msg" id="logoMsg" role="status"></div></div>';
+      html += videoCard(me.video, 'host');
       html += '<div class="card"><h3>Recap</h3><p class="small dim">The newest recap shows on your page: a video link and up to 9 photos.</p><form id="recapForm">' +
         '<label for="rVideo">Video link (YouTube, Instagram, TikTok, Vimeo)</label><input id="rVideo" maxlength="300" placeholder="https://youtube.com/watch?v=…">' +
         '<label for="rCap">Caption</label><input id="rCap" maxlength="140" placeholder="Last Tuesday at Dunlap">' +
@@ -294,8 +335,11 @@
       html += '<p><button class="btn" id="signOut">Sign out</button></p>';
       view(html);
       var accent = me.accent || ACCENTS[0];
+      Array.prototype.forEach.call(document.querySelectorAll('[data-video-file]'), function (inp) { inp.onchange = function () { uploadVideo(inp, drawSettings); }; });
+      if (me.video && me.video.status === 'processing') poll(drawSettings);
       $('view').onclick = function (e) {
         var b;
+        if ((b = e.target.closest('[data-video-drop]'))) { if (confirm('Remove the background video?')) api('DELETE', '/video').then(drawSettings); return; }
         if ((b = e.target.closest('[data-accent]'))) { accent = b.getAttribute('data-accent'); Array.prototype.forEach.call(document.querySelectorAll('[data-accent]'), function (x) { x.setAttribute('aria-pressed', String(x === b)); }); document.documentElement.style.setProperty('--accent', accent); }
         else if ((b = e.target.closest('[data-del-recap]'))) { if (confirm('Delete this recap and its photos?')) api('DELETE', '/recaps/' + b.getAttribute('data-del-recap')).then(drawSettings); }
         else if (e.target.id === 'signOut') api('POST', '/logout', {}).then(function () { me = null; showSignin(); });

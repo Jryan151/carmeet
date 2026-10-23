@@ -78,7 +78,7 @@ function startSite(test, extraEnv = {}) {
     ctx.dbFile = path.join(ctx.tmp, 'test.sqlite');
     const env = Object.assign({}, process.env, { PORT: String(port), DB_FILE: ctx.dbFile, UPLOAD_DIR: path.join(ctx.tmp, 'uploads'), SITE_DOMAIN: 'meets.test', SITE_NAME: 'Meet Night',
       PUBLIC_SCHEME: 'http', MEET_PARTNER_KEY: KEY, RESEND_API_KEY: '', MAIL_FROM: '', DEV_CODES: 'true', NODE_ENV: 'test',
-      ADMIN_TOKEN: 'test-admin-token-0123456789', LINK_SECRET: 'test-link-secret-0123456789abcdef' }, extraEnv);
+      VIDEO_PRESET: 'veryfast', ADMIN_TOKEN: 'test-admin-token-0123456789', LINK_SECRET: 'test-link-secret-0123456789abcdef' }, extraEnv);
     env.KITCHEN_API = `http://127.0.0.1:${kport}`;
     ctx.kitchenBase = env.KITCHEN_API;
     ctx.child = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], { cwd: ctx.tmp, env, stdio: ['ignore', 'pipe', 'pipe'] });

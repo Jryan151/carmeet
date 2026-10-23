@@ -89,8 +89,13 @@ function meetPage(host, m, ctx) {
   const mpath = `${base}/${m.day}`;
   const rules = String(host.rules || '').split('\n').map((s) => s.trim()).filter(Boolean);
   const desc = `${U.dayLong(t.startsAt, tz)}, ${U.time12(t.startsAt, tz)} at ${m.place}.${trucks.length ? ' Food: ' + trucks.map((v) => v.name).join(', ') + '.' : ''}`;
+  // The background loop: this meet's own clip, or the host's usual one.
+  const vid = m.video && m.video_status === 'ready' ? m : host.video && host.video_status === 'ready' ? host : null;
   let body = top(host, base) + `<main class="wrap">
-<section>
+<section class="hero${vid ? ' has-video' : ''}">
+  ${vid ? `<div class="hero-bg" aria-hidden="true" style="background-image:url('/uploads/${esc(vid.video_poster)}')">
+    <video autoplay muted loop playsinline preload="auto" poster="/uploads/${esc(vid.video_poster)}" disablepictureinpicture><source src="/uploads/${esc(vid.video)}" type="video/mp4"></video>
+  </div>` : ''}
   ${ctx.isHome ? '' : `<p class="small dim"><a href="${esc(base || '/')}">Next meet</a></p>`}
   ${stall(m, tz, { live: !over })}
   ${over ? '<p class="dim">This meet is over.</p>' : ''}
@@ -138,7 +143,7 @@ function meetPage(host, m, ctx) {
     }).join('')}</div></section>`;
   }
   body += `</main>` + footer(host, base, ctx);
-  return layout({ title: `${host.name}: ${U.dayShort(t.startsAt, tz)}${m.title ? ' · ' + m.title : ''}`, description: desc, host, body, scripts: ['site.js'] });
+  return layout({ title: `${host.name}: ${U.dayShort(t.startsAt, tz)}${m.title ? ' · ' + m.title : ''}`, description: desc, host, body, scripts: ['site.js'], image: vid && ctx.origin ? `${ctx.origin}/uploads/${vid.video_poster}` : null });
 }
 
 /** A host with nothing scheduled yet. */

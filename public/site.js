@@ -7,6 +7,10 @@
       .catch(function () { return { ok: false, d: { error: 'No connection. Try again.' } }; });
   }
 
+  // Data saver on: keep the still frame, skip the background video.
+  var bgv = document.querySelector('.hero-bg video');
+  if (bgv && navigator.connection && navigator.connection.saveData) { bgv.removeAttribute('autoplay'); bgv.pause(); bgv.remove(); }
+
   // "Starts in 2 days 4 hrs" / "Happening now" / "Starts in 35 min".
   var cd = document.querySelector('[data-countdown]');
   function tick() {

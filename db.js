@@ -77,6 +77,13 @@ async function ensureSchema() {
   `);
   // Later additions go here, with addColumn, so a database from an older version picks them up.
   await addColumn('hosts', 'plan', "TEXT NOT NULL DEFAULT 'free'");
+  // Background video behind the meet's date (video.js): the loop, its still frame, and where processing stands.
+  for (const t of ['hosts', 'meets']) {
+    await addColumn(t, 'video', 'TEXT');
+    await addColumn(t, 'video_poster', 'TEXT');
+    await addColumn(t, 'video_status', 'TEXT'); // processing | ready | failed
+    await addColumn(t, 'video_error', 'TEXT');
+  }
 }
 
 module.exports = { db, run, get, all, exec, sha, token, ensureSchema, DB_FILE };

@@ -24,7 +24,7 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
-body { margin: 0; background: var(--asphalt); color: var(--ink); font: 400 16px/1.55 "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif; }
+body { margin: 0; overflow-x: clip; background: var(--asphalt); color: var(--ink); font: 400 16px/1.55 "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif; }
 a { color: inherit; text-underline-offset: 3px; }
 img { max-width: 100%; display: block; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
@@ -125,3 +125,17 @@ footer .social a { color: var(--dim); }
 .status-ready { color: var(--ok); }
 .list-meets a { display: block; padding: 14px 0; border-bottom: 1px solid var(--line); text-decoration: none; }
 .list-meets b { font-size: 18px; display: block; }
+
+/* The background loop behind the date: full width, darkened so the date reads, and always dark whatever the phone's
+   theme. With reduced motion or data saver on, the still frame stays instead. */
+.hero { position: relative; isolation: isolate; }
+.hero.has-video { padding: 8px 0 28px; margin-top: -8px; color-scheme: dark;
+  --ink: #f4f2ec; --dim: #d3d5da; --paint: #f4f2ec; --line: rgba(255, 255, 255, .28); color: var(--ink); }
+.hero-bg { position: absolute; z-index: -1; top: 0; bottom: 0; left: 50%; width: 100vw; transform: translateX(-50%);
+  background: #101114 center / cover no-repeat; overflow: hidden; }
+.hero-bg video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.hero-bg::after { content: ""; position: absolute; inset: 0;
+  background: linear-gradient(180deg, rgba(12, 13, 16, .50) 0%, rgba(12, 13, 16, .62) 55%, rgba(12, 13, 16, .88) 100%); }
+.hero.has-video .btn:not(.go) { background: rgba(12, 13, 16, .35); }
+.hero.has-video a:not(.btn) { color: var(--ink); }
+@media (prefers-reduced-motion: reduce) { .hero-bg video { display: none; } }

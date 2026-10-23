@@ -130,7 +130,7 @@ async function latestRecap(host) {
 }
 async function renderMeet(req, res, host, m, isHome) {
   const [trucks, last, recap, upcoming] = await Promise.all([trucksFor(m), lastTurnout(host), latestRecap(host), upcomingOf(host)]);
-  res.set('Cache-Control', 'no-cache').type('html').send(V.meetPage(host, m, { tz: tzOf(host), base: baseOf(req, host), trucks, last, recap, upcoming, isHome, badge: badgeOf(host) }));
+  res.set('Cache-Control', 'no-cache').type('html').send(V.meetPage(host, m, { tz: tzOf(host), base: baseOf(req, host), trucks, last, recap, upcoming, isHome, badge: badgeOf(host), origin: `${SCHEME}://${req.get('host')}` }));
 }
 const notFound = (req, res, host) => res.status(404).type('html').send(V.message(host || null, { title: 'Nothing here', text: 'The link may be old, or the address may have a typo.', href: host ? baseOf(req, host) || '/' : '/', cta: host ? 'See the next meet' : 'Go to the main page' }));
 

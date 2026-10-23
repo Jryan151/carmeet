@@ -202,3 +202,44 @@ test('photos lose their hidden location data', () => {
   const p = stripPng(png);
   assert.ok(p && !p.includes(Buffer.from('GPS-HERE')) && p.includes(Buffer.from('IDAT')));
 });
+
+test('a background video: any clip becomes a silent 15-second 1080p loop with a still, behind the date', { skip: !require('../video').ffmpegOk() && 'ffmpeg not installed' }, async () => {
+  const { execFileSync } = require('node:child_process');
+  const fs = require('node:fs'); const os = require('node:os'); const path = require('node:path');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cmvid-'));
+  // An upright 4K-ish phone clip, 17 seconds, with sound and a location tag.
+  const src = path.join(dir, 'phone.mov');
+  execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1440x2560:rate=30:duration=17', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=17',
+    '-c:v', 'libx264', '-preset', 'ultrafast', '-c:a', 'aac', '-metadata', 'location=+33.5684-112.1366/', '-metadata', 'com.apple.quicktime.location.ISO6709=+33.5684-112.1366/', '-shortest', src]);
+  const buf = fs.readFileSync(src);
+  let r = await request(ctx, 'POST', SITE, '/api/host/video', { cookie: C, raw: { buf: Buffer.from('not a video'), type: 'text/plain' } });
+  assert.equal(r.status, 400);
+  r = await request(ctx, 'POST', SITE, '/api/host/video', { cookie: C, raw: { buf, type: 'video/quicktime' } });
+  assert.equal(r.status, 202, r.text);
+  let me;
+  for (let i = 0; i < 240; i++) {
+    me = (await request(ctx, 'GET', SITE, '/api/host/me', { cookie: C })).json.host;
+    if (me.video.status !== 'processing') break;
+    await new Promise((res) => setTimeout(res, 500));
+  }
+  assert.equal(me.video.status, 'ready', JSON.stringify(me.video));
+  const out = path.join(dir, 'out.mp4');
+  fs.writeFileSync(out, (await request(ctx, 'GET', SITE, me.video.url)).buf);
+  const probe = JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-show_streams', '-show_format', '-of', 'json', out]).toString());
+  const v = probe.streams.filter((s) => s.codec_type === 'video');
+  assert.equal(v.length, 1);
+  assert.deepEqual([v[0].codec_name, v[0].width, v[0].height], ['h264', 1080, 1920], '1080p on the short side, upright kept upright');
+  assert.equal(probe.streams.filter((s) => s.codec_type === 'audio').length, 0, 'silent');
+  assert.ok(Number(probe.format.duration) <= 15.1, 'a 15-second loop');
+  assert.ok(!JSON.stringify(probe.format.tags || {}).includes('33.5684'), 'no location');
+  assert.ok(buf.length && (await request(ctx, 'GET', SITE, me.video.poster)).status === 200, 'a still frame');
+  r = await request(ctx, 'GET', 'tastytuesday.com', '/' + day);
+  assert.ok(r.text.includes(`<source src="${me.video.url}" type="video/mp4">`));
+  assert.match(r.text, /<video autoplay muted loop playsinline/);
+  assert.ok(r.text.includes(`poster="${me.video.poster}"`));
+  r = await request(ctx, 'DELETE', SITE, '/api/host/video', { cookie: C });
+  assert.equal(r.json.host.video.status, null);
+  r = await request(ctx, 'GET', 'tastytuesday.com', '/' + day);
+  assert.ok(!r.text.includes('<video'));
+  fs.rmSync(dir, { recursive: true, force: true });
+});

@@ -12,6 +12,7 @@ const K = require('./kitchen');
 const mail = require('./mail');
 const { run, get, all } = D;
 
+const V = require('./video');
 const SESSION_MS = 60 * 864e5;
 const CODE_MS = 15 * 60 * 1000;
 const SCHEME = () => process.env.PUBLIC_SCHEME || 'https';
@@ -21,6 +22,8 @@ const linkSecret = (() => { let s = process.env.LINK_SECRET; if (!s || s.length 
 /** An unsubscribe link that works without storing a token per email: the subscriber's id, signed. */
 const offSig = (id) => crypto.createHmac('sha256', linkSecret()).update('off:' + id).digest('hex').slice(0, 32);
 function offOk(s) { const [id, sig] = String(s || '').split('.'); return /^\d+$/.test(id || '') && sig && crypto.timingSafeEqual(Buffer.from(offSig(id)), Buffer.from(sig.padEnd(32).slice(0, 32))) ? +id : 0; }
+
+const videoShape = (x) => ({ status: x.video_status || null, url: x.video ? '/uploads/' + x.video : null, poster: x.video_poster ? '/uploads/' + x.video_poster : null, error: x.video_error || null });
 
 function cookieOf(req, name) {
   const c = String(req.headers.cookie || '');
@@ -108,13 +111,14 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
   function hostShape(h) {
     return { name: h.name, slug: h.slug, email: h.email, tagline: h.tagline || '', city: h.city || '', accent: h.accent || '', logo: h.logo || '',
       instagram: h.instagram || '', tiktok: h.tiktok || '', youtube: h.youtube || '', rules: h.rules || '', closeMinutes: h.close_minutes,
-      timezone: h.timezone || '', customDomain: h.custom_domain || '', domainOn: !!h.domain_on, pageUrl: pageUrl(h), siteName: SITE(), foodOn: K.on(), mailOn: mail.configured() };
+      timezone: h.timezone || '', customDomain: h.custom_domain || '', domainOn: !!h.domain_on, pageUrl: pageUrl(h), siteName: SITE(), foodOn: K.on(), mailOn: mail.configured(),
+      video: videoShape(h), videoReady: V.ffmpegOk() };
   }
   function meetShape(m, h) {
     const tz = tzOf(h); const t = U.meetTimes(m, tz);
     return { id: m.id, ref: m.ref, title: m.title || '', day: m.day, start: m.start_time, end: m.end_time, place: m.place, address: m.address || '', notes: m.notes || '',
       status: m.status, startsAt: t.startsAt, endsAt: t.endsAt, label: `${U.dayShort(t.startsAt, tz)}, ${U.time12(t.startsAt, tz)}–${U.time12(t.endsAt, tz)}`,
-      over: t.endsAt < Date.now(), people: m.turnout_people, cars: m.turnout_cars, synced: !!m.synced_at && !m.sync_error, syncError: m.sync_error || '', url: `${pageUrl(h)}/${m.day}` };
+      over: t.endsAt < Date.now(), people: m.turnout_people, cars: m.turnout_cars, video: videoShape(m), synced: !!m.synced_at && !m.sync_error, syncError: m.sync_error || '', url: `${pageUrl(h)}/${m.day}` };
   }
   async function sync(h, m) {
     const s = await K.syncMeet(h, m);
@@ -407,6 +411,50 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     if (req.me.logo && req.me.logo.startsWith('/uploads/')) fs.promises.unlink(path.join(UPLOAD_DIR, path.basename(req.me.logo))).catch(() => {});
     await run('UPDATE hosts SET logo = ?, updated_at = ? WHERE id = ?', ['/uploads/' + name, Date.now(), req.me.id]);
     res.json({ host: hostShape(await get('SELECT * FROM hosts WHERE id = ?', [req.me.id])) });
+  });
+
+  /* ---------- background video: the host's default, or one for a single meet ---------- */
+  let videoQueue = Promise.resolve(); // one at a time, so a big upload never starves the site of CPU
+  const tmpDir = path.join(UPLOAD_DIR, 'tmp');
+  fs.mkdirSync(tmpDir, { recursive: true });
+  const unlinkUpload = (f) => { if (f) fs.promises.unlink(path.join(UPLOAD_DIR, path.basename(f))).catch(() => {}); };
+  async function takeVideo(req, res, table, id) {
+    if (!V.ffmpegOk()) return res.status(503).json({ error: 'Video processing isn’t installed on the server yet (ffmpeg).' });
+    const row = await get(`SELECT * FROM ${table} WHERE id = ?`, [id]);
+    if (row.video_status === 'processing') return res.status(409).json({ error: 'The last video is still processing. Give it a minute.' });
+    let up;
+    try { up = await V.receive(req, tmpDir); } catch (e) { return res.status(400).json({ error: e.message }); }
+    await run(`UPDATE ${table} SET video_status = 'processing', video_error = NULL WHERE id = ?`, [id]);
+    res.status(202).json({ video: { status: 'processing' } });
+    videoQueue = videoQueue.then(async () => {
+      try {
+        const out = await V.process(up.file, UPLOAD_DIR);
+        const old = await get(`SELECT video, video_poster FROM ${table} WHERE id = ?`, [id]);
+        await run(`UPDATE ${table} SET video = ?, video_poster = ?, video_status = 'ready', video_error = NULL WHERE id = ?`, [out.video, out.poster, id]);
+        if (old) { unlinkUpload(old.video); unlinkUpload(old.video_poster); }
+      } catch (e) {
+        console.error('video:', e.message);
+        await run(`UPDATE ${table} SET video_status = 'failed', video_error = ? WHERE id = ?`, ['That file couldn’t be read as a video. Try another clip.', id]);
+      } finally { fs.promises.unlink(up.file).catch(() => {}); }
+    });
+  }
+  async function dropVideo(table, id) {
+    const row = await get(`SELECT video, video_poster FROM ${table} WHERE id = ?`, [id]);
+    if (row) { unlinkUpload(row.video); unlinkUpload(row.video_poster); }
+    await run(`UPDATE ${table} SET video = NULL, video_poster = NULL, video_status = NULL, video_error = NULL WHERE id = ?`, [id]);
+  }
+  r.post('/video', signedIn, (req, res) => takeVideo(req, res, 'hosts', req.me.id));
+  r.delete('/video', signedIn, async (req, res) => { await dropVideo('hosts', req.me.id); res.json({ host: hostShape(await get('SELECT * FROM hosts WHERE id = ?', [req.me.id])) }); });
+  r.post('/meets/:id/video', signedIn, async (req, res) => {
+    const m = await own(req, req.params.id);
+    if (!m) return res.status(404).json({ error: 'That meet is gone.' });
+    return takeVideo(req, res, 'meets', m.id);
+  });
+  r.delete('/meets/:id/video', signedIn, async (req, res) => {
+    const m = await own(req, req.params.id);
+    if (!m) return res.status(404).json({ error: 'That meet is gone.' });
+    await dropVideo('meets', m.id);
+    res.json({ meet: meetShape(await get('SELECT * FROM meets WHERE id = ?', [m.id]), req.me) });
   });
 
   /* ---------- settings ---------- */

@@ -24,6 +24,9 @@ the crowd: menus, photos, checkout returns and order emails all come through her
 - **History**: turnout by spot (the number a truck wants to see) and past meets.
 - **Settings**: name, city, color, socials, house rules, when pre-orders close, logo, recap (video link and up to
   9 photos, location data removed), and their own domain.
+- **Background video**: any phone clip (up to 400 MB) becomes a silent, 15-second, 1080p loop behind the date,
+  with a still frame while it loads (and for reduced motion or data saver). One for the page, and optionally one
+  per meet (Meets › open a meet). Sound, camera and location data are dropped; the original is deleted.
 
 **Paid later: their own domain.** A host saves `tuesdaymeets.com` in Settings; once DNS points here and the
 upgrade is settled, you turn it on (below). Their page then lives there, without the "Page by" line, and the old
@@ -31,7 +34,8 @@ address redirects. Everything else is free.
 
 ## Run it
 
-Node 20 or newer.
+Node 20 or newer, and ffmpeg for background videos (`sudo apt install ffmpeg`). Without it the site runs; the
+portal just says video processing isn't set up.
 
 ```
 cp .env.example .env     # fill it in
