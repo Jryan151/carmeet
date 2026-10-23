@@ -227,6 +227,21 @@ function message(host, { title, text, href, cta }) {
   return layout({ title, host, body, noindex: true });
 }
 
+/** What this site keeps and why. Plain facts; the operator should have it checked before launch. */
+function privacy(host) {
+  const who = host ? host.name : SITE();
+  const body = (host ? top(host, '') : `<header class="wrap top"><a class="who" href="/" style="text-decoration:none">${esc(SITE())}</a></header>`) + `<main class="wrap"><section class="prose">
+<h1 style="font-size:36px;margin-bottom:12px">Privacy</h1>
+<p class="dim">What ${esc(who)}’s pages keep, and why.</p>
+<h2>Meet alerts</h2><p>If you join alerts, we keep your email address to send you new meets and changes. Every email has a link to stop them, and stopping deletes the address from the list.</p>
+<h2>Food pre-orders</h2><p>Menus and pre-orders are run by each food truck’s ordering service. A pre-order keeps the name you give for pickup, what you ordered and the pickup time, so the truck can make it. Cards are paid through Stripe; this site never sees or keeps card numbers.</p>
+<h2>Vendor requests</h2><p>If you ask for a vendor spot, the details you send go to the meet’s host so they can reply.</p>
+<h2>What we don’t do</h2><p>No ads, no tracking scripts, and we don’t sell or share your details with anyone else. Pages keep a small note in your browser (like an order in progress) that never leaves your phone.</p>
+<h2>Questions</h2><p>${host && host.instagram ? `Message <a href="https://instagram.com/${esc(host.instagram)}" rel="noopener">@${esc(host.instagram)}</a>` : 'Message the meet’s host'} to see or delete anything kept about you.</p>
+</section></main>`;
+  return layout({ title: `Privacy · ${who}`, host, body });
+}
+
 /** The site's own front page: the meets coming up, and how a host gets a page. */
 function home(list, site) {
   const tz = process.env.TIMEZONE || 'America/Phoenix';
@@ -247,4 +262,4 @@ ${list.length ? `<div class="list-meets">${list.map((r) => {
   return layout({ title: `${SITE()}: car meets`, description: 'Car meets: where, when, and food you can pre-order.', body });
 }
 
-module.exports = { layout, meetPage, hostEmpty, foodPage, orderPage, message, home };
+module.exports = { layout, meetPage, hostEmpty, foodPage, orderPage, message, home, privacy };

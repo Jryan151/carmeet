@@ -335,6 +335,10 @@ async function homeHost() {
   const rows = await all('SELECT * FROM hosts WHERE slug IS NOT NULL LIMIT 2');
   return rows.length === 1 ? rows[0] : null;
 }
+app.get('/privacy', async (req, res) => {
+  const main = req.own || (await homeHost());
+  res.set('Cache-Control', 'no-cache').type('html').send(V.privacy(main || null));
+});
 app.get('/', async (req, res) => {
   if (req.own) return hostHome(req, res, req.own);
   // Not on a host's own domain that's still waiting to be turned on.

@@ -94,3 +94,10 @@ test('the flyer kit: rename, change type, new picture', { skip: !ffmpeg }, async
   r = await request(ctx, 'POST', SITE, `/api/host/kit/999/image`, { cookie: C, raw: { buf: tallLogo(), type: 'image/png' } });
   assert.equal(r.status, 404);
 });
+
+test('the privacy page meet mode links to is there, with no trace of the ordering system', async () => {
+  const r = await request(ctx, 'GET', SITE, '/privacy');
+  assert.equal(r.status, 200);
+  assert.match(r.text, /Food pre-orders/);
+  assert.ok(!/online ?kitchen/i.test(r.text));
+});
