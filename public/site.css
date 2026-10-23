@@ -111,11 +111,10 @@ a.truck:hover, a.truck:focus-visible { border-color: color-mix(in srgb, var(--ac
 .truck .tlogo.emoji { display: grid; place-items: center; font-size: 26px; }
 .truck .btn { flex: none; }
 
-/* The host's logo as a round profile picture at the top of their main page. */
-.avatar { width: clamp(132px, 38vw, 184px); aspect-ratio: 1; margin: 34px auto 4px; border-radius: 50%; background: #000; display: grid; place-items: center; overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
-  box-shadow: 0 0 0 6px rgba(7, 6, 11, .45), 0 0 46px color-mix(in srgb, var(--accent) 38%, transparent); }
-.avatar img { width: 82%; height: 82%; object-fit: contain; }
+/* The host's logo at the top of their main page: just the logo (its black is made see-through on upload) right on
+   the footage, with no circle, frame or glow around it. */
+.avatar { width: clamp(180px, 56vw, 280px); margin: 34px auto 4px; display: grid; place-items: center; }
+.avatar img { width: 100%; height: auto; max-height: 220px; object-fit: contain; filter: drop-shadow(0 2px 14px rgba(0, 0, 0, .75)); }
 .has-avatar .stall { padding-top: 26px; }
 .stall .date.word { font-size: clamp(34px, 9vw, 72px); overflow-wrap: anywhere; }
 
