@@ -386,7 +386,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     res.json({ ok: true });
   });
   // A photo arrives as the raw file. Only JPEG or PNG, up to 6 MB; a JPEG's hidden data (where it was taken) is removed.
-  const rawImage = express.raw({ type: ['image/jpeg', 'image/png'], limit: '6mb' });
+  const rawImage = express.raw({ type: ['image/jpeg', 'image/png'], limit: '8mb' });
   const rawFlyer = express.raw({ type: ['image/jpeg', 'image/png'], limit: '12mb' });
   async function saveImage(buf) {
     const isJpeg = buf.length > 4 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
@@ -427,7 +427,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
   });
 
   /* ---------- the flyer kit: vendor and car group logos, ready to paste onto a flyer ---------- */
-  const KINDS = ['vendor', 'group', 'sponsor'];
+  const KINDS = ['vendor', 'group', 'sponsor', 'title'];
   const kitShape = (k) => ({ id: k.id, kind: k.kind, name: k.name, url: '/uploads/' + k.file });
   r.get('/kit', signedIn, async (req, res) => {
     const rows = await all('SELECT * FROM kit_logos WHERE host_id = ? ORDER BY kind, name COLLATE NOCASE', [req.me.id]);

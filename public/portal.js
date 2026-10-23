@@ -113,23 +113,23 @@
   function flyerCard(m) {
     return '<div class="card"><h3>Flyer</h3><p class="small dim">The one you post on Instagram. It becomes the main picture on this meet’s page, over your background video, and the preview when the link is shared.</p>' +
       (m.flyer ? '<img class="flyer-prev" src="' + esc(m.flyer) + '" alt="">' : '') +
-      '<input type="file" id="flyerFile" data-id="' + m.id + '" accept="image/jpeg,image/png" aria-label="Choose the flyer image">' +
+      '<label for="flyerFile">Upload a finished flyer</label><input type="file" id="flyerFile" data-id="' + m.id + '" accept="image/jpeg,image/png">' +
       '<div class="msg" id="flyerMsg" role="status"></div>' +
-      (m.flyer ? '<div class="bar"><button class="btn sm" data-flyer-drop="' + m.id + '">Remove flyer</button></div>' : '') + '</div>';
+      '<div class="bar"><button class="btn go sm" data-make-flyer="' + m.id + '">Make the flyer</button>' + (m.flyer ? '<button class="btn sm" data-flyer-drop="' + m.id + '">Remove flyer</button>' : '') + '</div></div>';
   }
 
   /* ---------- flyer kit: logos to paste onto each week's flyer ---------- */
-  var KIND_NAMES = { vendor: 'Food vendors', group: 'Car groups', sponsor: 'Sponsors' };
+  var KIND_NAMES = { title: 'Meet title logos', vendor: 'Food vendors', group: 'Car groups', sponsor: 'Sponsors' };
   function drawKit() {
     api('GET', '/kit').then(function (r) {
       if (!r.ok) return view('<p class="msg bad">' + esc(r.d.error) + '</p>');
       var logos = r.d.logos;
-      var html = '<div class="card"><h3>Add a logo</h3><p class="small dim">Keep every vendor’s and car group’s logo here. When you make this week’s flyer, copy the ones you need and paste them in. A PNG with a see-through background works best; a black square around a logo is trimmed off.</p>' +
+      var html = '<div id="splitBox"></div><div class="card"><h3>Add a logo</h3><p class="small dim">Keep every vendor’s and car group’s logo here. When you make this week’s flyer, copy the ones you need and paste them in. A PNG with a see-through background works best; a black square around a logo is trimmed off.</p>' +
         '<form id="kitForm"><label for="kName">Name</label><input id="kName" maxlength="60" placeholder="Taqueria Obregon" required>' +
-        '<label for="kKind">Type</label><select id="kKind"><option value="vendor">Food vendor</option><option value="group">Car group</option><option value="sponsor">Sponsor</option></select>' +
+        '<label for="kKind">Type</label><select id="kKind"><option value="vendor">Food vendor</option><option value="group">Car group</option><option value="sponsor">Sponsor</option><option value="title">Meet title (like the Tasty Tuesday logo)</option></select>' +
         '<label for="kFile">Logo</label><input id="kFile" type="file" accept="image/png,image/jpeg" required>' +
         '<div class="bar"><button class="btn go" type="submit">Add to kit</button></div><div class="msg" id="kitMsg" role="status"></div></form></div>';
-      ['vendor', 'group', 'sponsor'].forEach(function (k) {
+      ['title', 'vendor', 'group', 'sponsor'].forEach(function (k) {
         var list = logos.filter(function (l) { return l.kind === k; });
         if (!list.length) return;
         html += '<h3 style="margin:22px 0 10px">' + KIND_NAMES[k] + ' (' + list.length + ')</h3><div class="kit">' + list.map(function (l) {
@@ -140,6 +140,7 @@
       });
       if (!logos.length) html += '<p class="dim">No logos yet. Add the vendors and car groups that show up on your flyers.</p>';
       view(html);
+      if (window.Flyer) Flyer.splitter($('splitBox'), api, drawKit);
       $('kitForm').onsubmit = function (e) {
         e.preventDefault();
         var f = $('kFile').files[0], nm = $('kName').value.trim();
@@ -312,6 +313,14 @@
       if (detail && detail.video && detail.video.status === 'processing') poll(drawMeets);
       $('view').onclick = function (e) {
         if (detail && truckActions(e, detail, drawMeets)) return;
+        var mf = e.target.closest('[data-make-flyer]');
+        if (mf && window.Flyer) {
+          var parts = detail.label.split(', ');
+          $('view').onclick = null;
+          var box = document.createElement('div'); $('view').innerHTML = ''; $('view').appendChild(box); // its own element, so its listeners go when it's closed
+          Flyer.maker(box, { api: api, me: me, back: drawMeets, meet: Object.assign({}, detail, { flyerDate: parts.slice(0, 2).join(' '), flyerTime: parts.slice(2).join(', ') }) });
+          return;
+        }
         var fd = e.target.closest('[data-flyer-drop]');
         if (fd) { api('DELETE', '/meets/' + fd.getAttribute('data-flyer-drop') + '/flyer').then(drawMeets); return; }
         var vd = e.target.closest('[data-video-drop]');
