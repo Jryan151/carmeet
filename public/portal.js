@@ -217,17 +217,26 @@
   /* ---------- logos from the flyer kit on the meet's page: vendors under Food, car clubs under Clubs ---------- */
   function drawKitVendors(m) {
     var box = $('kitVendorsBox'); if (!box) return;
-    Promise.all([api('GET', '/kit'), api('GET', '/meets/' + m.id + '/kit-vendors')]).then(function (r) {
+    Promise.all([api('GET', '/kit'), api('GET', '/meets/' + m.id + '/kit-vendors'), api('GET', '/meets/' + m.id + '/trucks')]).then(function (r) {
       if (!$('kitVendorsBox') || !r[0].ok || !r[1].ok) return;
-      var logos = r[0].d.logos || [], on = r[1].d.ids || [];
+      var logos = r[0].d.logos || [], on = r[1].d.ids || [], links = r[1].d.trucks || {};
+      var trucks = ((r[2].ok && r[2].d.trucks) || []).filter(function (v) { return v.status === 'in' && v.slug; });
       var tiles = function (list, none) {
         return list.length ? '<div class="vpick">' + list.map(function (l) {
           return '<button type="button" data-kv="' + l.id + '" aria-pressed="' + (on.indexOf(l.id) >= 0) + '"><span class="art"><img src="' + esc(l.url) + '" alt=""></span><span>' + esc(l.name) + '</span></button>';
         }).join('') + '</div>' : '<p class="small dim">' + none + '</p>';
       };
+      var food = logos.filter(function (l) { return l.kind === 'vendor' || l.kind === 'sponsor'; });
+      var shown = food.filter(function (l) { return on.indexOf(l.id) >= 0; });
+      // A logo on the page can open a truck's menu (its pre-orders, or its night kit's temporary menu).
+      var linkRows = shown.length && trucks.length ? '<p class="small" style="margin:14px 0 6px">Tap a logo to open a truck’s menu</p>' + shown.map(function (l) {
+        var cur = links[l.id] || '';
+        return '<div class="rowx"><div>' + esc(l.name) + '</div><select data-kv-truck="' + l.id + '" aria-label="Menu for ' + esc(l.name) + '" style="max-width:55%"><option value="">' + (cur ? 'No menu' : 'Same name, or no menu') + '</option>' +
+          trucks.map(function (v) { return '<option value="' + esc(v.slug) + '"' + (cur === v.slug ? ' selected' : '') + '>' + esc(v.name) + (v.payAtTruck && !v.cardReady ? ' (night kit)' : '') + '</option>'; }).join('') + '</select></div>';
+      }).join('') : '';
       box.innerHTML = '<div class="card"><h3>Logos on the meet’s page</h3><p class="small dim">Tap a logo to show it on the meet’s page as a little round logo. Tap again to take it off. ' +
-        'Trucks that take pre-orders are added with Invite a truck above.</p>' +
-        '<p class="small" style="margin:12px 0 6px">Food (under Food)</p>' + tiles(logos.filter(function (l) { return l.kind === 'vendor' || l.kind === 'sponsor'; }), 'No vendor logos yet. Add them in the Flyer kit tab.') +
+        'Trucks that take pre-orders are added with Invite a truck above; their logos open their menu.</p>' +
+        '<p class="small" style="margin:12px 0 6px">Food (under Food)</p>' + tiles(food, 'No vendor logos yet. Add them in the Flyer kit tab.') + linkRows +
         '<p class="small" style="margin:14px 0 6px">Clubs (their own section)</p>' + tiles(logos.filter(function (l) { return l.kind === 'group'; }), 'No car club logos yet. Add them in the Flyer kit tab as Car group.') +
         '<div class="msg" id="kvMsg" role="status"></div></div>';
       box.onclick = function (e) {
@@ -236,10 +245,14 @@
         var was = b.getAttribute('aria-pressed') === 'true';
         b.disabled = true;
         api(was ? 'DELETE' : 'PUT', '/meets/' + m.id + '/kit-vendors/' + b.getAttribute('data-kv')).then(function (x) {
-          b.disabled = false;
-          if (!x.ok) return say($('kvMsg'), x.d.error);
-          b.setAttribute('aria-pressed', String(!was));
-          say($('kvMsg'), was ? 'Taken off the page.' : 'On the page now.', true);
+          if (!x.ok) { b.disabled = false; return say($('kvMsg'), x.d.error); }
+          drawKitVendors(m);
+        });
+      };
+      box.onchange = function (e) {
+        var sel = e.target.closest('[data-kv-truck]'); if (!sel) return;
+        api('PUT', '/meets/' + m.id + '/kit-vendors/' + sel.getAttribute('data-kv-truck'), { truck: sel.value || null }).then(function (x) {
+          say($('kvMsg'), x.ok ? (sel.value ? 'Linked. Tapping the logo opens that menu.' : 'Unlinked.') : x.d.error, x.ok);
         });
       };
     });
@@ -480,6 +493,8 @@
         '<input type="file" id="logoFile" accept="image/jpeg,image/png" aria-label="Logo image"><div class="msg" id="logoMsg" role="status"></div></div>';
       html += videoCard(me.video, 'host');
       html += videoCard(portalVideo, 'portal');
+      html += '<div class="card"><h3>Demo mode</h3><p class="small dim">See your page filled in: sample food trucks plus every vendor and club logo in your Flyer kit. Only you see it; nothing is saved or shown to anyone else.</p>' +
+        '<div class="bar"><a class="btn go" href="/' + esc(me.slug) + '?demo=1" target="_blank" rel="noopener">Open demo</a></div></div>';
       if (me.owner && siteVideo) html += videoCard(siteVideo, 'site');
       html += '<div class="card"><h3>Recap</h3><p class="small dim">The newest recap shows on your page: a video link and up to 9 photos.</p><form id="recapForm">' +
         '<label for="rVideo">Video link (YouTube, Instagram, TikTok, Vimeo)</label><input id="rVideo" maxlength="300" placeholder="https://youtube.com/watch?v=…">' +

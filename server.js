@@ -136,12 +136,43 @@ async function latestRecap(host) {
 }
 async function renderMeet(req, res, host, m, isHome) {
   const [trucks, last, recap, upcoming, kitVendors] = await Promise.all([trucksFor(m), lastTurnout(host), latestRecap(host), upcomingOf(host),
-    all('SELECT k.id, k.kind, k.name, k.file FROM meet_kit_vendors v JOIN kit_logos k ON k.id = v.kit_id WHERE v.meet_id = ? AND k.host_id = ? ORDER BY v.created_at, v.kit_id', [m.id, host.id])]);
+    all('SELECT k.id, k.kind, k.name, k.file, v.truck_slug FROM meet_kit_vendors v JOIN kit_logos k ON k.id = v.kit_id WHERE v.meet_id = ? AND k.host_id = ? ORDER BY v.created_at, v.kit_id', [m.id, host.id])]);
   res.set('Cache-Control', 'no-cache').type('html').send(V.meetPage(host, m, { tz: tzOf(host), base: baseOf(req, host), trucks, kitVendors, last, recap, upcoming, isHome, badge: badgeOf(host, req), meetMode: MEET_MODE(), origin: `${SCHEME}://${req.get('host')}` }));
 }
 const notFound = (req, res, host) => res.status(404).type('html').send(V.message(host || null, { title: 'Nothing here', text: 'The link may be old, or the address may have a typo.', href: host ? baseOf(req, host) || '/' : '/', cta: host ? 'See the next meet' : 'Go to the main page' }));
 
+/* ---------- demo mode: the host sees their page filled in (sample trucks, every logo in their kit) ---------- */
+// Only for the host themself (signed in to the portal), never cached or indexed; nothing in it is saved.
+async function signedInHost(req) {
+  const t = require('./host').cookieOf(req, 'mh_session');
+  if (!/^[a-f0-9]{48}$/.test(t)) return null;
+  const s = await get('SELECT host_id FROM sessions WHERE token_hash = ? AND expires_at > ?', [D.sha(t), Date.now()]);
+  return s ? s.host_id : null;
+}
+const DEMO_TRUCKS = [
+  { slug: 'demo-birria', name: 'Birria Bros', emoji: '🌮', status: 'in', cardReady: true },
+  { slug: 'demo-lemonade', name: 'Desert Lemonade', emoji: '🍋', status: 'in', payAtTruck: true },
+  { slug: 'demo-wings', name: 'Night Wings', emoji: '🍗', status: 'in', cardReady: true },
+  { slug: 'demo-boba', name: 'Boba Spot', emoji: '🧋', status: 'in' },
+];
+async function renderDemo(req, res, host) {
+  const tz = tzOf(host);
+  const up = await upcomingOf(host);
+  let m = up.find((x) => x.status === 'on');
+  if (!m) { // no meet posted: the next Tuesday, 7 to 10 PM
+    const today = U.dayKey(Date.now(), tz);
+    let day = today; for (let i = 0; i < 7; i++) { day = U.addDays(today, i + 1); if (new Date(day + 'T12:00:00Z').getUTCDay() === 2) break; }
+    m = { id: 0, ref: 'demo', host_id: host.id, day, start_time: '19:00', end_time: '22:00', place: 'Your spot', address: '', status: 'on', title: '' };
+  }
+  const kit = await all("SELECT id, kind, name, file FROM kit_logos WHERE host_id = ? AND kind IN ('vendor', 'sponsor', 'group') ORDER BY kind, name COLLATE NOCASE", [host.id]);
+  const [last, recap] = await Promise.all([lastTurnout(host), latestRecap(host)]);
+  res.set({ 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex' }).type('html').send(V.meetPage(host, Object.assign({}, m, { status: 'on' }), {
+    tz, base: baseOf(req, host), trucks: DEMO_TRUCKS, kitVendors: kit.map((k) => Object.assign({ truck_slug: null }, k)), last, recap, upcoming: up,
+    isHome: true, badge: badgeOf(host, req), meetMode: MEET_MODE(), origin: `${SCHEME}://${req.get('host')}`, demo: true }));
+}
+
 async function hostHome(req, res, host) {
+  if (req.query.demo === '1' && (await signedInHost(req)) === host.id) return renderDemo(req, res, host);
   const up = await upcomingOf(host);
   const next = up.find((m) => m.status === 'on') || up[0];
   if (!next) return res.set('Cache-Control', 'no-cache').type('html').send(V.hostEmpty(host, { base: baseOf(req, host), badge: badgeOf(host, req) }));
@@ -361,7 +392,7 @@ app.get('/:a', async (req, res, next) => {
   if (U.RESERVED.has(req.params.a)) return next();
   const host = await get('SELECT * FROM hosts WHERE slug = ?', [String(req.params.a).toLowerCase()]);
   if (!host) return notFound(req, res, null);
-  if (host.domain_on && host.custom_domain) return res.redirect(301, `${SCHEME}://${host.custom_domain}/`);
+  if (host.domain_on && host.custom_domain && req.query.demo !== '1') return res.redirect(301, `${SCHEME}://${host.custom_domain}/`);
   return hostHome(req, res, host);
 });
 app.get('/:a/:b', async (req, res, next) => {

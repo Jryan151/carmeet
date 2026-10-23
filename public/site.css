@@ -95,8 +95,14 @@ p { margin: 0 0 12px; }
 /* Open space between the logo and the button, so the live footage is the show. */
 .showcase { height: clamp(240px, 48vh, 460px); }
 /* Vendors under Food and car clubs under Clubs: little round logos, like profile pictures. */
-.minis { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 6px; }
-.minis img { width: 60px; height: 60px; border-radius: 50%; object-fit: contain; padding: 5px; background: #000; border: 1px solid var(--line); }
+.minis { display: flex; flex-wrap: wrap; gap: 14px 12px; margin-top: 6px; }
+.mini { position: relative; display: grid; place-items: center; width: 60px; height: 60px; border-radius: 50%; background: #000;
+  border: 1px solid var(--line); color: inherit; text-decoration: none; }
+.mini img { width: 100%; height: 100%; border-radius: 50%; object-fit: contain; padding: 5px; }
+.mini .emoji { font-size: 28px; }
+a.mini { border-color: color-mix(in srgb, var(--accent) 70%, transparent); box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 35%, transparent); }
+.mini .tag { position: absolute; bottom: -8px; left: 50%; transform: translateX(-50%); padding: 1px 7px; border-radius: 999px;
+  background: var(--accent); color: var(--on-accent); font: 700 10px/1.5 var(--body); letter-spacing: .04em; text-transform: uppercase; }
 .has-avatar .actions { margin-top: 0; }
 .actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin: 18px 0 8px; }
 .btn { white-space: nowrap; display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 0 22px; border-radius: 999px;
@@ -205,3 +211,8 @@ footer p { text-align: center; }
 .with-flyer .stall .date { font-size: clamp(26px, 8vw, 38px); margin: 4px 0 6px; filter: none; }
 .prose h2 { font-size: 16px; margin: 26px 0 8px; }
 .prose p { color: var(--dim); line-height: 1.6; }
+
+/* Demo mode (only the host sees it): a strip across the top saying so. */
+.demo-bar { position: sticky; top: 0; z-index: 60; padding: 10px var(--gutter); text-align: center; font: 500 13px/1.4 var(--body);
+  background: color-mix(in srgb, var(--accent) 88%, black); color: var(--on-accent); }
+.demo-bar a { color: inherit; font-weight: 700; }

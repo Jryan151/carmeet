@@ -90,9 +90,15 @@ function alertsBtn(host, main) {
     ? `<a class="${cls}" href="https://instagram.com/${esc(host.instagram)}" rel="noopener">Follow on Instagram</a>`
     : `<a class="${cls}" href="#alerts">Get alerts</a>`;
 }
-/** Little round logos, like profile pictures (vendors under Food, car clubs under Clubs). */
+/** Little round logos, like profile pictures (vendors under Food, car clubs under Clubs). One with a menu is a link,
+    marked with a small tag under it. */
 function minis(list) {
-  return `<div class="minis">${list.map((k) => `<img src="/uploads/${esc(k.file)}" alt="${esc(k.name)}" title="${esc(k.name)}" loading="lazy">`).join('')}</div>`;
+  return `<div class="minis">${list.map((k) => {
+    const face = k.img ? `<img src="${esc(k.img)}" alt="" loading="lazy">` : `<span class="emoji" aria-hidden="true">${esc(k.emoji || '🍽')}</span>`;
+    return k.href
+      ? `<a class="mini" href="${esc(k.href)}" aria-label="${esc(k.name)}: ${k.can ? 'pre-order' : 'menu'}" title="${esc(k.name)}">${face}<span class="tag">${k.can ? 'Order' : 'Menu'}</span></a>`
+      : `<span class="mini" role="img" aria-label="${esc(k.name)}" title="${esc(k.name)}">${face}</span>`;
+  }).join('')}</div>`;
 }
 /** The host's logo as a round profile picture: the top of their main page, no words. */
 function avatar(host) {
@@ -100,6 +106,7 @@ function avatar(host) {
 }
 /** Where a truck's menu opens: the food side's own page through this site (meet mode), or the old page here. */
 function menuLink(v, m, mpath, ctx, canOrder) {
+  if (ctx.demo) return '#food'; // demo mode: sample trucks have no menu
   if (ctx.meetMode) return `/meet/${encodeURIComponent(m.ref)}/${encodeURIComponent(v.slug)}/`;
   return canOrder ? `${mpath}/food/${encodeURIComponent(v.slug)}` : null;
 }
@@ -139,7 +146,8 @@ function meetPage(host, m, ctx) {
   const vid = m.video && m.video_status === 'ready' ? m : host.video && host.video_status === 'ready' ? host : null;
   // The top of the page: the host's logo (or name), the flyer, and the buttons. When and where are under "The spot".
   const round = !!host.logo;
-  let body = (round ? '' : top(host, base)) + `<main class="wrap">
+  let body = (ctx.demo ? `<div class="demo-bar" role="note"><b>Demo mode</b> · sample trucks and every logo in your kit. Only you see this. <a href="/host">Back to the portal</a></div>` : '') +
+    (round ? '' : top(host, base)) + `<main class="wrap">
 <section class="hero${vid ? ' has-video' : ''}${m.flyer ? ' with-flyer' : ''}${round ? ' has-avatar' : ''}">
   ${heroBg(vid)}
   ${round ? avatar(host) : ''}
@@ -156,25 +164,25 @@ function meetPage(host, m, ctx) {
   body += `<section id="spot"><h2>The spot</h2>${when(m, tz, { live: !over })}
     ${rules.length ? `<h3 style="margin:16px 0 8px">House rules</h3><ul class="rules">${rules.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>` : ''}</section>`;
   body += `<section id="food"><h2>Food</h2>`;
-  // Vendors the host listed from their flyer kit (not on the ordering system): name and logo, order at the truck.
-  const taken = new Set(trucks.map((v) => String(v.name || '').trim().toLowerCase()));
-  const kit = (ctx.kitVendors || []).filter((k) => k.kind !== 'group' && !taken.has(String(k.name).trim().toLowerCase()));
+  // Everyone serving food, as little round logos (like profile pictures). A logo from the flyer kit goes with the
+  // truck it's linked to (or one with the same name); a truck with a menu (its own pre-orders, or a night kit's
+  // temporary menu) opens it when tapped. Trucks without a kit logo show their own logo or emoji.
+  const norm = (x) => String(x || '').trim().toLowerCase();
   const clubs = (ctx.kitVendors || []).filter((k) => k.kind === 'group');
-  if (!trucks.length && !kit.length) body += `<p class="dim">${over ? 'No food trucks were listed for this meet.' : 'Food trucks will show here once they’re confirmed.'}</p>`;
-  for (const v of trucks) {
-    const can = anyPreorder && takes(v);
-    const href = over || m.status !== 'on' ? null : menuLink(v, m, mpath, ctx, can);
-    const note = can ? (v.cardReady ? 'Pre-order, pick up at the meet' : 'Pre-order, pay at the truck') : href ? 'See the menu' : 'Order at the truck';
-    const inner = `${v.logo ? `<img class="tlogo" src="${esc(v.logo)}" alt="" loading="lazy">` : `<span class="tlogo emoji" aria-hidden="true">${esc(v.emoji || '🍽')}</span>`}
-      <div class="tinfo"><div class="name">${esc(v.name)}</div><div class="note">${note}</div></div>
-      ${href ? `<span class="btn${can ? ' go' : ''}">${can ? 'Pre-order' : 'Menu'}</span>` : ''}`;
-    body += href ? `<a class="truck" href="${esc(href)}">${inner}</a>` : `<div class="truck">${inner}</div>`;
-  }
-  // The rest, as little round logos (like profile pictures).
-  if (kit.length) body += minis(kit);
+  const live = !over && m.status === 'on';
+  const hrefOf = (v) => (live ? menuLink(v, m, mpath, ctx, anyPreorder && takes(v)) : null);
+  const used = new Set();
+  const items = (ctx.kitVendors || []).filter((k) => k.kind !== 'group').map((k) => {
+    const v = trucks.find((x) => x.slug && (x.slug === k.truck_slug || (!k.truck_slug && norm(x.name) === norm(k.name))));
+    if (v) used.add(v.slug);
+    return { img: '/uploads/' + k.file, name: v ? v.name : k.name, href: v ? hrefOf(v) : null, can: !!(v && live && anyPreorder && takes(v)) };
+  });
+  for (const v of trucks) if (!used.has(v.slug)) items.push({ img: v.logo || null, emoji: v.emoji, name: v.name, href: hrefOf(v), can: live && anyPreorder && takes(v) });
+  if (!items.length) body += `<p class="dim">${over ? 'No food trucks were listed for this meet.' : 'Food trucks will show here once they’re confirmed.'}</p>`;
+  else body += minis(items);
   body += `</section>`;
   // The car clubs coming out, the same little round logos.
-  if (clubs.length) body += `<section id="clubs"><h2>Clubs</h2>${minis(clubs)}</section>`;
+  if (clubs.length) body += `<section id="clubs"><h2>Clubs</h2>${minis(clubs.map((k) => ({ img: '/uploads/' + k.file, name: k.name })))}</section>`;
   if (ctx.last && ctx.last.people) {
     body += `<section><p class="turnout">Last meet: about ${ctx.last.people} people${ctx.last.cars ? `, ${ctx.last.cars} cars` : ''}</p>
     <p class="small dim">${esc(U.dayShort(ctx.last.at, tz))}${ctx.last.place ? ` at ${esc(ctx.last.place)}` : ''}</p></section>`;

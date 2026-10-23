@@ -159,7 +159,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
       subscribers: subs.n, requests: reqs.n, unlogged, last: last ? meetShape(last, h) : null });
   });
   const truckShape = (v) => ({ inviteId: v.inviteId, status: v.status, code: v.code, slug: v.slug || null, name: v.name || null, emoji: v.emoji || '',
-    cardReady: !!v.cardReady, preorders: v.preorders || 0, plates: v.plates === undefined ? null : v.plates });
+    cardReady: !!v.cardReady, payAtTruck: !!v.payAtTruck, paused: !!v.paused, preorders: v.preorders || 0, plates: v.plates === undefined ? null : v.plates });
 
   /* ---------- meets ---------- */
   r.get('/meets', signedIn, async (req, res) => {
@@ -488,8 +488,8 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
   r.get('/meets/:id/kit-vendors', signedIn, async (req, res) => {
     const m = await own(req, req.params.id);
     if (!m) return res.status(404).json({ error: 'That meet is gone.' });
-    const rows = await all('SELECT kit_id FROM meet_kit_vendors WHERE meet_id = ? ORDER BY created_at, kit_id', [m.id]);
-    res.set('Cache-Control', 'no-store').json({ ids: rows.map((x) => x.kit_id) });
+    const rows = await all('SELECT kit_id, truck_slug FROM meet_kit_vendors WHERE meet_id = ? ORDER BY created_at, kit_id', [m.id]);
+    res.set('Cache-Control', 'no-store').json({ ids: rows.map((x) => x.kit_id), trucks: Object.fromEntries(rows.filter((x) => x.truck_slug).map((x) => [x.kit_id, x.truck_slug])) });
   });
   r.put('/meets/:id/kit-vendors/:kit', signedIn, async (req, res) => {
     const m = await own(req, req.params.id);
@@ -497,6 +497,13 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     const k = await get('SELECT * FROM kit_logos WHERE id = ? AND host_id = ?', [parseInt(req.params.kit, 10) || 0, req.me.id]);
     if (!k) return res.status(404).json({ error: 'That logo is gone.' });
     await run('INSERT OR IGNORE INTO meet_kit_vendors (meet_id, kit_id, created_at) VALUES (?, ?, ?)', [m.id, k.id, Date.now()]);
+    // Linked to a truck's menu (one of this meet's trucks), or unlinked with an empty one.
+    const b = req.body || {};
+    if (b.truck !== undefined) {
+      const slug = b.truck ? String(b.truck).toLowerCase() : null;
+      if (slug && !/^[a-z0-9-]{1,40}$/.test(slug)) return res.status(400).json({ error: 'That truck isn’t in this meet.' });
+      await run('UPDATE meet_kit_vendors SET truck_slug = ? WHERE meet_id = ? AND kit_id = ?', [slug, m.id, k.id]);
+    }
     res.json({ ok: true });
   });
   r.delete('/meets/:id/kit-vendors/:kit', signedIn, async (req, res) => {
@@ -658,5 +665,6 @@ function stripPng(buf) {
   return null;
 }
 module.exports.stripJpeg = stripJpeg;
+module.exports.cookieOf = cookieOf;
 module.exports.stripPng = stripPng;
 module.exports.offOk = offOk;

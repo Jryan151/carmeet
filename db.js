@@ -91,6 +91,8 @@ async function ensureSchema() {
   await exec(`CREATE TABLE IF NOT EXISTS meet_kit_vendors (
     meet_id INTEGER NOT NULL, kit_id INTEGER NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (meet_id, kit_id)
   )`);
+  // A kit logo can be linked to one of the meet's trucks (its slug), so tapping the logo opens that truck's menu.
+  await addColumn('meet_kit_vendors', 'truck_slug', 'TEXT');
   // The host portal's own background video (one row per host, id = the host's id).
   await exec('CREATE TABLE IF NOT EXISTS host_portal (id INTEGER PRIMARY KEY)');
   for (const t of ['hosts', 'meets', 'site', 'host_portal']) {

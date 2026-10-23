@@ -61,7 +61,7 @@ test('the site opens on the host: round logo, no header, every truck linked to i
   assert.ok(!/Run a meet|Page by/.test(r.text));
   assert.ok(r.text.includes(`href="/meet/${ref}/birria-bros/"`), 'card truck → its menu in meet mode');
   assert.ok(r.text.includes(`href="/meet/${ref}/lemon-stand/"`), 'every truck gets a menu link');
-  assert.match(r.text, /Night Birria<\/div><div class="note">Pre-order, pay at the truck/, 'a night-kit truck takes pre-orders paid at the truck');
+  assert.match(r.text, new RegExp(`<a class="mini" href="/meet/${ref}/night-birria/" aria-label="Night Birria: pre-order"`), 'a night-kit truck: its round logo opens its temporary menu');
   assert.ok(!/online ?kitchen|127\.0\.0\.1/i.test(r.text));
 });
 
@@ -128,7 +128,14 @@ test('the page: logo and buttons on top, when and where under The spot, kit vend
   assert.equal(r.status, 200, r.text);
   assert.deepEqual((await request(ctx, 'GET', SITE, `/api/host/meets/${mid}/kit-vendors`, { cookie: C })).json.ids, [kid]);
   r = await request(ctx, 'GET', SITE, '/');
-  assert.match(r.text, /<div class="minis"><img src="\/uploads\/[^"]+" alt="Boba Spot"/, 'a little round logo under Food');
+  assert.match(r.text, /<span class="mini" role="img" aria-label="Boba Spot" title="Boba Spot"><img src="\/uploads\//, 'a little round logo under Food (no menu: not a link)');
+  // Linked to a night-kit truck: the logo opens that truck's temporary menu (and the truck isn't listed twice).
+  r = await request(ctx, 'PUT', SITE, `/api/host/meets/${mid}/kit-vendors/${kid}`, { cookie: C, body: { truck: 'night-birria' } });
+  assert.equal(r.status, 200, r.text);
+  r = await request(ctx, 'GET', SITE, '/');
+  assert.match(r.text, new RegExp(`<a class="mini" href="/meet/${ref}/night-birria/" aria-label="Night Birria: pre-order" title="Night Birria"><img src="/uploads/`));
+  assert.equal((r.text.match(/night-birria\//g) || []).length, 1, 'once');
+  await request(ctx, 'PUT', SITE, `/api/host/meets/${mid}/kit-vendors/${kid}`, { cookie: C, body: { truck: null } });
   assert.ok(!/<section id="clubs"/.test(r.text), 'no Clubs section without clubs');
   // A car club: its own section, the same little round logos.
   r = await request(ctx, 'POST', SITE, '/api/host/kit?kind=group&name=Viral%20Society', { cookie: C, raw: { buf: tallLogo(), type: 'image/png' } });
@@ -137,7 +144,7 @@ test('the page: logo and buttons on top, when and where under The spot, kit vend
   r = await request(ctx, 'GET', SITE, '/');
   const food = r.text.slice(r.text.indexOf('<section id="food"'), r.text.indexOf('<section id="clubs"'));
   assert.ok(!food.includes('Viral Society'), 'a club is not food');
-  assert.match(r.text, /<section id="clubs"><h2>Clubs<\/h2><div class="minis"><img src="\/uploads\/[^"]+" alt="Viral Society"/);
+  assert.match(r.text, /<section id="clubs"><h2>Clubs<\/h2><div class="minis"><span class="mini" role="img" aria-label="Viral Society"/);
   r = await request(ctx, 'DELETE', SITE, `/api/host/meets/${mid}/kit-vendors/${kid}`, { cookie: C });
   assert.ok(!(await request(ctx, 'GET', SITE, '/')).text.includes('Boba Spot'), 'taken off again');
   // With an Instagram handle, the top button follows the host there.
@@ -157,4 +164,16 @@ test('the portal background: its own video, only for the host', async () => {
   r = await request(ctx, 'GET', SITE, '/host');
   assert.match(r.text, /portal\.js\?v=[a-z0-9]+/);
   assert.ok(!/portal\.js\?v=6"/.test(r.text), 'the portal script carries this start’s version');
+});
+
+test('demo mode: the host sees their page filled in; nobody else does', async () => {
+  let r = await request(ctx, 'GET', SITE, '/tasty-tuesday?demo=1');
+  assert.ok(!/Demo mode/.test(r.text), 'not without signing in');
+  r = await request(ctx, 'GET', SITE, '/tasty-tuesday?demo=1', { cookie: C });
+  assert.equal(r.status, 200);
+  assert.match(r.text, /class="demo-bar"/);
+  assert.match(r.text, /aria-label="Birria Bros: pre-order"/, 'sample trucks');
+  assert.match(r.text, /aria-label="Viral Society"/, 'every club in the kit');
+  assert.equal(r.headers['cache-control'], 'no-store');
+  assert.ok(!/\/meet\/demo\//.test(r.text), 'sample trucks link nowhere real');
 });
