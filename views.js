@@ -141,6 +141,7 @@ function meetPage(host, m, ctx) {
   ${round ? avatar(host) : ''}
   ${ctx.isHome ? '' : `<p class="small dim" style="text-align:center"><a href="${esc(base || '/')}">Next meet</a></p>`}
   ${m.flyer ? `<figure class="flyer"><img src="/uploads/${esc(m.flyer)}" alt="${esc(host.name)} flyer for ${esc(U.dayLong(t.startsAt, tz))}"></figure>` : ''}
+  ${m.flyer ? '' : '<div class="showcase" aria-hidden="true"></div>'}
   ${over ? '<p class="dim" style="text-align:center">This meet is over.</p>' : m.status === 'canceled' ? '<p class="soon-line">This meet is canceled.</p>' : ''}
   ${!over && m.status === 'on' ? `<div class="actions">
     ${anyPreorder ? `<a class="btn go" href="#food">Pre-order food</a>` : ''}
@@ -148,6 +149,9 @@ function meetPage(host, m, ctx) {
   </div>` : ''}
   ${m.notes ? `<p class="dim" style="margin-top:10px">${esc(m.notes)}</p>` : ''}
 </section>`;
+  // When and where, right under the top.
+  body += `<section id="spot"><h2>The spot</h2>${when(m, tz, { live: !over })}
+    ${rules.length ? `<h3 style="margin:16px 0 8px">House rules</h3><ul class="rules">${rules.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>` : ''}</section>`;
   body += `<section id="food"><h2>Food</h2>`;
   // Vendors the host listed from their flyer kit (not on the ordering system): name and logo, order at the truck.
   const taken = new Set(trucks.map((v) => String(v.name || '').trim().toLowerCase()));
@@ -169,10 +173,6 @@ function meetPage(host, m, ctx) {
   if (ctx.last && ctx.last.people) {
     body += `<section><p class="turnout">Last meet: about ${ctx.last.people} people${ctx.last.cars ? `, ${ctx.last.cars} cars` : ''}</p>
     <p class="small dim">${esc(U.dayShort(ctx.last.at, tz))}${ctx.last.place ? ` at ${esc(ctx.last.place)}` : ''}</p></section>`;
-  }
-  {
-    body += `<section id="spot"><h2>The spot</h2>${when(m, tz, { live: !over })}
-    ${rules.length ? `<h3 style="margin:16px 0 8px">House rules</h3><ul class="rules">${rules.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>` : ''}</section>`;
   }
   const rc = ctx.recap;
   if (rc && (rc.video_url || (rc.photos && rc.photos.length))) {

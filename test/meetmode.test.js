@@ -111,10 +111,12 @@ test('the privacy page meet mode links to is there, with no trace of the orderin
 
 test('the page: logo and buttons on top, when and where under The spot, kit vendors under Food, Instagram button', async () => {
   let r = await request(ctx, 'GET', SITE, '/');
-  const hero = r.text.slice(r.text.indexOf('<section class="hero'), r.text.indexOf('<section id="food"'));
+  const hero = r.text.slice(r.text.indexOf('<section class="hero'), r.text.indexOf('<section id="spot"'));
   assert.ok(!/class="date"|data-countdown|Directions/.test(hero), 'no date block in the middle');
+  assert.match(hero, /class="showcase"/, 'open space for the footage');
+  assert.ok(r.text.indexOf('<section id="spot"') < r.text.indexOf('<section id="food"'), 'the spot right under the top');
   assert.match(hero, /href="#alerts">Get alerts</);
-  const spot = r.text.slice(r.text.indexOf('<section id="spot"'));
+  const spot = r.text.slice(r.text.indexOf('<section id="spot"'), r.text.indexOf('<section id="food"'));
   assert.match(spot, /class="when"[\s\S]*class="date"[\s\S]*data-countdown[\s\S]*9240 N 43rd Ave[\s\S]*Directions/);
   // A vendor from the kit, listed on the meet's page.
   r = await request(ctx, 'POST', SITE, '/api/host/kit?kind=vendor&name=Boba%20Spot', { cookie: C, raw: { buf: tallLogo(), type: 'image/png' } });
