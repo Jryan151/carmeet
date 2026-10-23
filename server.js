@@ -120,7 +120,35 @@ app.use(async (req, res, next) => {
 });
 
 /* ---------- files ---------- */
-app.use('/static', express.static(path.join(__dirname, 'public'), { index: false, maxAge: '1h' }));
+/* The site's scripts and styles, squeezed (brotli or gzip, made once per file and kept in memory: the portal's
+   scripts go from about 250 KB to about 60). A link with ?v= names this start's version, so the phone keeps the file
+   until the next update instead of asking again every hour. */
+const zlib = require('zlib');
+const PUBLIC = path.join(__dirname, 'public');
+const squeezed = new Map(); // file → { mtime, br, gz, type }
+const TEXT_TYPES = { '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.json': 'application/json', '.txt': 'text/plain; charset=utf-8' };
+app.use('/static', (req, res, next) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+  const type = TEXT_TYPES[path.extname(req.path).toLowerCase()];
+  const ae = String(req.get('accept-encoding') || '');
+  const enc = /\bbr\b/.test(ae) ? 'br' : /\bgzip\b/.test(ae) ? 'gz' : null;
+  if (!type || !enc) return next();
+  const file = path.join(PUBLIC, path.normalize(decodeURIComponent(req.path)).replace(/^([/\\])+/, ''));
+  if (!file.startsWith(PUBLIC + path.sep)) return next();
+  fs.stat(file, (err, st) => {
+    if (err || !st.isFile()) return next();
+    let c = squeezed.get(file);
+    if (!c || c.mtime !== st.mtimeMs) {
+      const raw = fs.readFileSync(file);
+      c = { mtime: st.mtimeMs, br: zlib.brotliCompressSync(raw, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 10 } }), gz: zlib.gzipSync(raw, { level: 9 }) };
+      squeezed.set(file, c);
+    }
+    res.set({ 'Content-Type': type, 'Content-Encoding': enc === 'br' ? 'br' : 'gzip', Vary: 'Accept-Encoding',
+      'Cache-Control': req.query.v ? 'public, max-age=31536000, immutable' : 'public, max-age=3600' });
+    res.end(req.method === 'HEAD' ? undefined : c[enc]);
+  });
+});
+app.use('/static', express.static(PUBLIC, { index: false, maxAge: '1h', setHeaders: (res) => { if (res.req && res.req.query && res.req.query.v) res.set('Cache-Control', 'public, max-age=31536000, immutable'); } }));
 app.use('/uploads', express.static(UPLOAD_DIR, { index: false, dotfiles: 'ignore', maxAge: '30d', immutable: true }));
 app.get('/health', async (req, res) => { try { await get('SELECT 1 AS x'); res.json({ ok: true }); } catch (e) { res.status(503).json({ ok: false }); } });
 app.get('/robots.txt', (req, res) => res.type('text').send('User-agent: *\nDisallow: /host\nDisallow: /o/\nDisallow: /api/\n'));
@@ -288,10 +316,26 @@ async function foodPage(req, res, host, day, truckSlug) {
 
 /* ---------- host portal and its API ---------- */
 // The portal's scripts and styles carry this start's version, so after an update a phone never keeps the old ones.
-let portalHtml = null;
+let portalHtml = null, portalGz = null;
 app.get(['/host', '/host/'], (req, res) => {
   if (!portalHtml) portalHtml = fs.readFileSync(path.join(__dirname, 'public', 'portal.html'), 'utf8').replace(/\?v=\d+/g, '?v=' + V.ver());
+  if (/\bgzip\b/.test(String(req.get('accept-encoding') || ''))) {
+    if (!portalGz) portalGz = zlib.gzipSync(portalHtml, { level: 9 });
+    return res.set({ 'Cache-Control': 'no-cache', 'Content-Encoding': 'gzip', Vary: 'Accept-Encoding' }).type('html').send(portalGz);
+  }
   res.set('Cache-Control', 'no-cache').type('html').send(portalHtml);
+});
+// The portal's answers, squeezed when they're more than a little (the lists of logos, meets, members).
+app.use('/api', (req, res, next) => {
+  if (!/\bgzip\b/.test(String(req.get('accept-encoding') || ''))) return next();
+  const json = res.json.bind(res);
+  res.json = (body) => {
+    const buf = Buffer.from(JSON.stringify(body));
+    if (buf.length < 1400 || res.get('Content-Encoding')) return json(body);
+    res.set({ 'Content-Type': 'application/json; charset=utf-8', 'Content-Encoding': 'gzip', Vary: 'Accept-Encoding' });
+    return res.end(zlib.gzipSync(buf, { level: 6 }));
+  };
+  next();
 });
 app.use('/api/host', require('./host')({ trucksFor, truckCache, UPLOAD_DIR, tzOf }));
 

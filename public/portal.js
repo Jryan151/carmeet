@@ -15,7 +15,29 @@
   }, true);
   var ACCENTS = ['#c9adff', '#f2a33a', '#e8e4d8', '#5fb3d9', '#e0574f', '#7cc47f', '#c792ea'];
 
+  /* Lists that change only when the host changes them (settings, logos, meets, members): kept from the last time for
+     a couple of minutes, so switching tabs on a weak signal is instant. Any change the host makes drops them all. */
+  var KEEP = /^\/(me|kit|meets|recaps|members|lots|site-video|portal-video)$/;
+  var kept = {};
   function api(method, url, body, raw) {
+    if (method === 'GET' && KEEP.test(url)) {
+      var c = kept[url];
+      if (c && Date.now() - c.at < 120000) return c.p;
+      // A video still processing isn't kept: the next look should see it finish.
+      var p = fetchApi(method, url).then(function (r) { if (!r.ok || JSON.stringify(r.d).indexOf('"processing"') >= 0) delete kept[url]; return r; });
+      kept[url] = { at: Date.now(), p: p };
+      return p;
+    }
+    if (method !== 'GET') kept = {};
+    return fetchApi(method, url, body, raw);
+  }
+  /** After sign-in, the other tabs' lists come in while the host looks at the first one. */
+  function prefetch() {
+    var urls = ['/kit', '/meets', '/recaps', '/members', '/portal-video'].concat(me && me.owner ? ['/site-video'] : []);
+    var go = function () { urls.forEach(function (u) { api('GET', u); }); };
+    if (window.requestIdleCallback) requestIdleCallback(go, { timeout: 2500 }); else setTimeout(go, 1200);
+  }
+  function fetchApi(method, url, body, raw) {
     var o = { method: method, cache: 'no-store', headers: {} };
     if (raw) { o.headers['Content-Type'] = raw.type; o.body = raw; }
     else if (body !== undefined) { o.headers['Content-Type'] = 'application/json'; o.body = JSON.stringify(body); }
@@ -82,6 +104,7 @@
       if (me.accent) document.documentElement.style.setProperty('--accent', me.accent);
       api('GET', '/portal-video').then(function (v) { if (v.ok) portalBg(v.d.video); });
       show(tab);
+      prefetch();
     });
   }
   document.querySelector('.tabs').addEventListener('click', function (e) {
@@ -103,7 +126,7 @@
     return '<div class="card"><h3>' + (scope === 'site' ? 'Front page video' : scope === 'portal' ? 'Portal background' : scope === 'vendor' ? 'Their clip' : 'Background video' + (scope === 'meet' ? ' for this meet' : '')) + '</h3>' +
       '<p class="small dim">' + (scope === 'vendor' ? 'Plays behind their profile and their menu. Pick footage that fits them (their truck at a meet is the best). Without one, your usual background plays.' : scope === 'portal' ? 'Plays behind this portal, only for you.' : scope === 'meet' ? 'Plays behind this meet’s date instead of your usual one. Last week’s recap footage works well.' : scope === 'site' ? 'Plays at the top of ' + esc(location.host) + ', the site’s own front page. Only you see this.' : 'Plays behind the date at the top of your page, silent and on repeat.') +
       ' Any clip from your phone: it becomes a 15-second 1080p loop.</p>' +
-      (st === 'ready' ? '<img src="' + esc(v.poster) + '" alt="" style="width:100%;border-radius:8px;margin:6px 0">' : '') +
+      (st === 'ready' ? '<img src="' + esc(v.thumb || v.poster) + '" alt="" loading="lazy" decoding="async" style="width:100%;max-height:260px;object-fit:cover;border-radius:8px;margin:6px 0">' : '') +
       (st === 'processing' ? '<p class="msg ok">Processing. It shows on ' + where + ' in a minute or two.</p>' : '') +
       (st === 'failed' ? '<p class="msg bad">' + esc(v.error || 'That video didn’t work. Try another clip.') + '</p>' : '') +
       (me.videoReady ? '<input type="file" accept="video/mp4,video/quicktime,video/webm,video/*" data-video-file="' + scope + '" data-id="' + (id || '') + '" aria-label="Choose a video">' : '<p class="small dim">Video processing isn’t set up on the server yet.</p>') +
@@ -115,11 +138,13 @@
     var scope = input.getAttribute('data-video-file'), id = input.getAttribute('data-id');
     var msg = document.querySelector('[data-video-msg="' + scope + '"]');
     if (f.size > 400 * 1024 * 1024) return say(msg, 'That video is over 400 MB. Trim it on your phone first.');
+    kept = {};
     var x = new XMLHttpRequest();
     x.open('POST', '/api/host' + (scope === 'vendor' ? '/kit/' + id + '/video' : scope === 'meet' ? '/meets/' + id + '/video' : scope === 'site' ? '/site-video' : scope === 'portal' ? '/portal-video' : '/video'));
     x.setRequestHeader('Content-Type', f.type || 'video/mp4');
     x.upload.onprogress = function (e) { if (e.lengthComputable) say(msg, 'Uploading… ' + Math.round(e.loaded / e.total * 100) + '%', true); };
     x.onload = function () {
+      kept = {};
       var d = {}; try { d = JSON.parse(x.responseText); } catch (e) {}
       if (x.status >= 400) return say(msg, d.error || 'The upload didn’t go through.');
       after();
@@ -584,7 +609,7 @@
   document.addEventListener('click', function (e) {
     var b = e.target.closest('[data-mem-open],[data-mem-back],[data-mem-link],[data-mem-copy],[data-mem-del]'); if (!b) return;
     if (b.hasAttribute('data-mem-open')) { openMember = +b.getAttribute('data-mem-open'); memberLink = null; drawMembers(); }
-    else if (b.hasAttribute('data-mem-back')) { openMember = null; drawMembers(); }
+    else if (b.hasAttribute('data-mem-back')) { openMember = null; delete kept['/members']; drawMembers(); }
     else if (b.hasAttribute('data-mem-copy')) copy($('memText').textContent, b);
     else if (b.hasAttribute('data-mem-link')) {
       var mid = +b.getAttribute('data-mem-link');

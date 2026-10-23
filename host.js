@@ -29,7 +29,8 @@ function offOk(s) { const [id, sig] = String(s || '').split('.'); return /^\d+$/
 
 /** The site owner (SITE_OWNER_EMAIL) also sets the front page's background video. */
 const isOwner = (h) => !!process.env.SITE_OWNER_EMAIL && String(h.email).toLowerCase() === String(process.env.SITE_OWNER_EMAIL).trim().toLowerCase();
-const videoShape = (x) => ({ status: x.video_status || null, url: x.video ? '/uploads/' + x.video : null, poster: x.video_poster ? '/uploads/' + x.video_poster : null, error: x.video_error || null });
+const videoShape = (x) => ({ status: x.video_status || null, url: x.video ? '/uploads/' + x.video : null, poster: x.video_poster ? '/uploads/' + x.video_poster : null,
+  thumb: x.video_poster ? require('./views').small(x.video_poster, 480) : null, error: x.video_error || null });
 
 function cookieOf(req, name) {
   const c = String(req.headers.cookie || '');

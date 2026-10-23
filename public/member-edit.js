@@ -36,7 +36,7 @@
         '<div class="bar"><button class="btn go" type="submit">Save</button></div><div class="msg" data-me-msg role="status"></div></form></div>' +
 
         '<div class="card"><h3>Background clip</h3><p class="small dim">Plays behind the whole page, silent and on repeat. Any clip from your phone: it becomes a 15-second loop.</p>' +
-        (v.status === 'ready' ? '<img src="' + esc(v.poster) + '" alt="" style="width:100%;border-radius:8px;margin:6px 0">' : '') +
+        (v.status === 'ready' ? '<img src="' + esc(v.thumb || v.poster) + '" alt="" style="width:100%;border-radius:8px;margin:6px 0">' : '') +
         (v.status === 'processing' ? '<p class="msg ok">Processing. It shows on the page in a minute or two.</p>' : '') +
         (v.status === 'failed' ? '<p class="msg bad">' + esc(v.error || 'That video didn’t work. Try another clip.') + '</p>' : '') +
         (m.videoReady ? '<input type="file" accept="video/*" data-me-video aria-label="Choose a video">' : '<p class="small dim">Clips aren’t set up on the server yet.</p>') +
