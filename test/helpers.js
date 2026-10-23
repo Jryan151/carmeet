@@ -100,7 +100,7 @@ function send(ctx, method, host, urlPath, { body, cookie, headers, raw } = {}) {
   const u = new URL(ctx.base + urlPath);
   const data = raw ? raw.buf : body === undefined ? null : Buffer.from(JSON.stringify(body));
   return new Promise((resolve, reject) => {
-    const req = http.request({ hostname: u.hostname, port: u.port, path: u.pathname + u.search, method,
+    const req = http.request({ hostname: u.hostname, port: u.port, path: u.pathname + u.search, method, agent: false, // a fresh connection each time, like separate visitors
       headers: Object.assign({ Host: host }, data ? { 'Content-Type': raw ? raw.type : 'application/json', 'Content-Length': data.length, Origin: 'http://' + host } : {}, cookie ? { Cookie: cookie } : {}, headers || {}) }, (res) => {
       const chunks = [];
       res.on('data', (c) => chunks.push(c));

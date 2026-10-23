@@ -21,7 +21,10 @@ function ffmpegOk() {
 function receive(req, dir) {
   return new Promise((ok, no) => {
     const type = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
-    if (!ACCEPT.test(type)) return no(new Error('Use a video file (MP4, MOV or WebM).'));
+    // A refused upload is still read to the end (and thrown away) before the answer goes back: answering mid-upload
+    // makes the connection close under the browser, which then shows a dropped connection instead of the reason.
+    const refuse = (msg) => { let done = false; const fin = () => { if (!done) { done = true; no(new Error(msg)); } }; req.on('end', fin); req.on('close', fin); req.resume(); };
+    if (!ACCEPT.test(type)) return refuse('Use a video file (MP4, MOV or WebM).');
     const len = parseInt(req.headers['content-length'], 10);
     if (len > MAX_UPLOAD) return no(new Error('That video is over 400 MB. Trim it on your phone first.'));
     const file = path.join(dir, 'in-' + crypto.randomBytes(8).toString('hex'));
