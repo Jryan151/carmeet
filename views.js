@@ -168,6 +168,17 @@ function parkingMap(m) {
 </div>`;
 }
 
+/** The business the meet is at (it lets them use its lot): logo, name, a line about it, its Instagram. */
+function venueCard(v) {
+  if (!v) return '';
+  const ig = v.instagram ? `https://instagram.com/${encodeURIComponent(v.instagram)}` : null;
+  return `<div class="venue">
+  <div class="mini">${v.file ? `<img src="/uploads/${esc(v.file)}" alt="" loading="lazy">` : '<span class="emoji" aria-hidden="true">📍</span>'}</div>
+  <div class="v-info"><div class="small dim">At</div><div class="v-title">${esc(v.name)}</div>${v.note ? `<div class="small dim">${esc(v.note)}</div>` : ''}</div>
+  ${ig ? `<a class="btn sm" href="${esc(ig)}" rel="noopener" target="_blank">Instagram</a>` : ''}
+</div>`;
+}
+
 /** A host's page for one meet (their home page shows the next one). */
 function meetPage(host, m, ctx) {
   const tz = ctx.tz;
@@ -181,7 +192,7 @@ function meetPage(host, m, ctx) {
   const mpath = `${base}/${m.day}`;
   const rules = String(host.rules || '').split('\n').map((s) => s.trim()).filter(Boolean);
   const foodNames = trucks.map((v) => v.name).concat((ctx.kitVendors || []).filter((k) => k.kind !== 'group').map((k) => k.name)).filter((n, i, a) => n && a.indexOf(n) === i);
-  const desc = `${U.dayLong(t.startsAt, tz)}, ${U.time12(t.startsAt, tz)} at ${m.place}.${foodNames.length ? ' Food: ' + foodNames.join(', ') + '.' : ''}`;
+  const desc = `${U.dayLong(t.startsAt, tz)}, ${U.time12(t.startsAt, tz)} at ${ctx.venue ? ctx.venue.name + ', ' : ''}${m.place}.${foodNames.length ? ' Food: ' + foodNames.join(', ') + '.' : ''}`;
   // The background loop: this meet's own clip, or the host's usual one.
   const vid = m.video && m.video_status === 'ready' ? m : host.video && host.video_status === 'ready' ? host : null;
   // The top of the page: the host's logo (or name), the flyer, and the buttons. When and where are under "The spot".
@@ -201,7 +212,7 @@ function meetPage(host, m, ctx) {
   ${m.notes ? `<p class="dim" style="margin-top:10px">${esc(m.notes)}</p>` : ''}
 </section>`;
   // When and where, right under the top.
-  body += `<section id="spot"><h2>The spot</h2>${when(m, tz, { live: !over })}
+  body += `<section id="spot"><h2>The spot</h2>${when(m, tz, { live: !over })}${venueCard(ctx.venue)}
     ${m.lot && !over ? `<h3 style="margin:20px 0 10px" id="parking">Where to park</h3>${parkingMap(m)}` : ''}
     ${rules.length ? `<h3 style="margin:16px 0 8px">House rules</h3><ul class="rules">${rules.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>` : ''}</section>`;
   body += `<section id="food"><h2>Food</h2>`;

@@ -95,3 +95,26 @@ test('repeat next week brings the layout; a new meet can start from a past one',
   assert.equal((await request(ctx, 'PUT', SITE, `/api/host/meets/${id}/lot`, { cookie: C2, body: { lot: LOT } })).status, 404);
   assert.equal((await request(ctx, 'GET', SITE, '/api/host/lots', { cookie: C2 })).json.lots.length, 0);
 });
+
+test('a venue: added in Settings, picked on a meet, shown under The spot; only the host’s own', async () => {
+  let r = await request(ctx, 'POST', SITE, '/api/host/kit/entry', { cookie: C, body: { kind: 'venue', name: 'LV Smoke Shop', instagram: '@lvsmokeshop' } });
+  assert.equal(r.status, 201, r.text);
+  const v = r.json.logo.id;
+  r = await request(ctx, 'PUT', SITE, `/api/host/kit/${v}`, { cookie: C, body: { note: 'Your neighborhood smoke shop' } });
+  r = await request(ctx, 'PUT', SITE, `/api/host/meets/${id}`, { cookie: C, body: { day: ymd(1), start: '19:00', end: '23:00', place: 'The lot', address: '5112 W Peoria Ave, Glendale, AZ', venueId: v } });
+  assert.equal(r.status, 200, r.text);
+  assert.equal(r.json.meet.venueId, v);
+  r = await request(ctx, 'GET', SITE, '/fuel-friday');
+  assert.match(r.text, /class="venue"/);
+  assert.match(r.text, /LV Smoke Shop<\/div><div class="small dim">Your neighborhood smoke shop/);
+  assert.match(r.text, /instagram\.com\/lvsmokeshop/);
+  assert.match(r.text, /<meta name="description" content="[^"]*at LV Smoke Shop, The lot/);
+  // Another host's venue can't be picked; a club isn't a venue.
+  const C3 = await host(ctx, { email: 'y@example.com', name: 'Third', slug: 'third-crew' });
+  const other = (await request(ctx, 'POST', SITE, '/api/host/kit/entry', { cookie: C3, body: { kind: 'venue', name: 'Elsewhere' } })).json.logo.id;
+  const club = (await request(ctx, 'POST', SITE, '/api/host/kit/entry', { cookie: C, body: { kind: 'group', name: 'Unforsaken' } })).json.logo.id;
+  for (const bad of [other, club]) {
+    r = await request(ctx, 'PUT', SITE, `/api/host/meets/${id}`, { cookie: C, body: { day: ymd(1), start: '19:00', end: '23:00', place: 'The lot', venueId: bad } });
+    assert.equal(r.json.meet.venueId, null);
+  }
+});

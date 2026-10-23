@@ -56,6 +56,11 @@ npm test
 A second verified domain in the same Resend account, with its own send-only key for that domain. Set
 `RESEND_API_KEY` and `MAIL_FROM` (an address on this domain). Emails go out "from" the host's name.
 
+## Venues
+
+Settings › **Venues**: businesses that let you use their lot (name, logo, Instagram, a short line). Pick one on a meet
+("At a business?") and the page shows it under The spot: "At LV Smoke Shop", with its logo and Instagram.
+
 ## Parking map
 
 Meets › open a meet › **Parking map**. Type the address and pick the match: the satellite view opens on the spot.

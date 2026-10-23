@@ -384,14 +384,18 @@
       '<div class="grid2"><div><label for="mStart">Starts</label><input id="mStart" type="time" required value="' + esc(m.start || '19:00') + '"></div><div><label for="mEnd">Ends</label><input id="mEnd" type="time" required value="' + esc(m.end || '22:00') + '"></div></div>' +
       '<label for="mPlace">Spot</label><input id="mPlace" maxlength="80" required placeholder="Dunlap shopping center, back lot" value="' + esc(m.place || '') + '">' +
       '<label for="mAddr">Street address (for directions)</label><input id="mAddr" maxlength="160" placeholder="3500 W Dunlap Ave, Phoenix, AZ" value="' + esc(m.address || '') + '">' +
+      '<label for="mVenue">At a business? (optional)</label><select id="mVenue"><option value="">No</option>' + (venues || []).map(function (v) { return '<option value="' + v.id + '"' + (m.venueId === v.id ? ' selected' : '') + '>' + esc(v.name) + '</option>'; }).join('') + '</select>' +
+      (venues && venues.length ? '' : '<p class="small dim" style="margin:4px 0 0">Add businesses in Settings › Venues.</p>') +
       '<label for="mTitle">Name for this one (optional)</label><input id="mTitle" maxlength="80" placeholder="JDM night" value="' + esc(m.title || '') + '">' +
       '<label for="mNotes">Notes (optional)</label><textarea id="mNotes" maxlength="300" placeholder="Enter from 35th Ave. Overflow parking on the north side.">' + esc(m.notes || '') + '</textarea>' +
       '<div class="checks"><label><input type="checkbox" id="mTell"' + (m.id ? '' : ' checked') + '> ' + (m.id ? 'If the time or place changed, email the alert list' : 'Email the alert list') + '</label></div>' +
       '<div class="bar"><button class="btn go" type="submit">' + (m.id ? 'Save' : 'Post meet') + '</button><button class="btn" type="button" data-close-form>Cancel</button></div>' +
       '<div class="msg" id="meetMsg" role="status"></div></form></div>';
   }
+  var venues = [];
   function drawMeets() {
-    api('GET', '/meets').then(function (r) {
+    // The venues first, so the meet form can offer them.
+    api('GET', '/kit').then(function (k) { venues = k.ok ? (k.d.logos || []).filter(function (l) { return l.kind === 'venue'; }) : []; return api('GET', '/meets'); }).then(function (r) {
       if (!r.ok) return view('<p class="msg bad">' + esc(r.d.error) + '</p>');
       var list = r.d.meets;
       var editing = openMeet && openMeet.edit !== undefined ? (openMeet.edit === 'new' ? {} : list.filter(function (x) { return x.id === openMeet.edit; })[0]) : null;
@@ -411,7 +415,7 @@
       var form = $('meetForm');
       if (form) form.onsubmit = function (e) {
         e.preventDefault();
-        var body = { day: $('mDay').value, start: $('mStart').value, end: $('mEnd').value, place: $('mPlace').value.trim(), address: $('mAddr').value.trim(), title: $('mTitle').value.trim(), notes: $('mNotes').value.trim(), tellAlerts: $('mTell').checked };
+        var body = { day: $('mDay').value, start: $('mStart').value, end: $('mEnd').value, place: $('mPlace').value.trim(), address: $('mAddr').value.trim(), title: $('mTitle').value.trim(), notes: $('mNotes').value.trim(), venueId: $('mVenue').value ? +$('mVenue').value : null, tellAlerts: $('mTell').checked };
         api(editing.id ? 'PUT' : 'POST', editing.id ? '/meets/' + editing.id : '/meets', body).then(function (r2) {
           if (!r2.ok) return say($('meetMsg'), r2.d.error);
           openMeet = { id: r2.d.meet.id }; drawMeets();
@@ -507,13 +511,14 @@
       $('listVendors').innerHTML = listCard('vendor', 'Food vendors', 'Trucks you work with. For a meet, each gets its own link (no email or phone): it opens straight to their truck, with their menu ready. Their logo shows under Food on your page.',
         logos.filter(function (l) { return l.kind === 'vendor' || l.kind === 'sponsor'; }));
       $('listClubs').innerHTML = listCard('group', 'Clubs', 'Car clubs that come out. Their logos show under Clubs on your page and open their Instagram.', logos.filter(function (l) { return l.kind === 'group'; }));
+      $('listVenues').innerHTML = listCard('venue', 'Venues', 'Businesses that let you use their lot. Pick one on a meet and it shows under The spot: “At LV Smoke Shop”, with their logo and Instagram.', logos.filter(function (l) { return l.kind === 'venue'; }));
       if (listOpen && menuDraft === null) { var k = logos.filter(function (l) { return l.id === listOpen; })[0]; if (k && k.kind !== 'group') api('GET', '/kit/' + k.id + '/menu').then(function (m) { var el = document.querySelector('[data-menu-count="' + k.id + '"]'); if (el && m.ok) el.textContent = m.d.foodOn ? (m.d.items ? m.d.items + ' item' + (m.d.items === 1 ? '' : 's') + ' on their menu' : 'No menu yet') : ''; }); }
-      ['listVendors', 'listClubs'].forEach(function (id) { $(id).onclick = listClick; $(id).onchange = listChange; });
+      ['listVendors', 'listClubs', 'listVenues'].forEach(function (id) { $(id).onclick = listClick; $(id).onchange = listChange; });
     });
   }
   function face(l) { return l.url ? '<img src="' + esc(l.url) + '" alt="">' : '<span>' + (l.kind === 'group' ? '🚗' : '🍽') + '</span>'; }
   function listCard(kind, title, sub, list) {
-    var club = kind === 'group';
+    var club = kind === 'group' || kind === 'venue';
     return '<div class="card"><h3>' + title + '</h3><p class="small dim">' + sub + '</p>' +
       (list.length ? list.map(function (l) {
         if (listOpen === l.id) {
@@ -532,7 +537,7 @@
         return '<div class="entry"><div class="ent-face">' + face(l) + '</div><div style="flex:1;min-width:0"><b>' + esc(l.name) + '</b>' + (l.instagram ? '<div class="small dim">@' + esc(l.instagram) + '</div>' : '') +
           (l.note ? '<div class="small dim">' + esc(l.note) + '</div>' : '') + (!club && l.pageOn ? '<div class="small" style="color:var(--ok)">Profile page on</div>' : '') + '</div><button class="btn sm" data-ent-open="' + l.id + '">Edit</button></div>';
       }).join('') : '<p class="small dim">None yet.</p>') +
-      '<form class="ent-add" data-ent-add="' + kind + '"><input name="name" maxlength="60" placeholder="' + (club ? 'Club name' : 'Truck name') + '" aria-label="Name"><input name="instagram" maxlength="60" placeholder="@instagram" aria-label="Instagram">' +
+      '<form class="ent-add" data-ent-add="' + kind + '"><input name="name" maxlength="60" placeholder="' + (kind === 'venue' ? 'Business name' : club ? 'Club name' : 'Truck name') + '" aria-label="Name"><input name="instagram" maxlength="60" placeholder="@instagram" aria-label="Instagram">' +
       '<button class="btn sm" type="submit">Add</button></form><div class="msg" data-add-msg="' + kind + '" role="status"></div></div>';
   }
   function menuDraftHtml(l) {
@@ -700,7 +705,7 @@
         '<div class="bar"><button class="btn go" type="submit">Save</button></div><div class="msg" id="setMsg" role="status"></div></form></div>';
       html += '<div class="card"><h3>Logo</h3>' + (me.logo ? '<img src="' + esc(me.logo) + '" alt="" style="width:64px;height:64px;border-radius:10px;object-fit:cover;margin-bottom:8px">' : '') +
         '<input type="file" id="logoFile" accept="image/jpeg,image/png" aria-label="Logo image"><div class="msg" id="logoMsg" role="status"></div></div>';
-      html += '<div id="listVendors"></div><div id="listClubs"></div>';
+      html += '<div id="listVendors"></div><div id="listClubs"></div><div id="listVenues"></div>';
       html += videoCard(me.video, 'host');
       html += videoCard(portalVideo, 'portal');
       html += '<div class="card"><h3>Demo mode</h3><p class="small dim">See your page filled in: sample food trucks plus every vendor and club logo in your Flyer kit. Only you see it; nothing is saved or shown to anyone else.</p>' +

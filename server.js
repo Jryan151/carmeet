@@ -182,7 +182,8 @@ async function renderMeet(req, res, host, m, isHome) {
   const [trucks, last, recap, upcoming, kitVendors, kitAll] = await Promise.all([trucksFor(m), lastTurnout(host), latestRecap(host), upcomingOf(host),
     all('SELECT k.id, k.kind, k.name, k.file, k.instagram, k.truck_slug, k.page_slug, k.page_on, v.truck_slug AS meet_truck FROM meet_kit_vendors v JOIN kit_logos k ON k.id = v.kit_id WHERE v.meet_id = ? AND k.host_id = ? ORDER BY v.created_at, v.kit_id', [m.id, host.id]),
     all("SELECT id, kind, name, file, instagram, truck_slug, page_slug, page_on FROM kit_logos WHERE host_id = ? AND kind IN ('vendor', 'sponsor')", [host.id])]);
-  res.set('Cache-Control', 'no-cache').type('html').send(V.meetPage(host, m, { tz: tzOf(host), base: baseOf(req, host), trucks: trucks.map(truckFace), kitVendors, kitAll, last, recap, upcoming, isHome, badge: badgeOf(host, req), meetMode: MEET_MODE(), origin: `${SCHEME}://${req.get('host')}` }));
+  const venue = m.venue_id ? await get("SELECT name, file, instagram, note FROM kit_logos WHERE id = ? AND host_id = ? AND kind = 'venue'", [m.venue_id, host.id]) : null;
+  res.set('Cache-Control', 'no-cache').type('html').send(V.meetPage(host, m, { tz: tzOf(host), base: baseOf(req, host), trucks: trucks.map(truckFace), kitVendors, kitAll, last, recap, upcoming, isHome, venue, badge: badgeOf(host, req), meetMode: MEET_MODE(), origin: `${SCHEME}://${req.get('host')}` }));
 }
 const notFound = (req, res, host) => res.status(404).type('html').send(V.message(host || null, { title: 'Nothing here', text: 'The link may be old, or the address may have a typo.', href: host ? baseOf(req, host) || '/' : '/', cta: host ? 'See the next meet' : 'Go to the main page' }));
 

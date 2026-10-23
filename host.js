@@ -122,7 +122,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     const tz = tzOf(h); const t = U.meetTimes(m, tz);
     return { id: m.id, ref: m.ref, title: m.title || '', day: m.day, start: m.start_time, end: m.end_time, place: m.place, address: m.address || '', notes: m.notes || '',
       status: m.status, startsAt: t.startsAt, endsAt: t.endsAt, label: `${U.dayShort(t.startsAt, tz)}, ${U.time12(t.startsAt, tz)}–${U.time12(t.endsAt, tz)}`,
-      over: t.endsAt < Date.now(), people: m.turnout_people, cars: m.turnout_cars, video: videoShape(m), flyer: m.flyer ? '/uploads/' + m.flyer : null, lot: LotMap.clean(m.lot), synced: !!m.synced_at && !m.sync_error, syncError: m.sync_error || '', url: `${pageUrl(h)}/${m.day}` };
+      over: t.endsAt < Date.now(), people: m.turnout_people, cars: m.turnout_cars, video: videoShape(m), flyer: m.flyer ? '/uploads/' + m.flyer : null, lot: LotMap.clean(m.lot), venueId: m.venue_id || null, synced: !!m.synced_at && !m.sync_error, syncError: m.sync_error || '', url: `${pageUrl(h)}/${m.day}` };
   }
   async function sync(h, m) {
     const s = await K.syncMeet(h, m, `${pageUrl(h)}/${m.day}`);
@@ -176,7 +176,14 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     if (!U.TIME_RE.test(start) || !U.TIME_RE.test(end) || start === end) return { error: 'Set a start and end time.' };
     const place = U.clean(b.place, 80);
     if (!place) return { error: 'Where is it?' };
-    return { day, start_time: start, end_time: end, place, address: U.clean(b.address, 160), title: U.clean(b.title, 80), notes: U.cleanBlock(b.notes, 300) };
+    return { day, start_time: start, end_time: end, place, address: U.clean(b.address, 160), title: U.clean(b.title, 80), notes: U.cleanBlock(b.notes, 300), venueId: b.venueId };
+  }
+  /** The venue picked for a meet: one of this host's Venues, or none. */
+  async function venueOf(h, id) {
+    const n = parseInt(id, 10);
+    if (!n) return null;
+    const k = await get("SELECT id FROM kit_logos WHERE id = ? AND host_id = ? AND kind = 'venue'", [n, h.id]);
+    return k ? k.id : null;
   }
   r.post('/meets', signedIn, async (req, res) => {
     const h = req.me;
@@ -186,8 +193,8 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     const n = await get('SELECT COUNT(*) AS n FROM meets WHERE host_id = ? AND day >= ?', [h.id, U.dayKey(Date.now(), tzOf(h))]);
     if (n.n >= 30) return res.status(400).json({ error: 'You have 30 meets coming up. That’s the limit for now.' });
     const now = Date.now();
-    const ins = await run('INSERT INTO meets (host_id, ref, title, day, start_time, end_time, place, address, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [h.id, 'm' + D.token(10), m.title, m.day, m.start_time, m.end_time, m.place, m.address, m.notes, now, now]);
+    const ins = await run('INSERT INTO meets (host_id, ref, title, day, start_time, end_time, place, address, notes, venue_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [h.id, 'm' + D.token(10), m.title, m.day, m.start_time, m.end_time, m.place, m.address, m.notes, await venueOf(h, m.venueId), now, now]);
     const row = await get('SELECT * FROM meets WHERE id = ?', [ins.lastID]);
     await sync(h, row);
     if ((req.body || {}).tellAlerts === true) await tellAlerts(h, row, 'new');
@@ -200,8 +207,8 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     const m = readMeet(req.body || {}, h);
     if (m.error) return res.status(400).json({ error: m.error });
     if (m.day !== old.day && (await get('SELECT 1 AS x FROM meets WHERE host_id = ? AND day = ? AND id != ?', [h.id, m.day, old.id]))) return res.status(409).json({ error: 'You already have a meet that day.' });
-    await run('UPDATE meets SET title = ?, day = ?, start_time = ?, end_time = ?, place = ?, address = ?, notes = ?, updated_at = ? WHERE id = ?',
-      [m.title, m.day, m.start_time, m.end_time, m.place, m.address, m.notes, Date.now(), old.id]);
+    await run('UPDATE meets SET title = ?, day = ?, start_time = ?, end_time = ?, place = ?, address = ?, notes = ?, venue_id = ?, updated_at = ? WHERE id = ?',
+      [m.title, m.day, m.start_time, m.end_time, m.place, m.address, m.notes, await venueOf(h, m.venueId), Date.now(), old.id]);
     const row = await get('SELECT * FROM meets WHERE id = ?', [old.id]);
     await sync(h, row);
     const moved = old.day !== row.day || old.start_time !== row.start_time || old.end_time !== row.end_time || old.place !== row.place || old.address !== row.address;
@@ -219,8 +226,8 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     if (await get('SELECT 1 AS x FROM meets WHERE host_id = ? AND day = ?', [h.id, day])) return res.status(409).json({ error: `You already have a meet on ${day}.` });
     const now = Date.now();
     // Same spot, same parking map.
-    const ins = await run('INSERT INTO meets (host_id, ref, title, day, start_time, end_time, place, address, notes, lot, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [h.id, 'm' + D.token(10), src.title, day, src.start_time, src.end_time, src.place, src.address, src.notes, src.lot, now, now]);
+    const ins = await run('INSERT INTO meets (host_id, ref, title, day, start_time, end_time, place, address, notes, lot, venue_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [h.id, 'm' + D.token(10), src.title, day, src.start_time, src.end_time, src.place, src.address, src.notes, src.lot, src.venue_id, now, now]);
     const row = await get('SELECT * FROM meets WHERE id = ?', [ins.lastID]);
     await sync(h, row);
     res.status(201).json({ meet: meetShape(await get('SELECT * FROM meets WHERE id = ?', [row.id]), h) });
@@ -501,7 +508,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
   });
 
   /* ---------- the flyer kit: vendor and car group logos, ready to paste onto a flyer ---------- */
-  const KINDS = ['vendor', 'group', 'sponsor', 'title'];
+  const KINDS = ['vendor', 'group', 'sponsor', 'title', 'venue'];
   const kitShape = (k) => ({ id: k.id, kind: k.kind, name: k.name, url: k.file ? '/uploads/' + k.file : '', instagram: k.instagram || '', note: k.note || '', truckSlug: k.truck_slug || null,
     pageSlug: k.page_slug || null, pageOn: !!k.page_on, pageUrl: k.page_slug ? U.vendorUrl(k.page_slug, { absolute: true }) : null });
   const hostKey = (h) => 'host_' + h.id;
@@ -535,9 +542,9 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
   // A Food vendor or a Club added from Settings: a name (and Instagram), with or without a logo yet.
   r.post('/kit/entry', signedIn, async (req, res) => {
     const b = req.body || {};
-    const kind = b.kind === 'group' ? 'group' : 'vendor';
+    const kind = ['group', 'venue'].includes(b.kind) ? b.kind : 'vendor';
     const nm = U.clean(b.name, 60);
-    if (!nm) return res.status(400).json({ error: kind === 'group' ? 'Name the club.' : 'Name the truck.' });
+    if (!nm) return res.status(400).json({ error: kind === 'group' ? 'Name the club.' : kind === 'venue' ? 'Name the place.' : 'Name the truck.' });
     const n = await get('SELECT COUNT(*) AS n FROM kit_logos WHERE host_id = ?', [req.me.id]);
     if (n.n >= 200) return res.status(400).json({ error: 'Your lists have 200 entries. Delete a few first.' });
     const ins = await run('INSERT INTO kit_logos (host_id, kind, name, file, instagram, note, created_at) VALUES (?, ?, ?, \'\', ?, ?, ?)',
@@ -580,6 +587,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     for (const t of ['kit_media', 'kit_spots', 'kit_meets', 'kit_old_slugs']) await run(`DELETE FROM ${t} WHERE kit_id = ?`, [k.id]);
     await run('DELETE FROM kit_logos WHERE id = ?', [k.id]);
     await run('DELETE FROM meet_kit_vendors WHERE kit_id = ?', [k.id]);
+    await run('UPDATE meets SET venue_id = NULL WHERE venue_id = ?', [k.id]);
     res.json({ ok: true });
   });
 
