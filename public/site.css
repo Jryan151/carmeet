@@ -219,3 +219,29 @@ footer p { text-align: center; }
 .demo-bar { position: sticky; top: 0; z-index: 60; padding: 10px var(--gutter); text-align: center; font: 500 13px/1.4 var(--body);
   background: color-mix(in srgb, var(--accent) 88%, black); color: var(--on-accent); }
 .demo-bar a { color: inherit; font-weight: 700; }
+
+/* ---------- a Food vendor's profile: their clip behind everything, their logo up top, then their story ---------- */
+.vendor .hero { text-align: center; padding-bottom: 8px; }
+.v-face { width: clamp(150px, 46vw, 220px); aspect-ratio: 1; margin: 40px auto 14px; border-radius: 50%; background: #000; border: 1px solid var(--line);
+  display: grid; place-items: center; overflow: hidden; box-shadow: 0 0 0 6px rgba(0, 0, 0, .25), 0 24px 60px rgba(0, 0, 0, .55), 0 0 60px color-mix(in srgb, var(--accent) 22%, transparent); }
+.v-face img { width: 100%; height: 100%; object-fit: contain; padding: 12%; }
+.v-face span { font-size: 64px; }
+.v-name { font-size: clamp(26px, 7.5vw, 40px); overflow-wrap: anywhere; filter: drop-shadow(0 2px 14px rgba(0, 0, 0, .7)); }
+.v-serves { margin: 10px auto 0; max-width: 34ch; font: 500 16px/1.45 var(--body); }
+.v-since { margin: 6px 0 0; font: 500 12px/1.3 var(--body); letter-spacing: .2em; text-transform: uppercase; color: var(--dim); }
+.vendor .actions { margin-top: 20px; }
+.btn[aria-disabled="true"] { opacity: .55; cursor: default; box-shadow: none; }
+.v-at { margin: 6px auto 0; max-width: 40ch; font-size: 14px; color: var(--dim); }
+.v-at a { color: var(--ink); }
+.v-about { padding: 18px; margin: 12px 0; border: 1px solid var(--line); border-radius: var(--radius); background: var(--lot);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+main > section.v-about { padding: 18px; }
+.v-about p:last-child { margin-bottom: 0; }
+.v-known span { display: block; font: 500 11px/1.3 var(--body); letter-spacing: .22em; text-transform: uppercase; color: var(--accent); margin-bottom: 2px; }
+.v-known { font: 600 18px/1.35 var(--body); }
+.v-photos figure { margin: 0; position: relative; }
+.v-photos figcaption { position: absolute; left: 6px; right: 6px; bottom: 6px; font-size: 12px; line-height: 1.3; padding: 3px 7px; border-radius: 8px;
+  background: rgba(7, 6, 11, .7); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.v-logos { display: flex; flex-wrap: wrap; gap: 16px 14px; }
+.v-logos figure { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; width: 64px; }
+.v-logos figcaption { font-size: 12px; color: var(--dim); text-align: center; line-height: 1.2; }

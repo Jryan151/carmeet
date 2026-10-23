@@ -98,9 +98,33 @@ async function ensureSchema() {
   await addColumn('kit_logos', 'instagram', 'TEXT');
   await addColumn('kit_logos', 'note', 'TEXT');
   await addColumn('kit_logos', 'truck_slug', 'TEXT');
+  // A Food vendor's profile page: what they're about, what they sell, what they're known for, since when, and its
+  // address (/v/<page_slug>, or <page_slug>.<site domain>). Off until the host turns it on (after asking the truck).
+  await addColumn('kit_logos', 'about', 'TEXT');
+  await addColumn('kit_logos', 'serves', 'TEXT');
+  await addColumn('kit_logos', 'signature', 'TEXT');
+  await addColumn('kit_logos', 'since', 'TEXT');
+  await addColumn('kit_logos', 'page_slug', 'TEXT');
+  await addColumn('kit_logos', 'page_on', 'INTEGER NOT NULL DEFAULT 0');
+  await exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_kit_page_slug ON kit_logos (page_slug) WHERE page_slug IS NOT NULL');
+  // A profile's pictures: past logos (with a label like "2022") and food photos.
+  await exec(`CREATE TABLE IF NOT EXISTS kit_media (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, kit_id INTEGER NOT NULL, host_id INTEGER NOT NULL, kind TEXT NOT NULL, file TEXT NOT NULL,
+    label TEXT, created_at INTEGER NOT NULL
+  )`);
+  await exec('CREATE INDEX IF NOT EXISTS idx_kit_media ON kit_media (kit_id, kind)');
+  // The spots a vendor parks at regularly (from their location tags and "find us" posts).
+  await exec(`CREATE TABLE IF NOT EXISTS kit_spots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, kit_id INTEGER NOT NULL, host_id INTEGER NOT NULL, name TEXT NOT NULL, address TEXT,
+    when_text TEXT, created_at INTEGER NOT NULL
+  )`);
+  // The meets a vendor served at (a truck that was in, or a logo the host listed), for "At 6 meets".
+  await exec('CREATE TABLE IF NOT EXISTS kit_meets (kit_id INTEGER NOT NULL, meet_id INTEGER NOT NULL, PRIMARY KEY (kit_id, meet_id))');
+  // A profile's old addresses, so a shared link still lands after a rename.
+  await exec('CREATE TABLE IF NOT EXISTS kit_old_slugs (slug TEXT PRIMARY KEY, kit_id INTEGER NOT NULL, created_at INTEGER NOT NULL)');
   // The host portal's own background video (one row per host, id = the host's id).
   await exec('CREATE TABLE IF NOT EXISTS host_portal (id INTEGER PRIMARY KEY)');
-  for (const t of ['hosts', 'meets', 'site', 'host_portal']) {
+  for (const t of ['hosts', 'meets', 'site', 'host_portal', 'kit_logos']) {
     await addColumn(t, 'video', 'TEXT');
     await addColumn(t, 'video_poster', 'TEXT');
     await addColumn(t, 'video_status', 'TEXT'); // processing | ready | failed

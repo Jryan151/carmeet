@@ -55,4 +55,32 @@ function videoUrl(s) {
 }
 const ACCENTS = ['#c9adff', '#f2a33a', '#e8e4d8', '#5fb3d9', '#e0574f', '#7cc47f', '#c792ea'];
 
-module.exports = { DATE_RE, TIME_RE, SLUG_RE, EMAIL_RE, RESERVED, zone, parts, zonedTime, dayKey, addDays, validDate, meetTimes, time12, dayLong, dayShort, fmt, clean, cleanBlock, esc, handle, videoUrl, ACCENTS };
+/* ---------- a Food vendor's profile address: /v/<slug> on the site, or <slug>.<site domain> ---------- */
+// Names a vendor's address can never be: the site's own paths, and subdomains a server or mail setup uses.
+const PAGE_RESERVED = new Set([...RESERVED, 'v', 'www', 'mail', 'email', 'smtp', 'imap', 'pop', 'ftp', 'ns1', 'ns2', 'mx', 'cdn', 'assets', 'img',
+  'status', 'support', 'blog', 'shop', 'app', 'dev', 'test', 'staging', 'portal', 'dashboard', 'webmail', 'autoconfig', 'autodiscover', 'caddy']);
+const pageSlugOk = (s) => SLUG_RE.test(String(s || '')) && !PAGE_RESERVED.has(String(s)) && !String(s).includes('--');
+/** A page address from a truck's name: "Tacos El Rey!" → "tacos-el-rey". */
+function pageSlugFrom(name) {
+  const s = String(name || '').normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase()
+    .replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').replace(/-{2,}/g, '-').slice(0, 40).replace(/-+$/, '');
+  return s.length >= 3 ? s : (s + '-food').replace(/^-/, '').slice(0, 40);
+}
+const subdomainsOn = () => process.env.VENDOR_SUBDOMAINS === '1';
+/** Where a vendor's profile lives. With subdomains on, its own address; else a path on whichever site is showing. */
+function vendorUrl(slug, { absolute } = {}) {
+  const domain = String(process.env.SITE_DOMAIN || 'localhost').toLowerCase();
+  const scheme = process.env.PUBLIC_SCHEME || 'https';
+  if (subdomainsOn()) return `${scheme}://${slug}.${domain}/`;
+  return (absolute ? `${scheme}://${domain}` : '') + '/v/' + slug;
+}
+/** The vendor subdomain a host name is for ("tacos-el-rey.azmonarchy.com" → "tacos-el-rey"), or null. */
+function subOf(hostname) {
+  const h = String(hostname || '').toLowerCase();
+  const domain = String(process.env.SITE_DOMAIN || 'localhost').toLowerCase();
+  if (!h.endsWith('.' + domain)) return null;
+  const sub = h.slice(0, -(domain.length + 1));
+  return sub && sub !== 'www' && SLUG_RE.test(sub) ? sub : null;
+}
+
+module.exports = { PAGE_RESERVED, pageSlugOk, pageSlugFrom, vendorUrl, subOf, subdomainsOn, DATE_RE, TIME_RE, SLUG_RE, EMAIL_RE, RESERVED, zone, parts, zonedTime, dayKey, addDays, validDate, meetTimes, time12, dayLong, dayShort, fmt, clean, cleanBlock, esc, handle, videoUrl, ACCENTS };

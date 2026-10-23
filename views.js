@@ -96,9 +96,10 @@ function minis(list) {
   return `<div class="minis">${list.map((k) => {
     const face = k.img ? `<img src="${esc(k.img)}" alt="" loading="lazy">` : `<span class="emoji" aria-hidden="true">${esc(k.emoji || '🍽')}</span>`;
     const open = k.open ? '<span class="live" aria-hidden="true"></span>' : '';
-    const label = `${k.name}${k.open ? ', open now' : ''}${k.tag ? ': ' + (k.can ? 'pre-order' : 'menu') : k.external ? ': Instagram' : ''}`;
+    const label = `${k.name}${k.open ? ', open now' : ''}${k.tag ? ': ' + (k.can ? 'pre-order' : 'menu') : k.profile ? '' : k.external ? ': Instagram' : ''}`;
+    const newTab = !k.profile && (k.external || !k.tag);
     return k.href
-      ? `<a class="mini${k.tag ? ' menu' : ''}" href="${esc(k.href)}"${k.external || !k.tag ? ' rel="noopener" target="_blank"' : ''} aria-label="${esc(label)}" title="${esc(k.name)}">${face}${open}${k.tag ? `<span class="tag">${k.tag}</span>` : ''}</a>`
+      ? `<a class="mini${k.tag ? ' menu' : ''}" href="${esc(k.href)}"${newTab ? ' rel="noopener" target="_blank"' : ''} aria-label="${esc(label)}" title="${esc(k.name)}">${face}${open}${k.tag ? `<span class="tag">${k.tag}</span>` : ''}</a>`
       : `<span class="mini" role="img" aria-label="${esc(label)}" title="${esc(k.name)}">${face}${open}</span>`;
   }).join('')}</div>`;
 }
@@ -179,15 +180,19 @@ function meetPage(host, m, ctx) {
   const kitOf = (v) => all.find((k) => k.kind !== 'group' && k.truck_slug === v.slug) || picked.find((k) => k.meet_truck === v.slug) ||
     all.find((k) => k.kind !== 'group' && !k.truck_slug && norm(k.name) === norm(v.name));
   const used = new Set();
+  const profileHref = (k) => (k && k.page_on && k.page_slug && !ctx.demo ? U.vendorUrl(k.page_slug) : null);
   const items = trucks.map((v) => {
     const k = kitOf(v); if (k) used.add(k.id);
     const href = hrefOf(v);
-    return { img: k && k.file ? '/uploads/' + k.file : v.logo || null, emoji: v.emoji, name: v.name, href: href || ig(k && k.instagram) || ig(v.instagram),
-      tag: href ? (live && anyPreorder && takes(v) ? 'Order' : 'Menu') : null, can: !!(href && live && anyPreorder && takes(v)), open: !!(live && v.openNow) };
+    // A vendor whose profile page is on opens it (their Order button is there); the tag still says they're serving.
+    const page = profileHref(k);
+    return { img: k && k.file ? '/uploads/' + k.file : v.logo || null, emoji: v.emoji, name: v.name, href: page || href || ig(k && k.instagram) || ig(v.instagram),
+      tag: href ? (live && anyPreorder && takes(v) ? 'Order' : 'Menu') : null, can: !!(href && live && anyPreorder && takes(v)), open: !!(live && v.openNow), profile: !!page };
   });
   for (const k of picked) {
     if (used.has(k.id)) continue;
-    items.push({ img: k.file ? '/uploads/' + k.file : null, name: k.name, href: ig(k.instagram), tag: null, external: !!k.instagram });
+    const page = profileHref(k);
+    items.push({ img: k.file ? '/uploads/' + k.file : null, name: k.name, href: page || ig(k.instagram), tag: null, external: !page && !!k.instagram, profile: !!page });
   }
   const clubs = (ctx.kitVendors || []).filter((k) => k.kind === 'group');
   if (!items.length) body += `<p class="dim">${over ? 'No food trucks were listed for this meet.' : 'Food trucks will show here once they’re confirmed.'}</p>`;
@@ -221,6 +226,56 @@ function meetPage(host, m, ctx) {
   }
   body += `</main>` + footer(host, base, ctx);
   return layout({ title: `${host.name}: ${U.dayShort(t.startsAt, tz)}${m.title ? ' · ' + m.title : ''}`, description: desc, host, body, scripts: ['site.js'], image: !ctx.origin ? null : m.flyer ? `${ctx.origin}/uploads/${m.flyer}` : vid ? `${ctx.origin}/uploads/${vid.video_poster}` : null });
+}
+
+/**
+ * A Food vendor's profile: their own clip behind everything, their logo, what they serve, the Order button (or "Not
+ * serving tonight"), their story, food photos, the spots they park at, and their logos over the years.
+ * ctx: { tz, vid, logos, photos, spots, meets, at: { m, label, href, go, text, note } | null, hostUrl, igUrl, preview, origin }
+ */
+function vendorPage(host, k, ctx) {
+  const name = k.name;
+  const logo = k.file ? '/uploads/' + k.file : null;
+  const at = ctx.at;
+  const ig = k.instagram ? `https://instagram.com/${encodeURIComponent(k.instagram)}` : null;
+  const desc = [k.serves, k.about].filter(Boolean).join('. ').slice(0, 200) || `${name}, food at ${host.name}.`;
+  let body = ctx.preview ? `<div class="demo-bar" role="note"><b>Preview</b> · this page is off, so only you see it. Turn it on in the portal. <a href="/host">Back to the portal</a></div>` : '';
+  body += `<main class="wrap vendor">
+<section class="hero${ctx.vid ? ' has-video' : ''}">
+  ${heroBg(ctx.vid)}
+  <div class="v-face">${logo ? `<img src="${esc(logo)}" alt="${esc(name)}">` : `<span aria-hidden="true">🍽</span>`}</div>
+  <h1 class="v-name">${esc(name)}</h1>
+  ${k.serves ? `<p class="v-serves">${esc(k.serves)}</p>` : ''}
+  ${k.since ? `<p class="v-since">Serving since ${esc(k.since)}</p>` : ''}
+  <div class="actions">
+    ${at && at.href ? `<a class="btn${at.go ? ' go' : ''}" href="${esc(at.href)}">${esc(at.text)}</a>` : `<span class="btn" aria-disabled="true">${esc(at ? at.text : 'Not serving tonight')}</span>`}
+    ${ig ? `<a class="btn" href="${esc(ig)}" rel="noopener" target="_blank">Instagram</a>` : ''}
+  </div>
+  ${at ? `<p class="v-at"><a href="${esc(ctx.hostUrl)}/${esc(at.m.day)}">${esc(at.label)}</a>${at.note ? `<br><span class="dim">${esc(at.note)}</span>` : ''}</p>` : ''}
+</section>`;
+  if (k.about || k.signature) {
+    body += `<section class="v-about">${k.signature ? `<p class="v-known"><span>Known for</span> ${esc(k.signature)}</p>` : ''}
+    ${k.about ? String(k.about).split(/\n{2,}/).map((p) => `<p>${esc(p).replace(/\n/g, '<br>')}</p>`).join('') : ''}</section>`;
+  }
+  if (ctx.photos && ctx.photos.length) {
+    body += `<section><h2>The food</h2><div class="photos v-photos">${ctx.photos.map((p) => `<figure><img src="/uploads/${esc(p.file)}" alt="${esc(p.label || name)}" loading="lazy">${p.label ? `<figcaption>${esc(p.label)}</figcaption>` : ''}</figure>`).join('')}</div></section>`;
+  }
+  if (ctx.spots && ctx.spots.length) {
+    body += `<section><h2>Find them</h2><div class="v-spots">${ctx.spots.map((s) => {
+      const maps = s.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(s.address)}` : null;
+      return `<div class="truck"><div class="tinfo"><div class="name">${esc(s.name)}</div>${s.when_text ? `<div class="note">${esc(s.when_text)}</div>` : ''}${s.address ? `<div class="note">${esc(s.address)}</div>` : ''}</div>${maps ? `<a class="btn" href="${esc(maps)}" rel="noopener" target="_blank">Directions</a>` : ''}</div>`;
+    }).join('')}</div></section>`;
+  }
+  const past = ctx.logos || [];
+  if (past.length) {
+    // The logo now, then the old ones, newest first: the truck's look over the years.
+    const tiles = (logo ? [{ src: logo, label: 'Now' }] : []).concat(past.map((l) => ({ src: '/uploads/' + l.file, label: l.label || '' })));
+    body += `<section><h2>Through the years</h2><div class="v-logos">${tiles.map((t) => `<figure><div class="mini"><img src="${esc(t.src)}" alt="" loading="lazy"></div>${t.label ? `<figcaption>${esc(t.label)}</figcaption>` : ''}</figure>`).join('')}</div></section>`;
+  }
+  if (ctx.meets > 0) body += `<section><p class="turnout">At ${ctx.meets} ${esc(host.name)} meet${ctx.meets === 1 ? '' : 's'}</p></section>`;
+  body += `</main><footer><div class="wrap"><p><a href="${esc(ctx.hostUrl)}">${esc(host.name)}</a></p></div></footer>`;
+  const img = ctx.origin ? (ctx.vid ? `${ctx.origin}/uploads/${ctx.vid.video_poster}` : logo ? ctx.origin + logo : null) : null;
+  return layout({ title: `${name} · ${host.name}`, description: desc, host, body, scripts: ['site.js'], noindex: !!ctx.preview, image: img });
 }
 
 /** A host with nothing scheduled yet. */
@@ -301,4 +356,4 @@ ${list.length ? `<div class="list-meets">${list.map((r) => {
   return layout({ title: `${SITE()}: car meets`, description: 'Car meets: where, when, and food you can pre-order.', body });
 }
 
-module.exports = { ver, layout, meetPage, hostEmpty, foodPage, orderPage, message, home, privacy };
+module.exports = { ver, layout, meetPage, vendorPage, hostEmpty, foodPage, orderPage, message, home, privacy };

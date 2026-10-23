@@ -70,9 +70,40 @@ app.post('/hooks/kitchen', express.raw({ type: 'application/json', limit: '20kb'
 app.use(express.json({ limit: '50kb' }));
 
 /* ---------- which host a request is for: a host's own domain, or the site's ---------- */
+/* ---------- Caddy's question before it gets a certificate for a name (on-demand TLS) ---------- */
+// Only from Caddy on this server. Yes for the site itself, a host's own domain, and a vendor profile's subdomain.
+app.get('/caddy/ask', async (req, res) => {
+  const ip = String(req.socket.remoteAddress || '');
+  if (!/^(127\.|::1$|::ffff:127\.)/.test(ip)) return res.status(404).end();
+  const d = String(req.query.domain || '').toLowerCase().replace(/\.$/, '');
+  if (!/^[a-z0-9.-]{1,253}$/.test(d)) return res.status(404).end();
+  if (d === SITE_DOMAIN || d === 'www.' + SITE_DOMAIN) return res.status(200).end();
+  const sub = U.subOf(d);
+  if (sub) return (await pageBySlug(sub)) ? res.status(200).end() : res.status(404).end();
+  return (await get('SELECT 1 AS x FROM hosts WHERE custom_domain = ?', [d.replace(/^www\./, '')])) ? res.status(200).end() : res.status(404).end();
+});
+
+/** A vendor profile by its address (an old address counts, so a shared link still lands). */
+async function pageBySlug(slug) {
+  if (!U.SLUG_RE.test(String(slug || ''))) return null;
+  const k = await get("SELECT * FROM kit_logos WHERE page_slug = ? AND kind IN ('vendor', 'sponsor')", [slug]);
+  if (k) return { k, moved: false };
+  const old = await get('SELECT k.* FROM kit_old_slugs o JOIN kit_logos k ON k.id = o.kit_id WHERE o.slug = ? AND k.page_slug IS NOT NULL', [slug]);
+  return old ? { k: old, moved: true } : null;
+}
+
+/* ---------- which host a request is for: a host's own domain, a vendor's subdomain, or the site's ---------- */
 app.use(async (req, res, next) => {
   const h = String(req.hostname || '').toLowerCase();
-  req.own = null;
+  req.own = null; req.vendorSub = null;
+  const sub = U.subOf(h);
+  if (sub) {
+    // A vendor's own address (<truck>.<site domain>) shows their profile at "/" and the files it needs. Their menu
+    // comes through /meet/* above. Anything else belongs to the site itself, so it goes there.
+    req.vendorSub = sub;
+    if (req.path === '/' || /^\/(static|uploads|food-photo|api\/meets|api\/orders|o)(\/|$)/.test(req.path) || ['/sw.js', '/health', '/robots.txt', '/privacy'].includes(req.path)) return next();
+    return res.redirect(302, `${SCHEME}://${SITE_DOMAIN}${req.originalUrl}`);
+  }
   if (h && h !== SITE_DOMAIN && h !== 'www.' + SITE_DOMAIN && h !== 'localhost' && h !== '127.0.0.1') {
     req.own = await get('SELECT * FROM hosts WHERE custom_domain = ? AND domain_on = 1', [h.replace(/^www\./, '')]);
   }
@@ -118,6 +149,9 @@ async function trucksFor(m, { fresh } = {}) {
       if (!have) await run("INSERT INTO kit_logos (host_id, kind, name, file, truck_slug, created_at) VALUES (?, 'vendor', ?, '', ?, ?)", [m.host_id, v.name, v.slug, Date.now()]).catch(() => {});
     }
     for (const v of list.filter((x) => x.status === 'in' && x.slug)) {
+      // The meets a Food vendor served at, for "At 6 meets" on their profile.
+      const kit = await get("SELECT id FROM kit_logos WHERE host_id = ? AND truck_slug = ? AND kind IN ('vendor', 'sponsor')", [m.host_id, v.slug]);
+      if (kit) await run('INSERT OR IGNORE INTO kit_meets (kit_id, meet_id) VALUES (?, ?)', [kit.id, m.id]).catch(() => {});
       await run('INSERT INTO host_vendors (host_id, slug, name, emoji, last_meet_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT (host_id, slug) DO UPDATE SET name = excluded.name, emoji = excluded.emoji, last_meet_at = MAX(COALESCE(host_vendors.last_meet_at, 0), excluded.last_meet_at)',
         [m.host_id, v.slug, v.name, v.emoji || '', U.meetTimes(m, TZ()).startsAt]).catch(() => {});
     }
@@ -146,8 +180,8 @@ async function latestRecap(host) {
 }
 async function renderMeet(req, res, host, m, isHome) {
   const [trucks, last, recap, upcoming, kitVendors, kitAll] = await Promise.all([trucksFor(m), lastTurnout(host), latestRecap(host), upcomingOf(host),
-    all('SELECT k.id, k.kind, k.name, k.file, k.instagram, k.truck_slug, v.truck_slug AS meet_truck FROM meet_kit_vendors v JOIN kit_logos k ON k.id = v.kit_id WHERE v.meet_id = ? AND k.host_id = ? ORDER BY v.created_at, v.kit_id', [m.id, host.id]),
-    all("SELECT id, kind, name, file, instagram, truck_slug FROM kit_logos WHERE host_id = ? AND kind IN ('vendor', 'sponsor')", [host.id])]);
+    all('SELECT k.id, k.kind, k.name, k.file, k.instagram, k.truck_slug, k.page_slug, k.page_on, v.truck_slug AS meet_truck FROM meet_kit_vendors v JOIN kit_logos k ON k.id = v.kit_id WHERE v.meet_id = ? AND k.host_id = ? ORDER BY v.created_at, v.kit_id', [m.id, host.id]),
+    all("SELECT id, kind, name, file, instagram, truck_slug, page_slug, page_on FROM kit_logos WHERE host_id = ? AND kind IN ('vendor', 'sponsor')", [host.id])]);
   res.set('Cache-Control', 'no-cache').type('html').send(V.meetPage(host, m, { tz: tzOf(host), base: baseOf(req, host), trucks: trucks.map(truckFace), kitVendors, kitAll, last, recap, upcoming, isHome, badge: badgeOf(host, req), meetMode: MEET_MODE(), origin: `${SCHEME}://${req.get('host')}` }));
 }
 const notFound = (req, res, host) => res.status(404).type('html').send(V.message(host || null, { title: 'Nothing here', text: 'The link may be old, or the address may have a typo.', href: host ? baseOf(req, host) || '/' : '/', cta: host ? 'See the next meet' : 'Go to the main page' }));
@@ -363,6 +397,69 @@ app.post('/api/vendor-request', limitForm, async (req, res) => {
   res.json({ ok: true, message: `Sent. ${host.name} will reach out.` });
 });
 
+/* ---------- a Food vendor's profile page ---------- */
+const norm = (x) => String(x || '').trim().toLowerCase();
+/** The vendor's next meet with this host (within the next few posted), and their truck there if it's on the food side. */
+async function vendorAt(host, k) {
+  const up = (await upcomingOf(host)).filter((m) => m.status === 'on').slice(0, 3);
+  for (const m of up) {
+    const [trucks, listed] = await Promise.all([trucksFor(m), get('SELECT truck_slug FROM meet_kit_vendors WHERE meet_id = ? AND kit_id = ?', [m.id, k.id])]);
+    const v = trucks.find((x) => x.status === 'in' && x.slug && (x.slug === k.truck_slug || (listed && listed.truck_slug === x.slug) || (!k.truck_slug && norm(x.name) === norm(k.name))));
+    if (v || listed) return { m, v: v || null };
+  }
+  return null;
+}
+async function vendorProfile(req, res, k) {
+  const host = await get('SELECT * FROM hosts WHERE id = ?', [k.host_id]);
+  if (!host) return notFound(req, res, null);
+  // A page that's off: only its host sees it (a preview), so it can be shown to the truck before it goes live.
+  let preview = false;
+  if (!k.page_on) {
+    if ((await signedInHost(req)) !== host.id) return notFound(req, res, host);
+    preview = true;
+  }
+  const tz = tzOf(host);
+  const mainOrigin = `${SCHEME}://${host.domain_on && host.custom_domain ? host.custom_domain : SITE_DOMAIN}`;
+  const hostUrl = host.domain_on && host.custom_domain ? mainOrigin : `${SCHEME}://${SITE_DOMAIN}/${host.slug}`;
+  const [found, logos, photos, spots, served] = await Promise.all([vendorAt(host, k),
+    all("SELECT file, label FROM kit_media WHERE kit_id = ? AND kind = 'logo' ORDER BY id DESC LIMIT 12", [k.id]),
+    all("SELECT file, label FROM kit_media WHERE kit_id = ? AND kind = 'photo' ORDER BY id LIMIT 12", [k.id]),
+    all('SELECT name, address, when_text FROM kit_spots WHERE kit_id = ? ORDER BY id LIMIT 8', [k.id]),
+    get(`SELECT COUNT(*) AS n FROM meets m WHERE m.host_id = ? AND m.status = 'on' AND m.day <= ? AND m.id IN
+      (SELECT meet_id FROM kit_meets WHERE kit_id = ? UNION SELECT meet_id FROM meet_kit_vendors WHERE kit_id = ?)`, [host.id, U.dayKey(Date.now(), tz), k.id, k.id])]);
+  let at = null;
+  if (found) {
+    const { m, v } = found;
+    const t = U.meetTimes(m, tz);
+    const tonight = U.dayKey(Date.now(), tz) === m.day || (Date.now() >= t.startsAt && Date.now() < t.endsAt);
+    const takes = !!(v && !v.paused && (v.cardReady || (MEET_MODE() && v.payAtTruck)));
+    const label = `${tonight ? 'Tonight' : U.dayShort(t.startsAt, tz)} at ${host.name} · ${U.time12(t.startsAt, tz)} · ${m.place}`;
+    // The menu opens on whichever address this page is on, so the clip keeps playing from the phone's copy.
+    const menu = v ? (MEET_MODE() ? `/meet/${encodeURIComponent(m.ref)}/${encodeURIComponent(v.slug)}/` : takes ? `${hostUrl}/${m.day}/food/${encodeURIComponent(v.slug)}` : null) : null;
+    if (menu && takes) at = { m, label, href: menu, go: true, text: tonight ? 'Order' : `Pre-order for ${U.fmt(t.startsAt, tz, { weekday: 'long' })}` };
+    else if (menu) at = { m, label, href: menu, go: false, text: 'See the menu', note: v && v.paused ? 'Pre-orders are paused. Order at the truck.' : '' };
+    else at = { m, label, href: null, text: tonight ? 'Order at the truck tonight' : 'Not serving tonight' };
+  }
+  // Their own clip, or the host's usual one.
+  const vid = k.video && k.video_status === 'ready' ? k : host.video && host.video_status === 'ready' ? host : null;
+  res.set('Cache-Control', preview ? 'no-store' : 'no-cache').type('html').send(V.vendorPage(host, k, {
+    tz, vid, logos, photos, spots, meets: served ? served.n : 0, at, hostUrl, preview, origin: `${SCHEME}://${req.get('host')}` }));
+}
+app.get('/v/:slug', async (req, res) => {
+  if (req.vendorSub) return notFound(req, res, null);
+  const p = await pageBySlug(String(req.params.slug).toLowerCase());
+  if (!p || (req.own && p.k.host_id !== req.own.id)) return notFound(req, res, req.own);
+  if (p.moved) return res.redirect(301, '/v/' + p.k.page_slug);
+  // With vendor subdomains on, a live page has one address: its own.
+  if (U.subdomainsOn() && p.k.page_on && !req.own) return res.redirect(301, U.vendorUrl(p.k.page_slug));
+  return vendorProfile(req, res, p.k);
+});
+
+// Saves each background clip on the phone the first time it plays (public/sw.js).
+app.get('/sw.js', (req, res) => {
+  res.set({ 'Cache-Control': 'no-cache', 'Service-Worker-Allowed': '/' }).type('text/javascript').sendFile(path.join(__dirname, 'public', 'sw.js'));
+});
+
 /* ---------- pages ---------- */
 app.get('/o/:token', async (req, res) => {
   const o = await orderByToken(req.params.token);
@@ -388,6 +485,12 @@ app.get('/privacy', async (req, res) => {
   res.set('Cache-Control', 'no-cache').type('html').send(V.privacy(main || null));
 });
 app.get('/', async (req, res) => {
+  if (req.vendorSub) {
+    const p = await pageBySlug(req.vendorSub);
+    if (!p) return res.redirect(302, `${SCHEME}://${SITE_DOMAIN}/`);
+    if (p.moved) return res.redirect(301, U.vendorUrl(p.k.page_slug));
+    return vendorProfile(req, res, p.k);
+  }
   if (req.own) return hostHome(req, res, req.own);
   // Not on a host's own domain that's still waiting to be turned on.
   const onSite = !(await get('SELECT 1 AS x FROM hosts WHERE custom_domain = ?', [String(req.hostname || '').toLowerCase()]));
@@ -441,7 +544,7 @@ app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
  */
 async function tidyAtStart() {
   const Vid = require('./video');
-  for (const t of ['hosts', 'meets', 'site', 'host_portal']) {
+  for (const t of ['hosts', 'meets', 'site', 'host_portal', 'kit_logos']) {
     await D.run(`UPDATE ${t} SET video_status = 'failed', video_error = ? WHERE video_status = 'processing'`,
       ['The server restarted while this video was processing. Upload it again.']).catch(() => {});
   }
