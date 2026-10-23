@@ -49,7 +49,7 @@ function themeOf(host, m) {
     videoUrl: vid ? up(vid.video) : '', posterUrl: vid ? up(vid.video_poster) : '',
     logoUrl: m.logo ? '/uploads/' + m.logo : host.logo || '',
     backUrl: '/' + host.slug + '/' + m.day,
-    fontsHref: 'https://fonts.googleapis.com/css2?family=Michroma&family=Instrument+Sans:wght@400;500;600&display=swap',
+    fontsHref: '/static/fonts.css',
     fontDisplay: 'Michroma', fontBody: 'Instrument Sans',
   };
 }

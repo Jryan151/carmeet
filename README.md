@@ -116,6 +116,26 @@ Addresses: `/v/<name>` on the site. With `VENDOR_SUBDOMAINS=1` each one gets its
 Clips are saved on the phone the first time they play (`public/sw.js`) and play from there after: no second download,
 and it works with no signal. The truck's menu is on the same address, so its clip comes from that copy too.
 
+## Weak signal
+
+Built for a parking lot with one bar:
+
+- **Background clips** stay 1080p but are made at 24 fps with a capped bitrate (H.264, about 2 MB for 15 seconds),
+  plus an HEVC copy that phones that can play it pick first. The clip starts loading only after the page has shown,
+  and fades in over the still. It plays from the first few hundred KB and is kept on the phone for every visit after.
+- **Pictures** get small WebP copies for the page (logos 256 px, header logos 720 px, flyer 1080 px wide), made the
+  first time a page needs one. The originals stay for the flyer maker.
+- **Map tiles** load as the map scrolls into view. **Fonts** come from this site (about 90 KB in all), not Google.
+
+Clips and pictures from before this: run once on the server (`--dry` to just look):
+
+```
+node scripts/optimize-media.js
+```
+
+Compress pages too: add `encode zstd gzip` inside each Caddy site block (next to `reverse_proxy`), then
+`sudo systemctl reload caddy`.
+
 ## Domain and server (Caddy)
 
 ```
@@ -135,6 +155,7 @@ this site before getting one, and it only says yes for the site, a host's own do
 }
 
 azmonarchy.com, www.azmonarchy.com {
+  encode zstd gzip
   reverse_proxy 127.0.0.1:4100
 }
 

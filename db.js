@@ -138,6 +138,7 @@ async function ensureSchema() {
   for (const t of ['hosts', 'meets', 'site', 'host_portal', 'kit_logos']) {
     await addColumn(t, 'video', 'TEXT');
     await addColumn(t, 'video_poster', 'TEXT');
+    await addColumn(t, 'video_hevc', 'TEXT'); // the same loop in HEVC (about half the size), when made
     await addColumn(t, 'video_status', 'TEXT'); // processing | ready | failed
     await addColumn(t, 'video_error', 'TEXT');
   }

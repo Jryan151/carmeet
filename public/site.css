@@ -46,6 +46,9 @@ img { max-width: 100%; display: block; }
 /* ---------- the footage behind the page ---------- */
 .page-bg { position: fixed; inset: 0; z-index: -1; background: var(--void) center / cover no-repeat; overflow: hidden; }
 .page-bg video { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* A clip that loads after the page: hidden until it's playing, then it fades in over the still frame. */
+.page-bg video[data-bg] { opacity: 0; transition: opacity .8s ease; }
+.page-bg video[data-bg].on { opacity: 1; }
 .page-bg::after { content: ""; position: absolute; inset: 0;
   background:
     radial-gradient(80vmax 60vmax at 50% 30%, transparent 0%, rgba(7, 6, 11, .35) 55%, rgba(7, 6, 11, .85) 100%),

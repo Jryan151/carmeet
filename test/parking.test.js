@@ -98,6 +98,7 @@ test('a layout is checked when saved, and shown tilted on the page over the tile
   assert.match(r.text, /<span style="--pin:#f472b6">Vendors<\/span>/, 'the key names the kind');
   assert.ok(!/data-lot-flat|Drag to turn/.test(r.text), 'flat: nothing to turn');
   assert.match(r.text, /class="lot flat"/);
+  assert.match(r.text, /<img class="tile"[^>]* loading="lazy" decoding="async"/, "tiles load as the map scrolls into view");
   assert.match(r.text, /<b>Side gate b<\/b>/, 'no markup in labels');
   assert.match(r.text, /Imagery © Example/);
   assert.match(r.text, /maps\/search\/\?api=1&amp;query=33\.58053,-112\.17112/);
@@ -216,6 +217,14 @@ test('logos: names and types read for them; placeholder names replaced; Food, Cl
   assert.match(sec('Food'), /México en un Vaso/); assert.doesNotMatch(sec('Food'), /Unforsaken|LV Smoke Shop/);
   assert.match(sec('Clubs'), /Unforsaken/);
   assert.match(sec('Vendors'), /LV Smoke Shop/); assert.doesNotMatch(sec('Vendors'), /México/);
+  // Small copies for the page: the first view asks for them, the next gets them.
+  await new Promise((ok) => setTimeout(ok, 2500));
+  r = await request(ctx, 'GET', SITE, `/fuel-friday/${day}`);
+  const small = sec('Clubs').match(/src="(\/uploads\/[^"]+\.s256\.webp)"/);
+  assert.ok(small, 'a 256 px logo on the page');
+  const w = await request(ctx, 'GET', SITE, small[1]);
+  assert.equal(w.status, 200);
+  assert.equal(w.buf.slice(8, 12).toString(), 'WEBP');
 });
 
 test('email alerts start off: no sign-up on the page, none taken, no emails; on in Settings brings them back', async () => {

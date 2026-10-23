@@ -7,6 +7,23 @@
   'use strict';
   if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   if (navigator.connection && navigator.connection.saveData) return;
+
+  /* The clip loads after the page has shown (the words, the flyer and the still frame come first), then fades in
+     over the still. On a weak signal the page is usable long before the footage arrives. */
+  function begin() {
+    var list = document.querySelectorAll('.page-bg video[data-bg]:not([data-started])');
+    for (var i = 0; i < list.length; i++) {
+      var v = list[i]; v.setAttribute('data-started', '');
+      var srcs = v.querySelectorAll('source[data-src]');
+      for (var j = 0; j < srcs.length; j++) srcs[j].src = srcs[j].getAttribute('data-src');
+      v.preload = 'auto';
+      v.addEventListener('playing', function () { this.classList.add('on'); });
+      v.load(); play(v);
+    }
+  }
+  var begun = false;
+  var go = function () { if (!begun) { begun = true; setTimeout(begin, 60); } };
+  if (document.readyState === 'complete') go(); else { window.addEventListener('load', go); setTimeout(go, 2500); }
   var seen = typeof WeakMap === 'function' ? new WeakMap() : null;
   function state(v) { var s = seen && seen.get(v); if (!s) { s = { at: -1, still: 0, reloads: 0 }; if (seen) seen.set(v, s); watch(v); } return s; }
   function play(v) { v.muted = true; var p = v.play(); if (p && p.catch) p.catch(function () {}); }
@@ -26,7 +43,9 @@
     if (document.hidden) return;
     var list = document.querySelectorAll('.page-bg video');
     for (var i = 0; i < list.length; i++) {
-      var v = list[i], s = state(v);
+      var v = list[i];
+      if (v.hasAttribute('data-bg') && !v.hasAttribute('data-started')) continue; // not started yet
+      var s = state(v);
       if (v.paused) { play(v); s.still = 0; s.at = v.currentTime; continue; }
       if (v.currentTime === s.at) {
         // Playing but not moving: skip a hair forward (past a bad frame or the loop seam), then reload if it stays stuck.

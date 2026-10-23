@@ -51,22 +51,39 @@ function run(args, ms) {
   });
 }
 
+let hasX265 = null;
+function x265Ok() {
+  if (hasX265 === null) { try { hasX265 = /libx265/.test(spawnSync(process.env.FFMPEG || 'ffmpeg', ['-hide_banner', '-encoders'], { timeout: 5000 }).stdout.toString()); } catch (e) { hasX265 = false; } }
+  return hasX265;
+}
+// 1080p on the short side, whichever way the phone was held (1920×1080 sideways, 1080×1920 upright), at 24 fps.
+const VF = "scale='if(gte(iw,ih),-2,trunc(min(iw,1080)/2)*2)':'if(gte(iw,ih),trunc(min(ih,1080)/2)*2,-2)',fps=24,format=yuv420p";
 /**
- * The loop: the first 15 seconds, 1080p (never blown up), 30 fps, H.264 that every phone plays,
- * no sound, no metadata, the index at the front so it starts before it's all downloaded. About 6–9 MB.
- * Then a still from 1 second in. Resolves { video, poster } file names.
+ * The loop: the first 15 seconds, 1080p (never blown up), 24 fps, no sound, no metadata, the index at the front so
+ * it starts before it's all downloaded. The footage sits under a dark overlay and grain, so it's compressed harder
+ * than a video you'd watch on its own, with a hard ceiling on the size:
+ *   - H.264, which every phone plays: at most about 3.4 MB (usually 1.5–2.5).
+ *   - HEVC, the same picture at about half the size, for phones that play it (iPhones, most newer Androids). Pages
+ *     offer it first; a phone that can't play it takes the H.264 one. Skipped when ffmpeg has no x265.
+ * Then a still from 1 second in. Resolves { video, hevc, poster } file names (hevc may be null).
  */
 async function process_(input, dir) {
   const id = crypto.randomBytes(10).toString('hex');
-  const video = `bg-${id}.mp4`, poster = `bg-${id}.jpg`;
-  // 1080p on the short side, whichever way the phone was held (1920×1080 sideways, 1080×1920 upright).
-  const vf = "scale='if(gte(iw,ih),-2,trunc(min(iw,1080)/2)*2)':'if(gte(iw,ih),trunc(min(ih,1080)/2)*2,-2)',fps=30,format=yuv420p";
-  await run(['-hide_banner', '-loglevel', 'error', '-y', '-i', input, '-t', String(SECONDS), '-map', '0:v:0', '-an', '-sn', '-dn',
-    '-map_metadata', '-1', '-map_chapters', '-1', '-vf', vf, '-c:v', 'libx264', '-preset', process.env.VIDEO_PRESET || 'medium', '-crf', '23', '-maxrate', '5M', '-bufsize', '10M',
-    '-profile:v', 'high', '-level', '4.1', '-movflags', '+faststart', path.join(dir, video)], 10 * 60 * 1000);
-  await run(['-hide_banner', '-loglevel', 'error', '-y', '-ss', '1', '-i', path.join(dir, video), '-frames:v', '1', '-q:v', '4', path.join(dir, poster)], 60 * 1000)
-    .catch(() => run(['-hide_banner', '-loglevel', 'error', '-y', '-i', path.join(dir, video), '-frames:v', '1', '-q:v', '4', path.join(dir, poster)], 60 * 1000));
-  return { video, poster };
+  const video = `bg-${id}.mp4`, hevc = `bg-${id}.hevc.mp4`, poster = `bg-${id}.jpg`;
+  const common = ['-hide_banner', '-loglevel', 'error', '-y', '-i', input, '-t', String(SECONDS), '-map', '0:v:0', '-an', '-sn', '-dn', '-map_metadata', '-1', '-map_chapters', '-1', '-vf', VF];
+  await run(common.concat(['-c:v', 'libx264', '-preset', process.env.VIDEO_PRESET || 'slow', '-crf', '26', '-maxrate', '1800k', '-bufsize', '3600k',
+    '-profile:v', 'high', '-level', '4.1', '-g', '48', '-movflags', '+faststart', path.join(dir, video)]), 10 * 60 * 1000);
+  let hv = null;
+  if (x265Ok() && process.env.VIDEO_HEVC !== '0') {
+    try {
+      await run(common.concat(['-c:v', 'libx265', '-preset', process.env.VIDEO_PRESET === 'veryfast' ? 'veryfast' : 'medium', '-crf', '28', '-tag:v', 'hvc1',
+        '-x265-params', 'log-level=error:keyint=48:vbv-maxrate=1000:vbv-bufsize=2000', '-movflags', '+faststart', path.join(dir, hevc)]), 15 * 60 * 1000);
+      hv = hevc;
+    } catch (e) { fs.promises.unlink(path.join(dir, hevc)).catch(() => {}); }
+  }
+  await run(['-hide_banner', '-loglevel', 'error', '-y', '-ss', '1', '-i', path.join(dir, video), '-frames:v', '1', '-q:v', '5', '-vf', "scale='min(1280,iw)':-2", path.join(dir, poster)], 60 * 1000)
+    .catch(() => run(['-hide_banner', '-loglevel', 'error', '-y', '-i', path.join(dir, video), '-frames:v', '1', '-q:v', '5', path.join(dir, poster)], 60 * 1000));
+  return { video, hevc: hv, poster };
 }
 
 // The image read back as a small grid of RGBA pixels (S×S, stretched), plus its real size. ffmpeg's own
@@ -132,4 +149,21 @@ async function trimLogo(input, dir) {
   } catch (e) { return null; }
 }
 
-module.exports = { receive, process: process_, ffmpegOk, trimLogo, TRIMMED, MAX_UPLOAD, SECONDS };
+/* ---------- phone-size copies of pictures ----------
+   A logo shown 60 px wide doesn't need a 1,000 px file. Next to each upload goes a small WebP copy,
+   <name>.s<size>.webp (see-through kept), at most `size` px on its long side; pages use it when it's there
+   (views.small). Sizes of 1000 and up (flyer, poster) cap the width only, so a tall flyer stays sharp on a phone.
+   The original stays for the flyer maker and downloads. Resolves the copy's name, or null. */
+async function small(input, dir, size) {
+  if (!ffmpegOk()) return null;
+  const base = path.basename(input).replace(/\.[A-Za-z0-9]+$/, '');
+  const name = `${base}.s${size}.webp`;
+  const tmp = path.join(dir, `.${name}.${process.pid}.tmp.webp`);
+  try {
+    await run(['-hide_banner', '-loglevel', 'error', '-y', '-i', input, '-vf', size >= 1000 ? `scale='min(${size},iw)':-2` : `scale=w='min(${size},iw)':h='min(${size},ih)':force_original_aspect_ratio=decrease`,
+      '-c:v', 'libwebp', '-quality', '80', '-pix_fmt', 'yuva420p', '-frames:v', '1', tmp], 60 * 1000);
+    await fs.promises.rename(tmp, path.join(dir, name)); // whole file or nothing, so a page never shows half a copy
+    return name;
+  } catch (e) { fs.promises.unlink(tmp).catch(() => {}); return null; }
+}
+module.exports = { receive, process: process_, ffmpegOk, trimLogo, small, TRIMMED, MAX_UPLOAD, SECONDS };

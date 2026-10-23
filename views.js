@@ -1,17 +1,53 @@
 'use strict';
 /* views.js — the public pages, written on the server (fast on a phone, and link previews show the meet). */
+const fs = require('fs');
+const path = require('path');
 const U = require('./util');
 const LotMap = require('./public/lotmap');
 const geo = require('./geo');
 const { esc } = U;
 
 const SITE = () => process.env.SITE_NAME || 'Meet Night';
+/** The phone-size copy of an upload when there is one (video.small), else the upload itself. A copy found is
+    remembered; a missing one is looked for again after a minute (it may be being made). */
+const UPLOADS = () => process.env.UPLOAD_DIR || path.join(__dirname, 'data', 'uploads');
+const smallSeen = new Map();
+function small(file, size) {
+  if (!file) return '';
+  const f = path.basename(String(file));
+  const s = f.replace(/\.[A-Za-z0-9]+$/, '') + `.s${size}.webp`;
+  const hit = smallSeen.get(s);
+  if (hit === true || (hit && Date.now() - hit < 60000)) return '/uploads/' + (hit === true ? s : f);
+  const there = fs.existsSync(path.join(UPLOADS(), s));
+  smallSeen.set(s, there ? true : Date.now());
+  if (!there) makeSmall(f, size);
+  return '/uploads/' + (there ? s : f);
+}
+/* A missing copy is made in the background the first time a page wants it (one at a time, so the server
+   never spends more than one ffmpeg on this); the next visit gets it. */
+const making = new Set(); const queue = [];
+let busy = false;
+function makeSmall(f, size) {
+  if (!/\.(png|jpe?g|webp|gif)$/i.test(f) || making.has(f + size)) return;
+  making.add(f + size); queue.push([f, size]); drain();
+}
+async function drain() {
+  if (busy) return; busy = true;
+  try {
+    for (let job; (job = queue.shift());) {
+      const [f, size] = job;
+      const src = path.join(UPLOADS(), f);
+      if (fs.existsSync(src)) {
+        const name = await require('./video').small(src, UPLOADS(), size);
+        if (name) smallSeen.set(name, true);
+      }
+    }
+  } finally { busy = false; }
+}
 // A new version on every restart, so phones never keep an old stylesheet after an update.
 const STARTED = Date.now().toString(36);
 const ver = () => process.env.ASSET_VERSION || STARTED;
 // The flyer's own font, only when its file has been put in public/fonts (see the README there).
-const fs = require('fs');
-const path = require('path');
 function ownFont() {
   const dir = path.join(__dirname, 'public', 'fonts');
   const f = ['good-times.woff2', 'good-times.otf', 'good-times.ttf'].find((n) => fs.existsSync(path.join(dir, n)));
@@ -34,8 +70,8 @@ ${description ? `<meta property="og:description" content="${esc(description)}">`
 ${image ? `<meta property="og:image" content="${esc(image)}">` : ''}
 ${noindex ? '<meta name="robots" content="noindex">' : ''}
 <meta name="theme-color" content="#07060b">
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Michroma&family=Instrument+Sans:wght@400;500;600&display=swap">
+<link rel="preload" href="/static/fonts/instrument-sans-400.woff" as="font" type="font/woff" crossorigin>
+<link rel="stylesheet" href="/static/fonts.css?v=${ver()}">
 <link rel="stylesheet" href="/static/site.css?v=${ver()}">
 ${ownFont()}
 ${accent ? `<style>:root{--accent:${accent}}</style>` : ''}
@@ -80,8 +116,9 @@ function footer(host, base, { badge }) {
 function heroBg(vid) {
   if (!vid) return '';
   // Fixed behind the whole page: everything scrolls over the loop.
-  return `<div class="page-bg" aria-hidden="true" style="background-image:url('/uploads/${esc(vid.video_poster)}')">
-    <video autoplay muted loop playsinline preload="auto" poster="/uploads/${esc(vid.video_poster)}" disablepictureinpicture><source src="/uploads/${esc(vid.video)}" type="video/mp4"></video>
+  return `<div class="page-bg" aria-hidden="true" style="background-image:url('${esc(small(vid.video_poster, 1280))}')">
+    <video muted loop playsinline preload="none" poster="${esc(small(vid.video_poster, 1280))}" disablepictureinpicture data-bg>${vid.video_hevc ? `<source data-src="/uploads/${esc(vid.video_hevc)}" type='video/mp4; codecs="hvc1"'>` : ''}<source data-src="/uploads/${esc(vid.video)}" type="video/mp4"></video>
+    <noscript><style>.page-bg video{display:none}</style></noscript>
   </div>`;
 }
 
@@ -108,7 +145,7 @@ function minis(list) {
 /** The host's logo as a round profile picture: the top of their main page, no words. */
 function avatar(host, m) {
   const logo = (m && m.logo ? '/uploads/' + m.logo : '') || host.logo;
-  return logo ? `<div class="avatar"><img src="${esc(logo)}" alt="${esc((m && m.title) || host.name)}"></div>` : '';
+  return logo ? `<div class="avatar"><img src="${esc(/^\/uploads\//.test(logo) ? small(logo, 720) : logo)}" alt="${esc((m && m.title) || host.name)}"></div>` : '';
 }
 /** Where a truck's menu opens: the food side's own page through this site (meet mode), or the old page here. */
 function menuLink(v, m, mpath, ctx, canOrder) {
@@ -142,7 +179,7 @@ function parkingMap(m) {
   const f = LotMap.frame(lot);
   const pc = (v) => (v / LotMap.FRAME * 100).toFixed(3) + '%';
   const tpl = geo.tiles();
-  const tiles = f.tiles.map((t) => `<img class="tile" src="${esc(LotMap.tileUrl(tpl, t))}" alt="" draggable="false" style="left:${pc(t.left)};top:${pc(t.top)}">`).join('');
+  const tiles = f.tiles.map((t) => `<img class="tile" src="${esc(LotMap.tileUrl(tpl, t))}" alt="" draggable="false" loading="lazy" decoding="async" style="left:${pc(t.left)};top:${pc(t.top)}">`).join('');
   const zones = lot.zones.map((z) => ({ z, pts: z.pts.map((p) => LotMap.inFrame(lot, f, p.lat, p.lng)) }));
   const svg = `<svg class="zones" viewBox="0 0 ${LotMap.FRAME} ${LotMap.FRAME}" aria-hidden="true">${zones.map(({ z, pts }) =>
     `<polygon points="${pts.map((p) => p.x.toFixed(1) + ',' + p.y.toFixed(1)).join(' ')}" style="--z:${z.color}"${z.kind === 'nopark' ? ' class="no"' : ''}/>`).join('')}</svg>`;
@@ -172,7 +209,7 @@ function venueCard(v) {
   if (!v) return '';
   const ig = v.instagram ? `https://instagram.com/${encodeURIComponent(v.instagram)}` : null;
   return `<div class="venue">
-  <div class="mini">${v.file ? `<img src="/uploads/${esc(v.file)}" alt="" loading="lazy">` : '<span class="emoji" aria-hidden="true">📍</span>'}</div>
+  <div class="mini">${v.file ? `<img src="${esc(small(v.file, 256))}" alt="" loading="lazy">` : '<span class="emoji" aria-hidden="true">📍</span>'}</div>
   <div class="v-info"><div class="small dim">At</div><div class="v-title">${esc(v.name)}</div>${v.note ? `<div class="small dim">${esc(v.note)}</div>` : ''}</div>
   ${ig ? `<a class="btn sm" href="${esc(ig)}" rel="noopener" target="_blank">Instagram</a>` : ''}
 </div>`;
@@ -201,7 +238,7 @@ function meetPage(host, m, ctx) {
 <section class="hero${vid ? ' has-video' : ''}${m.flyer ? ' with-flyer' : ''}${round ? ' has-avatar' : ''}">
   ${heroBg(vid)}
   ${round ? avatar(host, m) : ''}
-  ${m.flyer ? `<figure class="flyer"><img src="/uploads/${esc(m.flyer)}" alt="${esc(host.name)} flyer for ${esc(U.dayLong(t.startsAt, tz))}"></figure>` : '<div class="showcase" aria-hidden="true"></div>'}
+  ${m.flyer ? `<figure class="flyer"><img src="${esc(small(m.flyer, 1080))}" alt="${esc(host.name)} flyer for ${esc(U.dayLong(t.startsAt, tz))}"></figure>` : '<div class="showcase" aria-hidden="true"></div>'}
   ${ctx.isHome ? '' : `<p class="small dim" style="text-align:center"><a href="${esc(base || '/')}">Next meet</a></p>`}
   ${over ? '<p class="dim" style="text-align:center">This meet is over.</p>' : m.status === 'canceled' ? '<p class="soon-line">This meet is canceled.</p>' : ''}
   ${!over && m.status === 'on' ? `<div class="actions">
@@ -234,13 +271,13 @@ function meetPage(host, m, ctx) {
     const href = hrefOf(v);
     // A vendor whose profile page is on opens it (their Order button is there); the tag still says they're serving.
     const page = profileHref(k);
-    return { img: k && k.file ? '/uploads/' + k.file : v.logo || null, emoji: v.emoji, name: v.name, href: page || href || ig(k && k.instagram) || ig(v.instagram),
+    return { img: k && k.file ? small(k.file, 256) : v.logo || null, emoji: v.emoji, name: v.name, href: page || href || ig(k && k.instagram) || ig(v.instagram),
       tag: href ? (live && anyPreorder && takes(v) ? 'Order' : 'Menu') : null, can: !!(href && live && anyPreorder && takes(v)), open: !!(live && v.openNow), profile: !!page };
   });
   for (const k of picked) {
     if (used.has(k.id)) continue;
     const page = profileHref(k);
-    items.push({ img: k.file ? '/uploads/' + k.file : null, name: k.name, href: page || ig(k.instagram), tag: null, external: !page && !!k.instagram, profile: !!page });
+    items.push({ img: k.file ? small(k.file, 256) : null, name: k.name, href: page || ig(k.instagram), tag: null, external: !page && !!k.instagram, profile: !!page });
   }
   const clubs = (ctx.kitVendors || []).filter((k) => k.kind === 'group');
   const others = (ctx.kitVendors || []).filter((k) => k.kind === 'sponsor');
@@ -248,9 +285,9 @@ function meetPage(host, m, ctx) {
   else body += minis(items);
   body += `</section>`;
   // The car clubs coming out, the same little round logos; each opens the club's Instagram.
-  if (clubs.length) body += `<section id="clubs"><h2>Clubs</h2>${minis(clubs.map((k) => ({ img: k.file ? '/uploads/' + k.file : null, emoji: '🚗', name: k.name, href: ig(k.instagram), external: !!k.instagram })))}</section>`;
+  if (clubs.length) body += `<section id="clubs"><h2>Clubs</h2>${minis(clubs.map((k) => ({ img: k.file ? small(k.file, 256) : null, emoji: '🚗', name: k.name, href: ig(k.instagram), external: !!k.instagram })))}</section>`;
   // Other vendors (shops, merch, sponsors): their own row, each opening its Instagram.
-  if (others.length) body += `<section id="vendors"><h2>Vendors</h2>${minis(others.map((k) => ({ img: k.file ? '/uploads/' + k.file : null, emoji: '🛍', name: k.name, href: ig(k.instagram), external: !!k.instagram })))}</section>`;
+  if (others.length) body += `<section id="vendors"><h2>Vendors</h2>${minis(others.map((k) => ({ img: k.file ? small(k.file, 256) : null, emoji: '🛍', name: k.name, href: ig(k.instagram), external: !!k.instagram })))}</section>`;
   if (ctx.last && ctx.last.people) {
     body += `<section><p class="turnout">Last meet: about ${ctx.last.people} people${ctx.last.cars ? `, ${ctx.last.cars} cars` : ''}</p>
     <p class="small dim">${esc(U.dayShort(ctx.last.at, tz))}${ctx.last.place ? ` at ${esc(ctx.last.place)}` : ''}</p></section>`;
@@ -287,7 +324,7 @@ function meetPage(host, m, ctx) {
  */
 function vendorPage(host, k, ctx) {
   const name = k.name;
-  const logo = k.file ? '/uploads/' + k.file : null;
+  const logo = k.file ? small(k.file, 512) : null;
   const at = ctx.at;
   const ig = k.instagram ? `https://instagram.com/${encodeURIComponent(k.instagram)}` : null;
   const desc = [k.serves, k.about].filter(Boolean).join('. ').slice(0, 200) || `${name}, food at ${host.name}.`;
@@ -310,7 +347,7 @@ function vendorPage(host, k, ctx) {
     ${k.about ? String(k.about).split(/\n{2,}/).map((p) => `<p>${esc(p).replace(/\n/g, '<br>')}</p>`).join('') : ''}</section>`;
   }
   if (ctx.photos && ctx.photos.length) {
-    body += `<section><h2>The food</h2><div class="photos v-photos">${ctx.photos.map((p) => `<figure><img src="/uploads/${esc(p.file)}" alt="${esc(p.label || name)}" loading="lazy">${p.label ? `<figcaption>${esc(p.label)}</figcaption>` : ''}</figure>`).join('')}</div></section>`;
+    body += `<section><h2>The food</h2><div class="photos v-photos">${ctx.photos.map((p) => `<figure><img src="${esc(small(p.file, 480))}" alt="${esc(p.label || name)}" loading="lazy">${p.label ? `<figcaption>${esc(p.label)}</figcaption>` : ''}</figure>`).join('')}</div></section>`;
   }
   if (ctx.spots && ctx.spots.length) {
     body += `<section><h2>Find them</h2><div class="v-spots">${ctx.spots.map((s) => {
@@ -321,7 +358,7 @@ function vendorPage(host, k, ctx) {
   const past = ctx.logos || [];
   if (past.length) {
     // The logo now, then the old ones, newest first: the truck's look over the years.
-    const tiles = (logo ? [{ src: logo, label: 'Now' }] : []).concat(past.map((l) => ({ src: '/uploads/' + l.file, label: l.label || '' })));
+    const tiles = (logo ? [{ src: small(k.file, 256), label: 'Now' }] : []).concat(past.map((l) => ({ src: small(l.file, 256), label: l.label || '' })));
     body += `<section><h2>Through the years</h2><div class="v-logos">${tiles.map((t) => `<figure><div class="mini"><img src="${esc(t.src)}" alt="" loading="lazy"></div>${t.label ? `<figcaption>${esc(t.label)}</figcaption>` : ''}</figure>`).join('')}</div></section>`;
   }
   if (ctx.meets > 0) body += `<section><p class="turnout">At ${ctx.meets} ${esc(host.name)} meet${ctx.meets === 1 ? '' : 's'}</p></section>`;
@@ -408,4 +445,4 @@ ${list.length ? `<div class="list-meets">${list.map((r) => {
   return layout({ title: `${SITE()}: car meets`, description: 'Car meets: where, when, and food you can pre-order.', body });
 }
 
-module.exports = { ver, layout, meetPage, vendorPage, hostEmpty, foodPage, orderPage, message, home, privacy };
+module.exports = { small, ver, layout, meetPage, vendorPage, hostEmpty, foodPage, orderPage, message, home, privacy };

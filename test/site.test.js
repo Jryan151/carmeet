@@ -234,9 +234,18 @@ test('a background video: any clip becomes a silent 15-second 1080p loop with a 
   assert.ok(!JSON.stringify(probe.format.tags || {}).includes('33.5684'), 'no location');
   assert.ok(buf.length && (await request(ctx, 'GET', SITE, me.video.poster)).status === 200, 'a still frame');
   r = await request(ctx, 'GET', 'tastytuesday.com', '/' + day);
-  assert.ok(r.text.includes(`<source src="${me.video.url}" type="video/mp4">`));
-  assert.match(r.text, /<video autoplay muted loop playsinline/);
-  assert.ok(r.text.includes(`poster="${me.video.poster}"`));
+  assert.equal(v[0].r_frame_rate, '24/1', '24 frames a second');
+  assert.ok(r.text.includes(`<source data-src="${me.video.url}" type="video/mp4">`), 'the clip loads after the page');
+  assert.match(r.text, /<video muted loop playsinline preload="none"[^>]* data-bg>/);
+  if (/libx265/.test(execFileSync('ffmpeg', ['-hide_banner', '-encoders']).toString())) {
+    assert.match(r.text, /<source data-src="\/uploads\/bg-[0-9a-f]+\.hevc\.mp4" type='video\/mp4; codecs="hvc1"'>/, 'HEVC offered first');
+  }
+  assert.ok(r.text.includes(`poster="${me.video.poster}"`), 'the still, until its phone copy is made');
+  await new Promise((ok) => setTimeout(ok, 1500));
+  r = await request(ctx, 'GET', 'tastytuesday.com', '/' + day);
+  const webp = me.video.poster.replace(/\.jpg$/, '.s1280.webp');
+  assert.ok(r.text.includes(`poster="${webp}"`), 'then the phone-size still');
+  assert.equal((await request(ctx, 'GET', SITE, webp)).status, 200);
   r = await request(ctx, 'DELETE', SITE, '/api/host/video', { cookie: C });
   assert.equal(r.json.host.video.status, null);
   r = await request(ctx, 'GET', 'tastytuesday.com', '/' + day);
@@ -277,4 +286,19 @@ test('the flyer kit keeps vendor and car group logos', async () => {
   assert.equal(r.status, 400, 'needs a name');
   r = await request(ctx, 'GET', SITE, '/api/host/kit', { cookie: C });
   assert.deepEqual(r.json.logos, []);
+});
+
+test('a weak signal: fonts from this site, no Google, and the portal the same', async () => {
+  let r = await request(ctx, 'GET', SITE, '/');
+  assert.ok(r.text.includes('/static/fonts.css'));
+  assert.ok(!/fonts\.(googleapis|gstatic)\.com/.test(r.text), 'nothing from Google');
+  r = await request(ctx, 'GET', SITE, '/static/fonts.css');
+  assert.equal(r.status, 200);
+  for (const f of r.text.match(/\/static\/fonts\/[a-z0-9-]+\.woff/g)) {
+    const w = await request(ctx, 'GET', SITE, f);
+    assert.equal(w.status, 200, f);
+    assert.ok(w.buf.length < 40 * 1024, f + ' is small');
+  }
+  r = await request(ctx, 'GET', SITE, '/host');
+  assert.ok(!/fonts\.(googleapis|gstatic)\.com/.test(r.text), 'portal: nothing from Google');
 });

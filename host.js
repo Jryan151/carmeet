@@ -641,7 +641,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     if (k.file) fs.promises.unlink(path.join(UPLOAD_DIR, k.file)).catch(() => {});
     // Its profile goes with it: pictures, clip, spots, meet history, old addresses.
     for (const x of await all('SELECT file FROM kit_media WHERE kit_id = ?', [k.id])) unlinkUpload(x.file);
-    unlinkUpload(k.video); unlinkUpload(k.video_poster);
+    unlinkUpload(k.video); unlinkUpload(k.video_poster); unlinkUpload(k.video_hevc);
     for (const t of ['kit_media', 'kit_spots', 'kit_meets', 'kit_old_slugs']) await run(`DELETE FROM ${t} WHERE kit_id = ?`, [k.id]);
     await run('DELETE FROM kit_logos WHERE id = ?', [k.id]);
     await run('DELETE FROM meet_kit_vendors WHERE kit_id = ?', [k.id]);
@@ -871,9 +871,9 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     videoQueue = videoQueue.then(async () => {
       try {
         const out = await V.process(up.file, UPLOAD_DIR);
-        const old = await get(`SELECT video, video_poster FROM ${table} WHERE id = ?`, [id]);
-        await run(`UPDATE ${table} SET video = ?, video_poster = ?, video_status = 'ready', video_error = NULL WHERE id = ?`, [out.video, out.poster, id]);
-        if (old) { unlinkUpload(old.video); unlinkUpload(old.video_poster); }
+        const old = await get(`SELECT video, video_poster, video_hevc FROM ${table} WHERE id = ?`, [id]);
+        await run(`UPDATE ${table} SET video = ?, video_hevc = ?, video_poster = ?, video_status = 'ready', video_error = NULL WHERE id = ?`, [out.video, out.hevc, out.poster, id]);
+        if (old) { unlinkUpload(old.video); unlinkUpload(old.video_poster); unlinkUpload(old.video_hevc); }
         if (table === 'hosts') refreshLook(id);
         else if (table === 'meets') { const m = await get('SELECT * FROM meets WHERE id = ?', [id]); if (m) sync(await get('SELECT * FROM hosts WHERE id = ?', [m.host_id]), m).catch(() => {}); }
       } catch (e) {
@@ -883,9 +883,9 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     });
   }
   async function dropVideo(table, id) {
-    const row = await get(`SELECT video, video_poster FROM ${table} WHERE id = ?`, [id]);
-    if (row) { unlinkUpload(row.video); unlinkUpload(row.video_poster); }
-    await run(`UPDATE ${table} SET video = NULL, video_poster = NULL, video_status = NULL, video_error = NULL WHERE id = ?`, [id]);
+    const row = await get(`SELECT video, video_poster, video_hevc FROM ${table} WHERE id = ?`, [id]);
+    if (row) { unlinkUpload(row.video); unlinkUpload(row.video_poster); unlinkUpload(row.video_hevc); }
+    await run(`UPDATE ${table} SET video = NULL, video_hevc = NULL, video_poster = NULL, video_status = NULL, video_error = NULL WHERE id = ?`, [id]);
   }
   r.post('/video', signedIn, (req, res) => takeVideo(req, res, 'hosts', req.me.id));
   // The portal's own background (only the host sees it, behind their portal).

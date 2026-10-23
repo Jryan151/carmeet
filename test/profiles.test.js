@@ -157,7 +157,7 @@ test('the clip saver is served from the root, and removing a vendor removes thei
   let r = await request(ctx, 'GET', SITE, '/sw.js');
   assert.equal(r.status, 200);
   assert.match(r.headers['content-type'], /javascript/);
-  assert.match(r.text, /clips-v1/);
+  assert.match(r.text, /clips-v2/);
   const gone = (await request(ctx, 'POST', SITE, '/api/host/kit/entry', { cookie: C, body: { kind: 'vendor', name: 'Gone Truck' } })).json.logo.id;
   await request(ctx, 'PUT', SITE, `/api/host/kit/${gone}/profile`, { cookie: C, body: { pageOn: true } });
   assert.equal((await request(ctx, 'GET', SITE, '/v/gone-truck')).status, 200);

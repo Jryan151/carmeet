@@ -1,0 +1,6 @@
+/* Fonts served from this site (no trip to Google on a weak signal). Subsets: Latin, Latin-1, punctuation, arrows.
+   Licenses: fonts/OFL-michroma.txt, fonts/OFL-instrument-sans.txt */
+@font-face{font-family:"Michroma";font-style:normal;font-weight:400;font-display:swap;src:url(/static/fonts/michroma.woff) format("woff")}
+@font-face{font-family:"Instrument Sans";font-style:normal;font-weight:400;font-display:swap;src:url(/static/fonts/instrument-sans-400.woff) format("woff")}
+@font-face{font-family:"Instrument Sans";font-style:normal;font-weight:500;font-display:swap;src:url(/static/fonts/instrument-sans-500.woff) format("woff")}
+@font-face{font-family:"Instrument Sans";font-style:normal;font-weight:600;font-display:swap;src:url(/static/fonts/instrument-sans-600.woff) format("woff")}
