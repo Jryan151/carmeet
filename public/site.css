@@ -424,3 +424,14 @@ main > section.v-about { padding: 18px; }
 .v-ask { background: var(--lot); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
 .v-ask label { display: block; margin-top: 12px; }
 .v-ask input:not(.hp), .v-ask select, .v-ask textarea { width: 100%; }
+/* The portal's Vendors tab. */
+.seg-row { display: flex; gap: 8px; margin: 8px 0 12px; flex-wrap: wrap; }
+.chip { min-height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--lot-2); color: var(--dim); font: 500 14px/1 var(--body); cursor: pointer; }
+.chip[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.vreq { padding: 12px 0; border-bottom: 1px solid var(--line); display: grid; gap: 3px; }
+.vreq:last-child { border-bottom: 0; }
+.vreq-top { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+.vreq-act select { margin-top: 8px; }
+.vface { width: 40px; height: 40px; flex: none; border-radius: 50%; overflow: hidden; background: #000; display: grid; place-items: center; font-size: 18px; }
+.vface img { width: 100%; height: 100%; object-fit: contain; }
+.vqr { display: block; width: 220px; height: 220px; background: #fff; border-radius: 12px; padding: 8px; }

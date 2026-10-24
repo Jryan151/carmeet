@@ -111,3 +111,28 @@ test('the password opens the host’s workspace; a wrong one doesn’t', async (
   r = await request(ctx, 'GET', SITE, '/api/host/me', { cookie });
   assert.equal(r.json.host.slug, 'tasty-tuesday');
 });
+
+test('the Vendors tab: a request becomes a vendor with their own link; the sign-up link is the host’s own', async () => {
+  const meets = (await request(ctx, 'GET', SITE, '/api/host/meets', { cookie: C })).json.meets;
+  const ffm = meets.find((m) => m.title === 'Fuel Friday');
+  let r = await request(ctx, 'GET', SITE, '/vendors?host=tasty-tuesday');
+  assert.match(r.text, /data-host="tasty-tuesday"/);
+  assert.match(r.text, new RegExp(`<option value="${ffm.id}">Fuel Friday`));
+  r = await request(ctx, 'POST', SITE, '/api/vendor-request', { body: { host: 'tasty-tuesday', site: '1', name: 'Glow Wraps', contact: '602-555-0199', kind: 'other', instagram: '@glowwraps', meet: String(ffm.id), food: 'Wraps' } });
+  assert.equal(r.status, 200, r.text);
+  r = await request(ctx, 'GET', SITE, '/api/host/requests', { cookie: C });
+  const q = r.json.requests.find((x) => x.name === 'Glow Wraps');
+  assert.deepEqual([q.kind, q.instagram, q.meet.title, q.status], ['other', 'glowwraps', 'Fuel Friday', 'new']);
+  r = await request(ctx, 'POST', SITE, `/api/host/requests/${q.id}/invite`, { cookie: C, body: { meetId: ffm.id } });
+  assert.equal(r.status, 201, r.text);
+  assert.match(r.json.text, /Glow Wraps.*Fuel Friday/);
+  r = await request(ctx, 'GET', SITE, '/api/host/vendors', { cookie: C });
+  const gw = r.json.vendors.find((k) => k.name === 'Glow Wraps');
+  assert.equal(gw.kind, 'sponsor', 'not food: under Vendors');
+  assert.equal(gw.contact, '602-555-0199');
+  assert.equal(r.json.signup, 'http://meets.test/vendors?host=tasty-tuesday');
+  r = await request(ctx, 'GET', SITE, '/api/host/requests', { cookie: C });
+  assert.equal(r.json.requests.find((x) => x.name === 'Glow Wraps').status, 'invited');
+  r = await request(ctx, 'GET', SITE, '/vendors/qr.svg?host=tasty-tuesday');
+  assert.equal(r.status, 200); assert.match(r.headers['content-type'], /svg/); assert.match(r.text, /^<svg /);
+});

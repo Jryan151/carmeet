@@ -67,7 +67,7 @@ test('a meet: posted, sent to the food side, on the page with nothing from the o
   assert.equal(r.status, 200, r.text);
   r = await request(ctx, 'GET', SITE, '/api/host/requests', { cookie: C });
   const vr = r.json.requests.find((x) => x.name === 'Wrap Shop');
-  assert.match(vr.note, /Not food[\s\S]*@wrapshop[\s\S]*JDM night/);
+  assert.deepEqual([vr.kind, vr.instagram, vr.meet && vr.meet.title], ['other', 'wrapshop', 'JDM night']);
   r = await request(ctx, 'GET', SITE, '/members');
   assert.equal(r.status, 200);
 });

@@ -351,19 +351,31 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     let k = b.kitId ? await ownKit(req, b.kitId) : null;
     if (!k && b.slug) k = await get('SELECT * FROM kit_logos WHERE host_id = ? AND truck_slug = ?', [req.me.id, String(b.slug).toLowerCase()]);
     if (!k) return res.status(404).json({ error: 'Add the truck to your Food vendors first.' });
-    if (!m.synced_at) { const s = await sync(req.me, m); if (!s.ok) return res.status(502).json({ error: s.data.error || 'The food side didn’t answer.' }); }
-    const pf = await ensureProfile(req.me, k);
-    if (pf.error) return res.status(pf.status).json({ error: pf.error });
-    await run('DELETE FROM kit_gone WHERE host_id = ? AND truck_slug = ?', [req.me.id, pf.slug]);
+    const out = await linkFor(req.me, m, k);
+    res.status(out.status).json(out.body);
+  });
+  /** A Food vendor's own link for a meet (no email or phone: it opens straight to their truck), and a message to text
+      them. A vendor that isn't food gets no link: they're put on the meet's page, and the message says so. */
+  async function linkFor(h, m, k) {
+    const tz = tzOf(h); const t = U.meetTimes(m, tz);
+    const when = `${m.place}, ${U.dayShort(t.startsAt, tz)} ${U.time12(t.startsAt, tz)}–${U.time12(t.endsAt, tz)}`;
+    if (k.kind !== 'vendor') {
+      await run('INSERT OR IGNORE INTO meet_kit_vendors (meet_id, kit_id, created_at) VALUES (?, ?, ?)', [m.id, k.id, Date.now()]);
+      return { status: 201, body: { url: N.meetUrl(h, m), name: k.name, onPage: true,
+        text: `Hey ${k.name}! You're in for ${m.title || h.name}: ${when}. You're on the meet's page here: ${N.meetUrl(h, m)}` } };
+    }
+    if (!m.synced_at) { const s = await sync(h, m); if (!s.ok) return { status: 502, body: { error: s.data.error || 'The food side didn’t answer.' } }; }
+    const pf = await ensureProfile(h, k);
+    if (pf.error) return { status: pf.status, body: { error: pf.error } };
+    await run('DELETE FROM kit_gone WHERE host_id = ? AND truck_slug = ?', [h.id, pf.slug]);
     const r2 = await K.inviteLink(m.ref, pf.slug);
-    if (!r2.ok) return res.status(r2.status || 502).json({ error: r2.data.error || 'Couldn’t make a link.' });
+    if (!r2.ok) return { status: r2.status || 502, body: { error: r2.data.error || 'Couldn’t make a link.' } };
     truckCache.delete(m.ref);
-    const tz = tzOf(req.me); const t = U.meetTimes(m, tz);
     const text = r2.data.signIn
       ? `Here's a new link for ${k.name}'s pre-order screen (it works once, on the phone that opens it): ${r2.data.url}`
-      : `Hey ${k.name}! You're on for ${m.title || req.me.name + "'s meet"}: ${m.place}, ${U.dayShort(t.startsAt, tz)} ${U.time12(t.startsAt, tz)}–${U.time12(t.endsAt, tz)}. People can pre-order from you ahead of time and pay at your truck. Open this to set up (no account needed): ${r2.data.url}`;
-    res.status(201).json({ url: r2.data.url, text, signIn: !!r2.data.signIn, name: k.name });
-  });
+      : `Hey ${k.name}! You're on for ${m.title || h.name + "'s meet"}: ${when}. People can pre-order from you ahead of time and pay at your truck. Open this to set up (no account needed): ${r2.data.url}`;
+    return { status: 201, body: { url: r2.data.url, text, signIn: !!r2.data.signIn, name: k.name } };
+  }
   r.post('/meets/:id/trucks', signedIn, async (req, res) => {
     const m = await own(req, req.params.id);
     if (!m) return res.status(404).json({ error: 'That meet is gone.' });
@@ -384,8 +396,53 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     res.json({ ok: true });
   });
   r.get('/requests', signedIn, async (req, res) => {
-    const rows = await all("SELECT id, name, contact, food, note, status, created_at FROM vendor_requests WHERE host_id = ? AND status != 'dismissed' ORDER BY id DESC LIMIT 50", [req.me.id]);
-    res.set('Cache-Control', 'no-store').json({ requests: rows });
+    const rows = await all(`SELECT r.id, r.name, r.contact, r.food, r.note, r.status, r.created_at, r.kind, r.instagram, r.meet_id, r.kit_id, m.title AS meet_title, m.day AS meet_day
+      FROM vendor_requests r LEFT JOIN meets m ON m.id = r.meet_id AND m.host_id = r.host_id WHERE r.host_id = ? AND r.status != 'dismissed' ORDER BY r.id DESC LIMIT 100`, [req.me.id]);
+    res.set('Cache-Control', 'no-store').json({ requests: rows.map((x) => Object.assign(x, { kind: x.kind || 'food', meet: x.meet_id && x.meet_day ? { id: x.meet_id, title: x.meet_title || req.me.name, day: x.meet_day } : null })) });
+  });
+  // A request answered: the vendor joins your lists (Food vendors, or Vendors when it isn't food) and gets their own
+  // link for the meet picked (a message ready to text). The request is marked Invited.
+  r.post('/requests/:id/invite', signedIn, async (req, res) => {
+    const x = await get('SELECT * FROM vendor_requests WHERE id = ? AND host_id = ?', [parseInt(req.params.id, 10) || 0, req.me.id]);
+    if (!x) return res.status(404).json({ error: 'That request is gone.' });
+    const m = await own(req, (req.body || {}).meetId || x.meet_id);
+    if (!m) return res.status(400).json({ error: 'Pick the meet.' });
+    if (U.meetTimes(m, tzOf(req.me)).endsAt < Date.now()) return res.status(400).json({ error: 'That meet is over. Pick another.' });
+    const kind = x.kind === 'other' ? 'sponsor' : 'vendor';
+    let k = x.kit_id ? await get('SELECT * FROM kit_logos WHERE id = ? AND host_id = ?', [x.kit_id, req.me.id]) : null;
+    if (!k) k = await get("SELECT * FROM kit_logos WHERE host_id = ? AND kind IN ('vendor', 'sponsor') AND lower(name) = lower(?)", [req.me.id, x.name]);
+    if (!k) {
+      const ins = await run('INSERT INTO kit_logos (host_id, kind, name, file, instagram, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [req.me.id, kind, x.name, '', x.instagram || null, x.food || null, Date.now()]);
+      k = await get('SELECT * FROM kit_logos WHERE id = ?', [ins.lastID]);
+    }
+    const out = await linkFor(req.me, m, k);
+    if (out.status >= 300) return res.status(out.status).json(out.body);
+    await run("UPDATE vendor_requests SET status = 'invited', kit_id = ? WHERE id = ?", [k.id, x.id]);
+    res.status(201).json(Object.assign(out.body, { contact: x.contact }));
+  });
+  // The Vendors tab: everyone in Food vendors and Vendors, and where each stands for the next meet; the sign-up link.
+  r.get('/vendors', signedIn, async (req, res) => {
+    const h = req.me; const tz = tzOf(h);
+    const next = (await all("SELECT * FROM meets WHERE host_id = ? AND status = 'on' AND day >= ? ORDER BY day, start_time LIMIT 12", [h.id, U.addDays(U.dayKey(Date.now(), tz), -1)]))
+      .filter((m) => U.meetTimes(m, tz).endsAt > Date.now());
+    const m = next[0] || null;
+    const rows = await all("SELECT * FROM kit_logos WHERE host_id = ? AND kind IN ('vendor', 'sponsor') ORDER BY kind DESC, name COLLATE NOCASE", [h.id]);
+    const trucks = m ? await trucksFor(m, { fresh: true }).catch(() => []) : [];
+    const onPage = m ? new Set((await all('SELECT kit_id FROM meet_kit_vendors WHERE meet_id = ?', [m.id])).map((x) => x.kit_id)) : new Set();
+    const list = rows.map((k) => {
+      const v = k.truck_slug ? trucks.find((x) => x.slug === k.truck_slug && x.status !== 'removed') : null;
+      const status = v ? (v.status === 'in' ? 'in' : v.status === 'invited' ? 'invited' : v.status) : onPage.has(k.id) ? 'onpage' : 'none';
+      return Object.assign(kitShape(k), { status, contact: null });
+    });
+    // Their phone or email, from the request they sent (when they came in that way).
+    for (const x of await all('SELECT kit_id, contact FROM vendor_requests WHERE host_id = ? AND kit_id IS NOT NULL ORDER BY id', [h.id])) {
+      const it = list.find((k) => k.id === x.kit_id); if (it) it.contact = x.contact;
+    }
+    const signup = `${SCHEME()}://${SITE_DOMAIN()}/vendors?host=${encodeURIComponent(h.slug)}`;
+    res.set('Cache-Control', 'no-store').json({ next: m ? { id: m.id, title: m.title || h.name, day: m.day, label: meetShape(m, h).label } : null,
+      meets: next.map((x) => ({ id: x.id, title: x.title || h.name, day: x.day, label: meetShape(x, h).label })), vendors: list,
+      signup, qr: `/vendors/qr.svg?host=${encodeURIComponent(h.slug)}`, foodOn: K.on() });
   });
   r.put('/requests/:id', signedIn, async (req, res) => {
     const st = (req.body || {}).status;

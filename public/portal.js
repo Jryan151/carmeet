@@ -124,7 +124,7 @@
     tab = t;
     Array.prototype.forEach.call(document.querySelectorAll('.tabs [data-tab]'), function (b) { b.setAttribute('aria-selected', String(b.getAttribute('data-tab') === t)); });
     view('<p class="dim" style="padding:20px 0">Loading…</p>');
-    ({ next: drawNext, meets: drawMeets, kit: drawKit, updates: drawUpdates, members: drawMembers, history: drawHistory, settings: drawSettings })[t]();
+    ({ next: drawNext, meets: drawMeets, kit: drawKit, updates: drawUpdates, vendors: drawVendors, members: drawMembers, history: drawHistory, settings: drawSettings })[t]();
   }
 
 
@@ -432,6 +432,7 @@
         else if ((b = e.target.closest('[data-resync]'))) api('POST', '/meets/' + b.getAttribute('data-resync') + '/resync', {}).then(function () { drawNext(); });
         else if ((b = e.target.closest('[data-save-turnout]'))) saveTurnout(b.getAttribute('data-save-turnout'), b, drawNext);
         else if ((b = e.target.closest('[data-req]'))) api('PUT', '/requests/' + b.getAttribute('data-req'), { status: b.getAttribute('data-to') }).then(drawRequests);
+        else if ((b = e.target.closest('[data-tab-go]'))) show(b.getAttribute('data-tab-go'));
       };
     });
   }
@@ -443,10 +444,9 @@
     api('GET', '/requests').then(function (r) {
       if (!r.ok || !$('reqBox')) return;
       var list = r.d.requests.filter(function (x) { return x.status === 'new'; });
-      $('reqBox').innerHTML = list.length ? '<div class="card"><h3>Trucks asking for a spot</h3>' + list.map(function (x) {
-        return '<div class="rowx"><div><div>' + esc(x.name) + (x.food ? ' <span class="tag">· ' + esc(x.food) + '</span>' : '') + '</div><div class="tag">' + esc(x.contact) + (x.note ? ' · ' + esc(x.note) : '') + '</div></div>' +
-          '<div class="bar" style="margin:0"><button class="btn sm" data-req="' + x.id + '" data-to="invited">Invited</button><button class="btn sm" data-req="' + x.id + '" data-to="dismissed">Dismiss</button></div></div>';
-      }).join('') + '<p class="small dim" style="margin-top:8px">Reach out, then send them an invite link from the meet.</p></div>' : '';
+      // The full list, with invites, is under Vendors; here just how many are waiting.
+      $('reqBox').innerHTML = list.length ? '<div class="card"><h3>' + list.length + ' vendor' + (list.length === 1 ? '' : 's') + ' asking for a spot</h3><p class="small dim">' +
+        list.slice(0, 3).map(function (x) { return esc(x.name); }).join(', ') + (list.length > 3 ? '…' : '') + '</p><div class="bar"><button class="btn go sm" data-tab-go="vendors">Open Vendors</button></div></div>' : '';
     });
   }
 
@@ -573,6 +573,78 @@
   }
 
   /* ---------- history ---------- */
+  /* ---------- vendors: who asked for a spot, everyone in your lists for the next meet, and the sign-up link ---------- */
+  var vFilter = 'new', vSent = null; // vSent: { id, text, contact } the message ready to send after an invite
+  function drawVendors() {
+    Promise.all([api('GET', '/requests'), api('GET', '/vendors')]).then(function (rs) {
+      var r = rs[0], o = rs[1];
+      if (!r.ok || !o.ok) return view('<p class="msg bad">' + esc((r.ok ? o : r).d.error) + '</p>');
+      var reqs = r.d.requests.filter(function (x) { return vFilter === 'all' || x.status === vFilter; });
+      var nNew = r.d.requests.filter(function (x) { return x.status === 'new'; }).length;
+      var meetOpts = function (sel) { return o.d.meets.map(function (m) { return '<option value="' + m.id + '"' + (m.id === sel ? ' selected' : '') + '>' + esc(m.title + ' · ' + m.label.split(',').slice(0, 2).join(',')) + '</option>'; }).join(''); };
+      var html = '<div class="card"><h3>Requests</h3><div class="seg-row">' + [['new', 'New' + (nNew ? ' (' + nNew + ')' : '')], ['invited', 'Invited'], ['all', 'All']].map(function (f) {
+        return '<button type="button" class="chip" data-vf="' + f[0] + '" aria-pressed="' + (vFilter === f[0]) + '">' + f[1] + '</button>'; }).join('') + '</div>';
+      html += reqs.length ? reqs.map(function (x) {
+        var contact = /@/.test(x.contact) ? '<a href="mailto:' + esc(x.contact) + '">' + esc(x.contact) + '</a>' : '<a href="sms:' + esc(x.contact.replace(/[^\d+]/g, '')) + '">' + esc(x.contact) + '</a>';
+        var sent = vSent && vSent.id === x.id;
+        return '<div class="vreq"><div class="vreq-top"><b>' + esc(x.name) + '</b><span class="tag">' + (x.kind === 'other' ? 'Vendor (not food)' : 'Food') + (x.status === 'invited' ? ' · invited' : '') + '</span></div>' +
+          (x.food ? '<div>' + esc(x.food) + '</div>' : '') +
+          '<div class="small">' + contact + (x.instagram ? ' · <a href="https://instagram.com/' + encodeURIComponent(x.instagram) + '" target="_blank" rel="noopener">@' + esc(x.instagram) + '</a>' : '') + '</div>' +
+          (x.meet ? '<div class="small dim">Asked for ' + esc(x.meet.title) + ' · ' + esc(x.meet.day) + '</div>' : '') +
+          (x.note ? '<div class="small dim">“' + esc(x.note) + '”</div>' : '') +
+          (sent ? '<p class="small dim" style="margin:10px 0 4px">Send this to ' + esc(x.name) + ':</p><div class="copybox" id="vText">' + esc(vSent.text) + '</div>' +
+            '<div class="bar"><button class="btn go sm" data-vcopy>Copy message</button>' + (/@/.test(x.contact) ? '<a class="btn sm" href="mailto:' + esc(x.contact) + '?subject=' + encodeURIComponent('Your spot') + '&body=' + encodeURIComponent(vSent.text) + '">Email it</a>'
+              : '<a class="btn sm" href="sms:' + esc(x.contact.replace(/[^\d+]/g, '')) + '?&body=' + encodeURIComponent(vSent.text) + '">Text it</a>') + '</div>'
+          : o.d.meets.length ? '<div class="vreq-act"><select data-vmeet="' + x.id + '" aria-label="Meet">' + meetOpts(x.meet ? x.meet.id : o.d.meets[0].id) + '</select>' +
+            '<div class="bar" style="margin-top:8px"><button class="btn go sm" data-vinvite="' + x.id + '">' + (x.status === 'invited' ? 'Send again' : 'Send invite') + '</button>' +
+            (x.status !== 'invited' ? '<button class="btn sm" data-req-v="' + x.id + '">Dismiss</button>' : '') + '</div></div>' : '<p class="small dim">Post a meet to invite them.</p>') +
+          '<div class="msg" data-vmsg="' + x.id + '" role="status"></div></div>';
+      }).join('') : '<p class="small dim">' + (vFilter === 'new' ? 'No new requests. Share your sign-up link below.' : 'Nothing here yet.') + '</p>';
+      html += '</div>';
+      // Everyone in your lists, and where they stand for the next meet.
+      var ST = { in: ['Confirmed', 'in'], invited: ['Link sent', ''], onpage: ['On the page', 'in'], none: ['Not invited', ''], declined: ['Declined', ''], left: ['Not coming', ''] };
+      html += '<div class="card"><h3>Your vendors</h3>' + (o.d.next ? '<p class="small dim">For ' + esc(o.d.next.title) + ' · ' + esc(o.d.next.label) + '</p>' : '<p class="small dim">Post a meet to send links.</p>') +
+        (o.d.vendors.length ? o.d.vendors.map(function (k) {
+          var st = ST[k.status] || [k.status, ''];
+          return '<div class="rowx"><div style="display:flex;gap:10px;align-items:center;min-width:0"><span class="vface">' + (k.thumb || k.url ? '<img src="' + esc(k.thumb || k.url) + '" alt="" loading="lazy">' : (k.kind === 'vendor' ? '🍽' : '🛍')) + '</span>' +
+            '<div style="min-width:0"><div>' + esc(k.name) + '</div><div class="tag' + (st[1] ? ' ' + st[1] : '') + '">' + (k.kind === 'vendor' ? 'Food' : 'Vendor') + ' · ' + esc(st[0]) + '</div></div></div>' +
+            (o.d.next && ['in', 'onpage'].indexOf(k.status) < 0 ? '<button class="btn sm" data-vlink="' + k.id + '">' + (k.status === 'invited' ? 'Link again' : 'Send link') + '</button>' : '') + '</div>' +
+            (vSent && vSent.kit === k.id ? '<div class="copybox" style="margin:6px 0">' + esc(vSent.text) + '</div><div class="bar" style="margin:0 0 10px"><button class="btn go sm" data-vcopy>Copy message</button>' +
+              (k.contact ? (/@/.test(k.contact) ? '<a class="btn sm" href="mailto:' + esc(k.contact) + '?body=' + encodeURIComponent(vSent.text) + '">Email it</a>' : '<a class="btn sm" href="sms:' + esc(k.contact.replace(/[^\d+]/g, '')) + '?&body=' + encodeURIComponent(vSent.text) + '">Text it</a>') : '<a class="btn sm" href="sms:?&body=' + encodeURIComponent(vSent.text) + '">Text it</a>') + '</div>' : '');
+        }).join('') : '<p class="small dim">No vendors yet. They join your lists when you invite a request, or add them in Flyer kit.</p>') +
+        '<div class="msg" id="vlistMsg" role="status"></div></div>';
+      // The sign-up link (only your meets; the requests come to you).
+      var invite = 'Vendors: want a spot at our meets? Food trucks, shops, detailers, merch. Ask here: ' + o.d.signup;
+      html += '<div class="card"><h3>Vendor sign-up</h3><p class="small dim">Your own sign-up page: only your meets, and every request comes here.</p>' +
+        '<div class="copybox">' + esc(o.d.signup) + '</div>' +
+        '<div class="bar"><a class="btn go sm" href="' + esc(o.d.signup) + '" target="_blank" rel="noopener">See the sign-up page</a><button class="btn sm" data-vcopy-link>Copy link</button><a class="btn sm" href="sms:?&body=' + encodeURIComponent(invite) + '">Text it</a></div>' +
+        '<p class="small dim" style="margin:14px 0 6px">QR code for a flyer or a sign at the meet (press and hold to save):</p><img class="vqr" src="' + esc(o.d.qr) + '" alt="QR code for your vendor sign-up page" width="220" height="220"></div>';
+      view(html);
+      $('view').onclick = function (e) {
+        var b;
+        if ((b = e.target.closest('[data-vf]'))) { vFilter = b.getAttribute('data-vf'); vSent = null; drawVendors(); }
+        else if ((b = e.target.closest('[data-vcopy-link]'))) copy(o.d.signup, b);
+        else if ((b = e.target.closest('[data-vcopy]'))) copy(vSent ? vSent.text : '', b);
+        else if ((b = e.target.closest('[data-req-v]'))) api('PUT', '/requests/' + b.getAttribute('data-req-v'), { status: 'dismissed' }).then(drawVendors);
+        else if ((b = e.target.closest('[data-vinvite]'))) {
+          var id = +b.getAttribute('data-vinvite'), sel = document.querySelector('[data-vmeet="' + id + '"]');
+          b.disabled = true; b.textContent = 'Making their link…';
+          api('POST', '/requests/' + id + '/invite', { meetId: sel ? +sel.value : null }).then(function (x) {
+            if (!x.ok) { b.disabled = false; b.textContent = 'Send invite'; return say(document.querySelector('[data-vmsg="' + id + '"]'), x.d.error); }
+            vSent = { id: id, text: x.d.text }; if (vFilter === 'new') vFilter = 'invited'; drawVendors();
+          });
+        } else if ((b = e.target.closest('[data-vlink]'))) {
+          var kid = +b.getAttribute('data-vlink');
+          b.disabled = true;
+          api('POST', '/meets/' + o.d.next.id + '/send-link', { kitId: kid }).then(function (x) {
+            if (!x.ok) { b.disabled = false; return say($('vlistMsg'), x.d.error); }
+            vSent = { kit: kid, text: x.d.text }; drawVendors();
+          });
+        }
+      };
+    });
+  }
+
   /* ---------- club members' own pages (/@handle) ---------- */
   var openMember = null, memberLink = null;
   function drawMembers() {

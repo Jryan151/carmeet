@@ -627,8 +627,8 @@ function vendorsPage(site, ctx) {
   const meets = ctx.meets || [];
   const body = `<main class="wrap site-page">
 <section class="hero site-hero small-top${top.vid ? ' has-video' : ''}">${top.html}<h1 class="site-title">Vendors</h1>
-<p class="site-line">Food trucks, shops, detailers, merch: ask for a spot at a meet. The host gets back to you.</p></section>
-<section><form data-form="vendor" class="v-ask">
+<p class="site-line">Food trucks, shops, detailers, merch: ask for a spot at ${ctx.host ? esc(ctx.host.name) + '’s meets' : 'a meet'}. ${ctx.host ? 'They get' : 'The host gets'} back to you.</p></section>
+<section><form data-form="vendor" class="v-ask"${ctx.host ? ` data-host="${esc(ctx.host.slug)}"` : ''}>
   <input type="hidden" name="site" value="1">
   <label for="vaName">Business name</label><input id="vaName" name="name" maxlength="60" required>
   <label for="vaContact">Phone or email</label><input id="vaContact" name="contact" maxlength="80" required inputmode="email">

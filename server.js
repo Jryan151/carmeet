@@ -507,17 +507,16 @@ app.post('/api/vendor-request', limitForm, async (req, res) => {
   if (!host && b.site) host = await siteOwner();
   if (!host) return res.status(404).json({ error: 'No such host.' });
   const name = U.clean(b.name, 60); const contact = U.clean(b.contact, 80);
-  if (b.site) {
-    // The extra details from the site's form go in the note the host reads.
-    const meet = b.meet ? await get('SELECT title, day FROM meets WHERE id = ?', [parseInt(b.meet, 10) || 0]) : null;
-    b.note = [b.kind === 'other' ? 'Not food (shop, merch, detailing…)' : '', U.handle(b.instagram) ? 'Instagram: @' + U.handle(b.instagram) : '', meet ? `For: ${meet.title || host.name} on ${meet.day}` : '', U.cleanBlock(b.note, 300)].filter(Boolean).join('\n');
-  }
+  const meetRow = b.meet ? await get('SELECT id, title, day FROM meets WHERE id = ? AND host_id = ?', [parseInt(b.meet, 10) || 0, host.id]) : null;
+  const kind = b.kind === 'other' ? 'other' : 'food';
+  const ig = U.handle(b.instagram) || null;
   if (!name || !contact) return res.status(400).json({ error: 'Add your business name and a phone or email.' });
   const ipHash = D.sha('vr:' + (req.ip || '')).slice(0, 24);
   const recent = await get('SELECT COUNT(*) AS n FROM vendor_requests WHERE host_id = ? AND ip_hash = ? AND created_at > ?', [host.id, ipHash, Date.now() - 864e5]);
   if (recent.n >= 3) return res.status(429).json({ error: 'You already sent a request. The host will reach out.' });
-  await run('INSERT INTO vendor_requests (host_id, name, contact, food, note, ip_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)', [host.id, name, contact, U.clean(b.food, 80), U.cleanBlock(b.note, 400), ipHash, Date.now()]);
-  mail.send({ key: 'vr-' + D.token(8), to: host.email, subject: `Food vendor request: ${name}`, text: `${name} (${contact}) would like a spot at your meets.${b.food ? '\nServes: ' + U.clean(b.food, 80) : ''}\n\nSee it in your portal: ${SCHEME}://${SITE_DOMAIN}/host`,
+  await run('INSERT INTO vendor_requests (host_id, name, contact, food, note, kind, instagram, meet_id, ip_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [host.id, name, contact, U.clean(b.food, 80), U.cleanBlock(b.note, 400), kind, ig, meetRow ? meetRow.id : null, ipHash, Date.now()]);
+  mail.send({ key: 'vr-' + D.token(8), to: host.email, subject: `${kind === 'food' ? 'Food vendor' : 'Vendor'} request: ${name}`, text: `${name} (${contact}) would like a spot at your meets.${b.food ? '\nServes: ' + U.clean(b.food, 80) : ''}\n\nSee it in your portal: ${SCHEME}://${SITE_DOMAIN}/host`,
     html: mail.shell({ from: process.env.SITE_NAME || 'Meet Night', title: `${name} wants a spot`, html: `<p>${mail.esc(name)} (${mail.esc(contact)}) would like a spot at your meets.${b.food ? '<br>Serves: ' + mail.esc(U.clean(b.food, 80)) : ''}</p><p><a href="${SCHEME}://${SITE_DOMAIN}/host">Open your portal</a></p>` }) }).catch(() => {});
   res.json({ ok: true, message: `Sent. ${host.name} will reach out.` });
 });
@@ -633,10 +632,22 @@ app.get('/members', async (req, res, next) => {
   groups.sort((a, b) => (a.name === 'Members') - (b.name === 'Members') || b.members.length - a.members.length);
   res.set('Cache-Control', 'no-cache').type('html').send(V.membersPage(site, { groups, count: rows.length, instagram: owner && owner.instagram }));
 });
+// The vendor sign-up: ?host=<slug> is one host's own link (only their meets, and the request goes to them).
 app.get('/vendors', async (req, res, next) => {
   if (req.own) return next();
-  const [site, meets, owner] = await Promise.all([siteRow(), allUpcoming(), siteOwner()]);
-  res.set('Cache-Control', 'no-cache').type('html').send(V.vendorsPage(site, { meets, instagram: owner && owner.instagram }));
+  const one = req.query.host ? await get('SELECT * FROM hosts WHERE slug = ?', [String(req.query.host).toLowerCase()]) : null;
+  const [site, all0, owner] = await Promise.all([siteRow(), allUpcoming(), siteOwner()]);
+  const meets = one ? all0.filter((r) => r.host_id === one.id) : all0;
+  res.set('Cache-Control', 'no-cache').type('html').send(V.vendorsPage(site, { meets, host: one, instagram: (one || owner || {}).instagram }));
+});
+// That link as a QR code (to screenshot onto a flyer or a sign at the meet).
+const QR = require('./lib/qrcode');
+app.get('/vendors/qr.svg', (req, res) => {
+  const slug = String(req.query.host || '').toLowerCase();
+  const url = `${SCHEME}://${SITE_DOMAIN}/vendors${U.SLUG_RE.test(slug) ? '?host=' + slug : ''}`;
+  const q = QR(0, 'M'); q.addData(url); q.make();
+  const svg = q.createSvgTag({ cellSize: 8, margin: 4, scalable: true }).replace('<svg ', '<svg width="512" height="512" ');
+  res.set({ 'Cache-Control': 'public, max-age=86400' }).type('image/svg+xml').send(svg);
 });
 app.get('/privacy', async (req, res) => {
   const main = req.own || (await homeHost());

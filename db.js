@@ -81,6 +81,11 @@ async function ensureSchema() {
   // The site's own front page (one row): its background video, set by the site owner (SITE_OWNER_EMAIL).
   await exec("CREATE TABLE IF NOT EXISTS site (id INTEGER PRIMARY KEY CHECK (id = 1), updated_at INTEGER)");
   await run('INSERT OR IGNORE INTO site (id, updated_at) VALUES (1, 0)');
+  // A vendor's request, in full: food or not, their Instagram, the meet they asked for, the kit entry it became.
+  await addColumn('vendor_requests', 'kind', 'TEXT');
+  await addColumn('vendor_requests', 'instagram', 'TEXT');
+  await addColumn('vendor_requests', 'meet_id', 'INTEGER');
+  await addColumn('vendor_requests', 'kit_id', 'INTEGER');
   // The front page's own look: its logo and a line under it (the site owner sets them in Settings).
   await addColumn('site', 'logo', 'TEXT');
   await addColumn('site', 'tagline', 'TEXT');
