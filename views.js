@@ -437,7 +437,10 @@ function vendorPage(host, k, ctx) {
 /* ---------- a club member's page: their footage behind everything, their car on top, their photos as a feed ----------
    A nod to the old profile pages: the card up top, About and Mods, their crew (a top 8 from the same club), then the
    car photos one after another over the moving background. */
+/** What a member goes by on the site: their name, else their car, else their @handle (the name is optional). */
+const memberLabel = (m) => m.name || m.car || '@' + m.handle;
 function memberPage(host, m, ctx) {
+  const who = memberLabel(m);
   const items = ctx.photos || []; // newest first: photos and clips
   const club = ctx.club;
   const still = (x) => (x.kind === 'video' ? x.poster : x.file);
@@ -450,15 +453,15 @@ function memberPage(host, m, ctx) {
   const ig = m.instagram ? `https://instagram.com/${encodeURIComponent(m.instagram)}` : null;
   const clubIg = club && club.instagram ? `https://instagram.com/${encodeURIComponent(club.instagram)}` : null;
   const mods = String(m.mods || '').split(/\n|,(?![^(]*\))/).map((x) => x.trim()).filter(Boolean).slice(0, 40);
-  const desc = [m.car, club ? club.name : '', m.about].filter(Boolean).join(' · ').slice(0, 200) || `${m.name} on ${host.name}.`;
+  const desc = [m.car, club ? club.name : '', m.about].filter(Boolean).join(' · ').slice(0, 200) || `${who} on ${host.name}.`;
   // The top, like a meet page: who it is, then the footage on its own, then the buttons. The feed is below.
   let body = `<main class="wrap member">
 <section class="hero m-hero${ctx.vid ? ' has-video' : ''}">
   ${heroBg(ctx.vid)}
-  ${headLogo ? `<div class="avatar m-logo"><img src="${esc(headLogo)}" alt="${esc(m.header === 'logo' ? m.name : club ? club.name : m.name)}" fetchpriority="high"></div>` : '<div class="m-nologo" aria-hidden="true"></div>'}
-  <h1 class="m-name${m.name_off ? ' sr-only' : ''}">${esc(m.name)}</h1>
+  ${headLogo ? `<div class="avatar m-logo"><img src="${esc(headLogo)}" alt="${esc(m.header === 'logo' ? who : club ? club.name : who)}" fetchpriority="high"></div>` : '<div class="m-nologo" aria-hidden="true"></div>'}
+  <h1 class="m-name${m.name_off || !m.name ? ' sr-only' : ''}">${esc(who)}</h1>
   ${m.car ? `<p class="m-car">${esc(m.car)}</p>` : ''}
-  <div class="showcase${m.name_off ? ' tall' : ''}" aria-hidden="true"></div>
+  <div class="showcase${m.name_off || !m.name ? ' tall' : ''}" aria-hidden="true"></div>
   ${club ? `<a class="m-club"${clubIg ? ` href="${esc(clubIg)}" rel="noopener" target="_blank"` : ''}>${club.file ? `<img src="${esc(small(club.file, 256))}" alt="">` : ''}<span>${esc(club.name)}</span></a>` : ''}
   <div class="actions">
     ${ig ? `<a class="btn go" href="${esc(ig)}" rel="noopener" target="_blank">Instagram</a>` : ''}
@@ -472,18 +475,18 @@ function memberPage(host, m, ctx) {
       if (x.kind === 'video') {
         return `<figure class="m-shot clip"><video muted loop playsinline preload="none" poster="${esc(small(x.poster, 1080))}" data-feed>${x.hevc ? `<source data-src="/uploads/${esc(x.hevc)}" type='video/mp4; codecs="hvc1"'>` : ''}<source data-src="/uploads/${esc(x.file)}" type="video/mp4"></video>${cap}</figure>`;
       }
-      return `<figure class="m-shot"><img src="${esc(small(x.file, 1080))}" alt="${esc(x.caption || m.car || m.name)}"${i ? ' loading="lazy"' : ''} decoding="async">${cap}</figure>`;
+      return `<figure class="m-shot"><img src="${esc(small(x.file, 1080))}" alt="${esc(x.caption || m.car || who)}"${i ? ' loading="lazy"' : ''} decoding="async">${cap}</figure>`;
     }).join('')}</section>`;
   }
   if (mods.length) body += `<section class="m-box"><h2>The build</h2><ul class="m-mods">${mods.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></section>`;
   if (m.about) body += `<section class="m-box"><h2>About</h2>${String(m.about).split(/\n{2,}/).map((x) => `<p>${esc(x).replace(/\n/g, '<br>')}</p>`).join('')}</section>`;
   if (ctx.crew && ctx.crew.length) {
-    body += `<section class="m-box"><h2>${esc(club.name)} crew</h2><div class="m-crew">${ctx.crew.map((c) => `<a href="/@${esc(c.handle)}"><div class="mini">${c.face ? `<img src="${esc(small(c.face, 256))}" alt="" loading="lazy">` : '<span class="emoji" aria-hidden="true">🚗</span>'}</div><span>${esc(c.name)}</span></a>`).join('')}</div></section>`;
+    body += `<section class="m-box"><h2>${esc(club.name)} crew</h2><div class="m-crew">${ctx.crew.map((c) => `<a href="/@${esc(c.handle)}"><div class="mini">${c.face ? `<img src="${esc(small(c.face, 256))}" alt="" loading="lazy">` : '<span class="emoji" aria-hidden="true">🚗</span>'}</div><span>${esc(memberLabel(c))}</span></a>`).join('')}</div></section>`;
   }
   if (!items.length && !mods.length && !m.about) body += `<section class="m-box"><p class="dim">Photos coming soon.</p></section>`;
   body += `</main><footer><div class="wrap"><p>@${esc(m.handle)} · ${esc(SITE())}</p></div></footer>`;
   const img = ctx.origin ? (first ? ctx.origin + small(still(items[0]), 1080) : ctx.vid ? `${ctx.origin}/uploads/${ctx.vid.video_poster}` : null) : null;
-  return layout({ title: `${m.name}${m.car ? ' · ' + m.car : ''}`, description: desc, host, body, scripts: ['site.js', 'member.js'], image: img });
+  return layout({ title: m.name && m.car ? `${m.name} · ${m.car}` : who, description: desc, host, body, scripts: ['site.js', 'member.js'], image: img });
 }
 /** The editor a member's link opens (the key is after the # in the link, so it's never sent in a request line). */
 function memberEdit(host, m) {
@@ -491,7 +494,7 @@ function memberEdit(host, m) {
 <header class="top"><div><span class="who">${esc(m.name)}</span><div class="city"><a href="/@${esc(m.handle)}" target="_blank" rel="noopener">${esc(SITE())}/@${esc(m.handle)}</a></div></div></header>
 <div id="memberEditor" data-id="${m.id}"><p class="dim">Loading…</p></div>
 </main>`;
-  return layout({ title: `Your page · ${m.name}`, host, body, scripts: ['member-edit.js'], noindex: true });
+  return layout({ title: `Your page · ${memberLabel(m)}`, host, body, scripts: ['member-edit.js'], noindex: true });
 }
 
 /** A host with nothing scheduled yet. */
@@ -629,7 +632,7 @@ function membersPage(site, ctx) {
   const body = `<main class="wrap site-page">
 <section class="hero site-hero small-top${top.vid ? ' has-video' : ''}">${top.html}<h1 class="site-title">Member profiles</h1>
 ${ctx.count > 8 ? '<input class="find" type="search" placeholder="Find a member or a car" aria-label="Find a member or a car" data-find>' : ''}</section>
-${groups.length ? groups.map((g) => `<section class="club" data-club><h2>${g.logo ? `<img src="${esc(small(g.logo, 256))}" alt="" class="club-badge">` : ''}${esc(g.name)}</h2><div class="m-grid">${g.members.map((m) => `<a href="/@${esc(m.handle)}" data-find-text="${esc((m.name + ' ' + (m.car || '') + ' ' + m.handle).toLowerCase())}"><div class="mini">${m.face ? `<img src="${esc(small(m.face, 256))}" alt="" loading="lazy">` : '<span class="emoji" aria-hidden="true">🚗</span>'}</div><b>${esc(m.name)}</b>${m.car ? `<span class="dim">${esc(m.car)}</span>` : ''}</a>`).join('')}</div></section>`).join('') : '<section><p class="dim">Member pages are coming soon.</p></section>'}
+${groups.length ? groups.map((g) => `<section class="club" data-club><h2>${g.logo ? `<img src="${esc(small(g.logo, 256))}" alt="" class="club-badge">` : ''}${esc(g.name)}</h2><div class="m-grid">${g.members.map((m) => `<a href="/@${esc(m.handle)}" data-find-text="${esc(((m.name || '') + ' ' + (m.car || '') + ' ' + m.handle).toLowerCase())}"><div class="mini">${m.face ? `<img src="${esc(small(m.face, 256))}" alt="" loading="lazy">` : '<span class="emoji" aria-hidden="true">🚗</span>'}</div><b>${esc(memberLabel(m))}</b>${m.name && m.car ? `<span class="dim">${esc(m.car)}</span>` : ''}</a>`).join('')}</div></section>`).join('') : '<section><p class="dim">Member pages are coming soon.</p></section>'}
 </main>${siteFoot(site, ctx)}`;
   return layout({ title: `Members · ${SITE()}`, description: `The members and their builds on ${SITE()}.`, body, scripts: ['site.js'] });
 }

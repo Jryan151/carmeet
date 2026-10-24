@@ -98,6 +98,13 @@ test('the page: the top, the feed with photos and clips, the build, the crew; th
   assert.equal(r.json.member.header, 'name');
   r = await request(ctx, 'GET', SITE, '/@jays-m3');
   assert.doesNotMatch(r.text, /class="avatar m-logo"/);
+  // No name at all: allowed; the page goes by the car.
+  r = await request(ctx, 'PUT', SITE, `/api/host/members/${jay.id}`, { cookie: C, body: { name: '' } });
+  assert.equal(r.status, 200, r.text);
+  assert.equal(r.json.member.name, '');
+  r = await request(ctx, 'GET', SITE, '/members');
+  assert.ok(r.status === 200);
+  r = await request(ctx, 'PUT', SITE, `/api/host/members/${jay.id}`, { cookie: C, body: { name: 'Jay Ramirez' } });
   // The name can come off the top: more room for the footage (still there for screen readers).
   r = await request(ctx, 'PUT', SITE, `/api/host/members/${jay.id}`, { cookie: C, body: { showName: false } });
   assert.equal(r.json.member.showName, false);

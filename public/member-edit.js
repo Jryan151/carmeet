@@ -26,7 +26,7 @@
         '<div class="card"><h3>' + (host ? 'Their page' : 'Your page') + '</h3>' +
         '<p class="small dim">' + (host ? 'Start it here, then text them their link to finish it.' : 'Everything here shows on your page. Save when you’re done.') + ' <a href="' + esc(m.url) + '" target="_blank" rel="noopener">See the page</a></p>' +
         '<form data-me-form>' +
-        '<label for="meName">Name</label><input id="meName" name="name" maxlength="60" required value="' + esc(m.name) + '">' +
+        '<label for="meName">Name (optional)</label><input id="meName" name="name" maxlength="60" value="' + esc(m.name) + '">' +
         (host ? '<label for="meHandle">Page name</label><div class="suffix"><span>@</span><input id="meHandle" name="handle" maxlength="40" autocapitalize="off" autocorrect="off" spellcheck="false" value="' + esc(m.handle) + '"></div>' +
           '<label for="meClub">Club</label><select id="meClub" name="clubId"><option value="">None</option>' + clubs.map(function (c) { return '<option value="' + c.id + '"' + (c.id === m.clubId ? ' selected' : '') + '>' + esc(c.name) + '</option>'; }).join('') + '</select>' : '') +
         '<label for="meCar">Car</label><input id="meCar" name="car" maxlength="80" placeholder="2021 BMW M3 Competition" value="' + esc(m.car) + '">' +
@@ -39,7 +39,7 @@
         '<div class="me-heads">' +
           (m.clubLogo ? headBtn('club', 'My club’s logo', '<img src="' + esc(m.clubLogo) + '" alt="">') : '') +
           (m.headerLogo ? headBtn('logo', 'My logo', '<img src="' + esc(m.headerLogo) + '" alt="">') : '') +
-          headBtn('name', 'Just my name', '<span class="me-h-name">' + esc(m.name.split(' ')[0]) + '</span>') +
+          headBtn('name', 'Just my name', '<span class="me-h-name">' + esc((m.name || m.car || 'Name').split(' ')[0]) + '</span>') +
         '</div>' +
         '<label style="display:flex;gap:8px;align-items:center;margin:10px 0"><input type="checkbox" data-me-showname style="width:auto"' + (m.showName ? ' checked' : '') + '> Show my name on the page</label>' +
         '<label class="btn sm" style="display:inline-block">' + (m.headerLogo ? 'Upload a different logo' : 'Upload a logo') + '<input type="file" accept="image/png,image/jpeg" hidden data-me-head></label>' +

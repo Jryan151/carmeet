@@ -641,7 +641,7 @@ app.get('/members', async (req, res, next) => {
   if (req.own) return next();
   const [site, owner, rows] = await Promise.all([siteRow(), siteOwner(), all(`SELECT m.handle, m.name, m.car, k.name AS club, k.file AS club_logo,
       (SELECT CASE WHEN p.kind = 'video' THEN p.poster ELSE p.file END FROM member_photos p WHERE p.member_id = m.id AND (p.kind = 'photo' OR p.status = 'ready') ORDER BY p.id LIMIT 1) AS face
-    FROM members m LEFT JOIN kit_logos k ON k.id = m.club_id ORDER BY m.name COLLATE NOCASE`)]);
+    FROM members m LEFT JOIN kit_logos k ON k.id = m.club_id ORDER BY COALESCE(NULLIF(m.name, ''), m.car, m.handle) COLLATE NOCASE`)]);
   const groups = [];
   for (const r of rows) { const n = r.club || 'Members'; let g = groups.find((x) => x.name === n); if (!g) groups.push(g = { name: n, logo: r.club_logo, members: [] }); g.members.push(r); }
   groups.sort((a, b) => (a.name === 'Members') - (b.name === 'Members') || b.members.length - a.members.length);
@@ -697,7 +697,7 @@ app.get(/^\/@([a-z0-9-]{3,40})(\/edit)?\/?$/i, async (req, res) => {
     all("SELECT * FROM member_photos WHERE member_id = ? AND (kind = 'photo' OR status = 'ready') ORDER BY id DESC", [m.id]),
     m.club_id ? get("SELECT id, name, file, instagram FROM kit_logos WHERE id = ? AND kind = 'group'", [m.club_id]) : null]);
   // The crew: others in the same club (their first photo as their face), like a top 8.
-  const crew = club ? await all(`SELECT m.handle, m.name, (SELECT CASE WHEN p.kind = 'video' THEN p.poster ELSE p.file END FROM member_photos p WHERE p.member_id = m.id AND (p.kind = 'photo' OR p.status = 'ready') ORDER BY p.id LIMIT 1) AS face
+  const crew = club ? await all(`SELECT m.handle, m.name, m.car, (SELECT CASE WHEN p.kind = 'video' THEN p.poster ELSE p.file END FROM member_photos p WHERE p.member_id = m.id AND (p.kind = 'photo' OR p.status = 'ready') ORDER BY p.id LIMIT 1) AS face
     FROM members m WHERE m.club_id = ? AND m.id != ? ORDER BY m.updated_at DESC LIMIT 8`, [club.id, m.id]) : [];
   const vid = m.video_status === 'ready' && m.video ? m : host.video && host.video_status === 'ready' ? host : null;
   res.set('Cache-Control', 'no-cache').type('html').send(V.memberPage(host, m, { photos, club, crew, vid, origin: `${SCHEME}://${req.get('host')}` }));

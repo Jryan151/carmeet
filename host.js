@@ -1249,7 +1249,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
   }
   function readMember(b) {
     const out = {};
-    if (b.name !== undefined) { out.name = U.clean(b.name, 60); if (!out.name) return { error: 'Add a name.' }; }
+    if (b.name !== undefined) out.name = U.clean(b.name, 60) || ''; // optional: the page shows their car (or @handle) instead
     if (b.car !== undefined) out.car = U.clean(b.car, 80);
     if (b.mods !== undefined) out.mods = U.cleanBlock(b.mods, 1200);
     if (b.about !== undefined) out.about = U.cleanBlock(b.about, 600);
@@ -1259,7 +1259,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     return out;
   }
   r.get('/members', signedIn, async (req, res) => {
-    const rows = await all('SELECT * FROM members WHERE host_id = ? ORDER BY name COLLATE NOCASE', [req.me.id]);
+    const rows = await all(`SELECT * FROM members WHERE host_id = ? ORDER BY COALESCE(NULLIF(name, ''), car, handle) COLLATE NOCASE`, [req.me.id]);
     res.set('Cache-Control', 'no-store').json({ members: await Promise.all(rows.map(memberShape)) });
   });
   r.post('/members', signedIn, async (req, res) => {
@@ -1273,7 +1273,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     const want = b.handle ? String(b.handle).toLowerCase().replace(/^@/, '').trim() : null;
     if (want && !U.SLUG_RE.test(want)) return res.status(400).json({ error: 'Page name: 3 to 40 letters, numbers or dashes.' });
     if (want && (await get('SELECT 1 AS x FROM members WHERE handle = ?', [want]))) return res.status(409).json({ error: `@${want} is taken. Try another.` });
-    const raw = U.pageSlugFrom(f.instagram || f.name).replace(/-food$/, '');
+    const raw = U.pageSlugFrom(f.instagram || f.name || f.car || '').replace(/-food$/, '');
     const handle = want || await freeHandle(raw.length >= 3 ? raw : (raw || 'member') + '-car', 0);
     if (!handle) return res.status(400).json({ error: 'Pick a page name.' });
     const now = Date.now();
@@ -1317,7 +1317,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     const key = crypto.randomBytes(20).toString('hex');
     await run('UPDATE members SET edit_hash = ? WHERE id = ?', [D.sha('member:' + key), m.id]);
     const url = `${memberUrl(m)}/edit#${m.id}.${key}`;
-    const text = `Hey ${m.name.split(' ')[0]}! Your page on ${SITE()} is started: ${memberUrl(m)}. Add your car photos, a clip and your mods here (no account needed, keep this link to yourself): ${url}`;
+    const text = `Hey${m.name ? ' ' + m.name.split(' ')[0] : ''}! Your page on ${SITE()} is started: ${memberUrl(m)}. Add your car photos, a clip and your mods here (no account needed, keep this link to yourself): ${url}`;
     res.status(201).json({ url, text });
   });
   r.post('/members/:id/photos', memberOnly, rawImage, async (req, res) => {

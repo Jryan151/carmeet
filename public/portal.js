@@ -663,7 +663,7 @@
         openMember = null;
       }
       var html = '<div class="card"><h3>Start a member’s page</h3><p class="small dim">Like a profile page for each member: their clip behind it, their car photos scrolling over it, their build and their club’s crew. Start it with a name, then text them their link to add the rest.</p>' +
-        '<form id="memForm"><label for="memName">Name</label><input id="memName" maxlength="60" required placeholder="Jay">' +
+        '<form id="memForm"><label for="memName">Name (optional)</label><input id="memName" maxlength="60" placeholder="Jay">' +
         '<label for="memIg">Instagram (optional)</label><input id="memIg" maxlength="60" autocapitalize="off" placeholder="@jays_m3">' +
         '<label for="memCar">Car (optional)</label><input id="memCar" maxlength="80" placeholder="2021 BMW M3 Competition">' +
         '<label for="memClub">Club</label><select id="memClub"><option value="">None</option>' + clubs.map(function (c) { return '<option value="' + c.id + '">' + esc(c.name) + '</option>'; }).join('') + '</select>' +
@@ -674,7 +674,7 @@
       Object.keys(groups).sort().forEach(function (g) {
         html += '<div class="card"><h3>' + esc(g) + '</h3>' + groups[g].map(function (x) {
           return '<div class="rowx"><div style="display:flex;gap:10px;align-items:center;min-width:0"><div class="mem-face">' + (x.photos.length ? '<img src="' + esc(x.photos[0].url) + '" alt="" loading="lazy">' : '🚗') + '</div>' +
-            '<div style="min-width:0"><div>' + esc(x.name) + '</div><div class="tag">@' + esc(x.handle) + (x.car ? ' · ' + esc(x.car) : '') + ' · ' + x.photos.length + ' photo' + (x.photos.length === 1 ? '' : 's') + (x.video.status === 'ready' ? ' · clip' : '') + '</div></div></div>' +
+            '<div style="min-width:0"><div>' + esc(x.name || x.car || '@' + x.handle) + '</div><div class="tag">@' + esc(x.handle) + (x.car ? ' · ' + esc(x.car) : '') + ' · ' + x.photos.length + ' photo' + (x.photos.length === 1 ? '' : 's') + (x.video.status === 'ready' ? ' · clip' : '') + '</div></div></div>' +
             '<button class="btn sm" data-mem-open="' + x.id + '">Open</button></div>';
         }).join('') + '</div>';
       });
@@ -691,8 +691,8 @@
   }
   function linkHtml(mm) {
     var l = memberLink && memberLink.id === mm.id ? memberLink : null;
-    return '<div class="card"><h3>' + esc(mm.name) + '</h3><p class="small dim"><a href="' + esc(mm.url) + '" target="_blank" rel="noopener">' + esc(mm.url.replace(/^https?:\/\//, '')) + '</a></p>' +
-      (l ? '<p class="small dim">Text this to ' + esc(mm.name) + '. Their link edits only their page; a new link turns this one off.</p><div class="copybox" id="memText">' + esc(l.text) + '</div>' +
+    return '<div class="card"><h3>' + esc(mm.name || mm.car || '@' + mm.handle) + '</h3><p class="small dim"><a href="' + esc(mm.url) + '" target="_blank" rel="noopener">' + esc(mm.url.replace(/^https?:\/\//, '')) + '</a></p>' +
+      (l ? '<p class="small dim">Text this to ' + esc(mm.name || 'them') + '. Their link edits only their page; a new link turns this one off.</p><div class="copybox" id="memText">' + esc(l.text) + '</div>' +
         '<div class="bar"><button class="btn go sm" data-mem-copy>Copy message</button><a class="btn sm" href="sms:?&body=' + encodeURIComponent(l.text) + '">Text it</a></div>'
         : '<div class="bar"><button class="btn go sm" data-mem-link="' + mm.id + '">Text them their link</button><a class="btn sm" href="' + esc(mm.url) + '" target="_blank" rel="noopener">See the page</a></div>') + '</div>';
   }
