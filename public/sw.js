@@ -11,7 +11,8 @@
    it's replaced, so a kept copy is never stale. The phone may clear these on its own (low storage, weeks unused);
    the clip then just downloads again. */
 'use strict';
-const CACHE = 'clips-v2';
+const CACHE = 'clips-v3';
+const STALL_MS = 15000; // no bytes for this long (a dead spot): the download stops, so it never hogs a weak signal
 const MAX_CLIPS = 8;                    // the most recent 8 clips kept; older ones make room
 const MAX_BYTES = 40 * 1024 * 1024;     // a clip bigger than this isn't kept (a 15-second loop is far smaller)
 const CLIP_RE = /^\/uploads\/[A-Za-z0-9._-]+\.mp4$/;
@@ -38,8 +39,11 @@ const loads = new Map(); // key → { size, chunks: [Uint8Array], got, done, fai
 function startLoad(key, e) {
   const L = { size: 0, chunks: [], got: 0, done: false, failed: false, wake: [] };
   const notify = () => { const w = L.wake; L.wake = []; w.forEach((f) => f()); };
+  const ctrl = new AbortController();
+  let dog = setTimeout(() => ctrl.abort(), STALL_MS);
+  const pet = () => { clearTimeout(dog); dog = setTimeout(() => ctrl.abort(), STALL_MS); };
   L.ready = (async () => {
-    const res = await fetch(key, { credentials: 'same-origin' });
+    const res = await fetch(key, { credentials: 'same-origin', signal: ctrl.signal });
     const size = Number(res.headers.get('content-length') || 0);
     if (res.status !== 200 || !res.body || !size) { L.failed = true; return false; }
     L.size = size;
@@ -49,12 +53,12 @@ function startLoad(key, e) {
         for (;;) {
           const { done, value } = await reader.read();
           if (done) break;
-          L.chunks.push(value); L.got += value.length; notify();
+          L.chunks.push(value); L.got += value.length; pet(); notify();
         }
         L.done = true; notify();
         if (L.got === L.size && L.size <= MAX_BYTES) await keep(key, new Blob(L.chunks, { type: 'video/mp4' }));
-      } catch (err) { L.failed = true; notify(); }
-      finally { setTimeout(() => loads.delete(key), 30000); }
+      } catch (err) { L.failed = true; notify(); loads.delete(key); }
+      finally { clearTimeout(dog); setTimeout(() => { if (loads.get(key) === L) loads.delete(key); }, 30000); }
     })();
     if (e && e.waitUntil) e.waitUntil(pump); // keep the worker alive until the clip is in
     return true;

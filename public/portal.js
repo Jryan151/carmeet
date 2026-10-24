@@ -23,8 +23,14 @@
     if (method === 'GET' && KEEP.test(url)) {
       var c = kept[url];
       if (c && Date.now() - c.at < 120000) return c.p;
-      // A video still processing isn't kept: the next look should see it finish.
-      var p = fetchApi(method, url).then(function (r) { if (!r.ok || JSON.stringify(r.d).indexOf('"processing"') >= 0) delete kept[url]; return r; });
+      // Older than that: still shown at once, and fetched again behind it for the next look (only one at a time).
+      var p = fetchApi(method, url).then(function (r) {
+        // A video still processing isn't kept: the next look should see it finish.
+        if (!r.ok || JSON.stringify(r.d).indexOf('"processing"') >= 0) { if (kept[url] && kept[url].p === p) delete kept[url]; }
+        else kept[url] = { at: Date.now(), p: Promise.resolve(r), done: true };
+        return r;
+      });
+      if (c && c.done) { kept[url] = { at: Date.now(), p: c.p, done: true }; return c.p; }
       kept[url] = { at: Date.now(), p: p };
       return p;
     }
@@ -32,6 +38,7 @@
     return fetchApi(method, url, body, raw);
   }
   /** After sign-in, the other tabs' lists come in while the host looks at the first one. */
+  if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(function () {});
   function prefetch() {
     var urls = ['/kit', '/meets', '/recaps', '/members', '/portal-video'].concat(me && me.owner ? ['/site-video'] : []);
     var go = function () { urls.forEach(function (u) { api('GET', u); }); };
@@ -161,9 +168,18 @@
     if (el) el.remove();
     if (!src) return;
     el = document.createElement('div'); el.id = 'portalBg'; el.className = 'page-bg'; el.setAttribute('aria-hidden', 'true');
-    el.style.backgroundImage = 'url("' + v.poster + '")';
-    el.innerHTML = '<video autoplay muted loop playsinline preload="auto" disablepictureinpicture poster="' + esc(v.poster) + '"><source src="' + esc(src) + '" type="video/mp4"></video>';
+    el.style.backgroundImage = 'url("' + (v.thumb || v.poster) + '")';
+    // The still first; the clip once the portal has what it needs (on a weak signal the tabs come first), the smaller
+    // HEVC copy where the phone plays it, kept on the phone after the first time (sw.js).
+    el.innerHTML = '<video muted loop playsinline preload="none" disablepictureinpicture poster="' + esc(v.thumb || v.poster) + '">' +
+      (v.hevc ? '<source data-src="' + esc(v.hevc) + '" type=\'video/mp4; codecs="hvc1"\'>' : '') + '<source data-src="' + esc(src) + '" type="video/mp4"></video>';
     document.body.insertBefore(el, document.body.firstChild);
+    var start = function () {
+      var vid = el.querySelector('video'); if (!vid || !el.isConnected) return;
+      Array.prototype.forEach.call(vid.querySelectorAll('source[data-src]'), function (s) { s.src = s.getAttribute('data-src'); });
+      vid.preload = 'auto'; vid.load(); var pp = vid.play(); if (pp && pp.catch) pp.catch(function () {});
+    };
+    setTimeout(function () { if (window.requestIdleCallback) requestIdleCallback(start, { timeout: 6000 }); else start(); }, 3000);
   }
   var pollTimer = null;
   // While a video processes, look again every 8 seconds (each redraw sets the next look only if it's still processing).

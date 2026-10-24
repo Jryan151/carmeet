@@ -93,6 +93,15 @@ async function pageBySlug(slug) {
   return old ? { k: old, moved: true } : null;
 }
 
+// Anything slow is written to the log (pm2 logs carmeet), with the server's load at the time, to find what drags.
+app.use((req, res, next) => {
+  const t0 = process.hrtime.bigint();
+  res.on('finish', () => {
+    const ms = Number(process.hrtime.bigint() - t0) / 1e6;
+    if (ms > 1200 && !/\.(mp4|webm)$/.test(req.path) && req.method !== 'POST') console.log(`slow: ${req.method} ${req.hostname}${req.path} ${Math.round(ms)} ms (load ${require('os').loadavg().map((x) => x.toFixed(1)).join(' ')})`);
+  });
+  next();
+});
 /* ---------- which host a request is for: a host's own domain, a vendor's subdomain, or the site's ---------- */
 app.use(async (req, res, next) => {
   const h = String(req.hostname || '').toLowerCase();

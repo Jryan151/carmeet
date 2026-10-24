@@ -40,9 +40,13 @@ function receive(req, dir) {
   });
 }
 
+/* Video work never crowds out the pages: ffmpeg runs at the lowest priority and leaves a core free (the server also
+   runs the food side). An encode takes a little longer; the site stays quick while it does. VIDEO_THREADS overrides. */
+const THREADS = () => String(Math.max(1, parseInt(process.env.VIDEO_THREADS, 10) || (require('os').cpus().length - 1) || 1));
 function run(args, ms) {
   return new Promise((ok, no) => {
     const p = spawn(process.env.FFMPEG || 'ffmpeg', args, { stdio: ['ignore', 'ignore', 'pipe'] });
+    try { if (p.pid) require('os').setPriority(p.pid, 19); } catch (e) { /* not allowed here: it still runs */ }
     let err = '';
     p.stderr.on('data', (d) => { err = (err + d).slice(-2000); });
     const t = setTimeout(() => p.kill('SIGKILL'), ms);
@@ -71,13 +75,13 @@ async function process_(input, dir) {
   const id = crypto.randomBytes(10).toString('hex');
   const video = `bg-${id}.mp4`, hevc = `bg-${id}.hevc.mp4`, poster = `bg-${id}.jpg`;
   const common = ['-hide_banner', '-loglevel', 'error', '-y', '-i', input, '-t', String(SECONDS), '-map', '0:v:0', '-an', '-sn', '-dn', '-map_metadata', '-1', '-map_chapters', '-1', '-vf', VF];
-  await run(common.concat(['-c:v', 'libx264', '-preset', process.env.VIDEO_PRESET || 'slow', '-crf', '26', '-maxrate', '1800k', '-bufsize', '3600k',
+  await run(common.concat(['-threads', THREADS(), '-c:v', 'libx264', '-preset', process.env.VIDEO_PRESET || 'slow', '-crf', '26', '-maxrate', '1800k', '-bufsize', '3600k',
     '-profile:v', 'high', '-level', '4.1', '-g', '48', '-movflags', '+faststart', path.join(dir, video)]), 10 * 60 * 1000);
   let hv = null;
   if (x265Ok() && process.env.VIDEO_HEVC !== '0') {
     try {
-      await run(common.concat(['-c:v', 'libx265', '-preset', process.env.VIDEO_PRESET === 'veryfast' ? 'veryfast' : 'medium', '-crf', '28', '-tag:v', 'hvc1',
-        '-x265-params', 'log-level=error:keyint=48:vbv-maxrate=1000:vbv-bufsize=2000', '-movflags', '+faststart', path.join(dir, hevc)]), 15 * 60 * 1000);
+      await run(common.concat(['-threads', THREADS(), '-c:v', 'libx265', '-preset', process.env.VIDEO_PRESET === 'veryfast' ? 'veryfast' : 'medium', '-crf', '28', '-tag:v', 'hvc1',
+        '-x265-params', `log-level=error:keyint=48:vbv-maxrate=1000:vbv-bufsize=2000:pools=${THREADS()}:frame-threads=1`, '-movflags', '+faststart', path.join(dir, hevc)]), 15 * 60 * 1000);
       hv = hevc;
     } catch (e) { fs.promises.unlink(path.join(dir, hevc)).catch(() => {}); }
   }
