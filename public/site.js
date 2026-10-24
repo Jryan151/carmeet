@@ -10,10 +10,17 @@
   // Data saver on: keep the still frame, skip the background video.
   var bgv = document.querySelector('.page-bg video');
   if (bgv && navigator.connection && navigator.connection.saveData) { bgv.removeAttribute('autoplay'); bgv.pause(); bgv.remove(); bgv = null; }
-  // Each clip is saved on the phone the first time it plays (sw.js), so it never downloads twice. The truck's menu is on
-  // the same address, so its clip comes from the saved copy too.
-  if (bgv && 'serviceWorker' in navigator && location.protocol === 'https:') {
+  // The site is kept on the phone (sw.js): pages, pictures and clips show from there when the signal is slow. When a
+  // page was shown from the phone because the site was slow, a bar offers the newer one once it's in.
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
     navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(function () {});
+    navigator.serviceWorker.addEventListener('message', function (e) {
+      if (!e.data || e.data.type !== 'page-fresh' || document.querySelector('.fresh-bar')) return;
+      var bar = document.createElement('div'); bar.className = 'fresh-bar'; bar.setAttribute('role', 'status');
+      bar.innerHTML = '<span>Newer info is ready</span><button type="button" class="btn sm go">Refresh</button>';
+      bar.querySelector('button').onclick = function () { location.reload(); };
+      document.body.appendChild(bar);
+    });
   }
 
   // "Starts in 2 days 4 hrs" / "Happening now" / "Starts in 35 min".

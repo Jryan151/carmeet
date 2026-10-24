@@ -1,37 +1,103 @@
-/* sw.js — background clips: they play as soon as the first bytes arrive, and the same download is kept on the phone,
-   so every visit after plays from the phone (no second download, and it works with no signal at the meet).
+/* sw.js — keeps the site on the phone, so on one bar of signal (or none) it still shows at once.
 
-   Only the clips (/uploads/<name>.mp4) are touched. Every other request (pages, menus, orders, the food side through
-   /meet/*) goes straight to the network as if this file didn't exist.
+   - Pages (a meet, a vendor, a member, the portal): fresh from the site when it answers quickly; when it doesn't
+     (1 s), the copy from the last visit shows right away, the fresh one is saved behind it, and the page offers
+     "Newer info · Refresh". With no signal at all, the saved copy. Never: order pages, editors, anything marked
+     no-store, the API's writes.
+   - The site's files (/static, versioned): kept, so they never download twice. Pictures (/uploads): their names
+     change whenever they're replaced, so a kept copy is never stale.
+   - The portal's lists (logos, meets, members, settings): fresh when it's quick, else the last ones.
+   - Background clips (/uploads/<name>.mp4): they play as soon as the first bytes arrive, and that same download is
+     kept, so every visit after plays from the phone.
 
-   How a first play works: the clip is downloaded once, from start to end. Video players ask for it in pieces
+   How a first clip play works: the clip is downloaded once, from start to end. Video players ask for it in pieces
    ("Range: bytes=0-1", "bytes=0-", "bytes=1234-"; iPhones always do), and each piece is answered (206 Partial
    Content) from that one download as soon as its bytes have arrived, so playback starts within the first few
-   hundred KB instead of after the whole file. When the download finishes it's kept. A clip's name changes whenever
-   it's replaced, so a kept copy is never stale. The phone may clear these on its own (low storage, weeks unused);
-   the clip then just downloads again. */
+   hundred KB instead of after the whole file. The phone may clear any of this on its own (low storage, weeks unused);
+   it then just downloads again. */
 'use strict';
 const CACHE = 'clips-v3';
+const PAGES = 'pages-v1', FILES = 'files-v1', PICS = 'pics-v1', LISTS = 'lists-v1';
+const KEEP = [CACHE, PAGES, FILES, PICS, LISTS];
 const STALL_MS = 15000; // no bytes for this long (a dead spot): the download stops, so it never hogs a weak signal
+const QUICK_MS = 1000;  // a page slower than this: the saved copy shows instead (a good signal answers well under it)
 const MAX_CLIPS = 8;                    // the most recent 8 clips kept; older ones make room
 const MAX_BYTES = 40 * 1024 * 1024;     // a clip bigger than this isn't kept (a 15-second loop is far smaller)
 const CLIP_RE = /^\/uploads\/[A-Za-z0-9._-]+\.mp4$/;
+const PIC_RE = /^\/uploads\/[A-Za-z0-9._-]+\.(webp|jpe?g|png|gif)$/i;
+const LIST_RE = /^\/api\/host\/(me|kit|meets|recaps|members|lots|portal-video)$/;
+const NO_PAGE_RE = /^\/(api|o|meet|caddy|food-photo|uploads|static|health|sw\.js)(\/|$)|\/edit\/?$|\/food\//;
 
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (e) => {
   e.waitUntil((async () => {
-    for (const k of await caches.keys()) if (k.startsWith('clips-') && k !== CACHE) await caches.delete(k);
+    for (const k of await caches.keys()) if (!KEEP.includes(k)) await caches.delete(k);
     await self.clients.claim();
   })());
 });
+// The portal says when someone signs out (or in): their lists go.
+self.addEventListener('message', (e) => { if (e.data && e.data.type === 'forget-lists') e.waitUntil(caches.delete(LISTS)); });
 
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
-  if (url.origin !== self.location.origin || !CLIP_RE.test(url.pathname)) return;
-  e.respondWith(clip(req, url.origin + url.pathname, e));
+  if (url.origin !== self.location.origin) return;
+  const p = url.pathname;
+  if (CLIP_RE.test(p)) return e.respondWith(clip(req, url.origin + p, e));
+  if (PIC_RE.test(p)) return e.respondWith(kept(PICS, req, e, 240));
+  if (p.startsWith('/static/')) return e.respondWith(url.searchParams.has('v') ? kept(FILES, req, e, 80) : quick(FILES, req, e, { ms: 0 }));
+  if (LIST_RE.test(p)) return e.respondWith(quick(LISTS, req, e, { ms: 2500 }));
+  if (req.mode === 'navigate' && !NO_PAGE_RE.test(p)) return e.respondWith(quick(PAGES, req, e, { ms: QUICK_MS, tell: true, max: 40 }));
 });
+
+/** A file whose name changes when it does: from the phone if it's there, else downloaded once and kept. */
+async function kept(name, req, e, max) {
+  const cache = await caches.open(name);
+  const hit = await cache.match(req, { ignoreVary: true });
+  if (hit) return hit;
+  const res = await fetch(req);
+  if (res.ok && res.status === 200 && !/no-store/.test(res.headers.get('cache-control') || '')) e.waitUntil(put(cache, req, res.clone(), max));
+  return res;
+}
+/** Fresh when it comes within `ms`; otherwise the kept copy at once, with the fresh one saved behind it (and the page
+    told, when `tell`). No kept copy: whatever the network gives. */
+async function quick(name, req, e, { ms, tell, max }) {
+  const cache = await caches.open(name);
+  const hit = await cache.match(req, { ignoreVary: true, ignoreSearch: false });
+  const net = fetch(req).then((res) => {
+    // The portal's lists say no-store (no shared cache may keep them); this copy is the host's own phone's, and it's
+    // dropped when they sign out.
+    const store = res.ok && res.status === 200 && res.type === 'basic' && !res.redirected && (name === LISTS || !/no-store/.test(res.headers.get('cache-control') || ''));
+    if (store) e.waitUntil(put(cache, req, res.clone(), max || 120));
+    return res;
+  });
+  if (!hit) return net;
+  const copy = tell ? hit.clone() : null; // to compare with the fresh one later (the page reads the other)
+  let late = false;
+  const timer = new Promise((ok) => setTimeout(() => { late = true; ok(null); }, ms));
+  const first = await Promise.race([net.catch(() => null), timer]);
+  if (first) return first;
+  // Too slow (or no signal): the kept copy now, and the page hears when the fresh one is in.
+  if (tell && late) e.waitUntil(net.then(async (res) => {
+    if (!res || !res.ok) return;
+    const [a, b] = await Promise.all([copy.text(), res.clone().text()]).catch(() => ['', '']);
+    if (a && b && strip(a) !== strip(b)) {
+      const c = await self.clients.get(e.resultingClientId || e.clientId);
+      if (c) c.postMessage({ type: 'page-fresh' });
+    }
+  }).catch(() => {}));
+  return hit;
+}
+// The parts of a page that change on every visit (its version tag) don't count as news.
+const strip = (html) => html.replace(/\?v=[a-z0-9]+/g, '');
+async function put(cache, req, res, max) {
+  try {
+    await cache.put(req, res);
+    const keys = await cache.keys(); // oldest first
+    for (const old of keys.slice(0, Math.max(0, keys.length - max))) await cache.delete(old);
+  } catch (err) { /* storage full: it still showed */ }
+}
 
 /* ---------- one download per clip, shared by every piece asked for while it comes in ---------- */
 const loads = new Map(); // key → { size, chunks: [Uint8Array], got, done, failed, wake: [fn] }

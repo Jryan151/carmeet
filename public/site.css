@@ -210,6 +210,10 @@ footer p { text-align: center; }
 
 /* ---------- the flyer: the host's own art, front and center, over the live background ---------- */
 .flyer { margin: 18px auto 4px; max-width: 460px; }
+/* The flyer's colors, blurred, while the sharp one comes in. */
+.flyer.has-blur { position: relative; border-radius: 16px; overflow: hidden; }
+.flyer.has-blur::before { content: ""; position: absolute; inset: 0; background: var(--blur) center / cover no-repeat; filter: blur(18px) saturate(1.1); transform: scale(1.08); }
+.flyer.has-blur img { position: relative; }
 .flyer img { width: 100%; height: auto; border-radius: 16px; border: 1px solid var(--line);
   box-shadow: 0 0 0 1px rgba(255, 255, 255, .04), 0 24px 60px rgba(0, 0, 0, .55), 0 0 60px color-mix(in srgb, var(--accent) 22%, transparent); }
 /* With a flyer, the date line underneath is a quiet caption (the flyer already shouts). */
@@ -374,3 +378,8 @@ main > section.v-about { padding: 18px; }
 .me-heads .art img { width: 100%; height: 100%; object-fit: contain; }
 .me-h-face { width: 74%; aspect-ratio: 1; border-radius: 50%; overflow: hidden; display: grid; place-items: center; font-size: 30px; }
 .me-h-face img { object-fit: cover !important; }
+/* "Newer info is ready": the page came from the phone because the signal was slow, and the fresh one is in. */
+.fresh-bar { position: fixed; left: 50%; bottom: max(16px, env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 70;
+  display: flex; align-items: center; gap: 12px; padding: 8px 8px 8px 16px; border-radius: 999px; background: rgba(18, 14, 28, .92);
+  border: 1px solid var(--line); box-shadow: 0 10px 30px rgba(0, 0, 0, .5); font-size: 14px; white-space: nowrap; }
+.fresh-bar .btn.sm { min-height: 34px; padding: 0 14px; font-size: 14px; }

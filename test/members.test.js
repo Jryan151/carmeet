@@ -81,7 +81,7 @@ test('the page: the top, the feed with photos and clips, the build, the crew; th
   assert.equal((r.text.match(/class="m-shot"/g) || []).length, 2);
   assert.match(r.text, /<figure class="m-shot clip"><video muted loop playsinline preload="none" poster="[^"]+" data-feed>[\s\S]*?<source data-src="\/uploads\/bg-[0-9a-f]+\.mp4" type="video\/mp4"><\/video><figcaption>Pulling in<\/figcaption>/);
   assert.ok(r.text.indexOf('m-shot clip') < r.text.indexOf('class="m-shot"'), 'newest first');
-  assert.ok(r.text.indexOf('class="showcase"') < r.text.indexOf('m-feed'), 'the feed is below the open top');
+  assert.ok(r.text.indexOf('class="showcase"') < r.text.indexOf('<section class="m-feed"'), 'the feed is below the open top');
   assert.match(r.text, /instagram\.com\/jays_m3/);
   // The top: their club's logo instead of their photo, or one they upload.
   r = await request(ctx, 'PUT', SITE, `/api/host/members/${jay.id}`, { cookie: C, body: { header: 'club' } });

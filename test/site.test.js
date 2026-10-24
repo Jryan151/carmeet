@@ -290,15 +290,15 @@ test('the flyer kit keeps vendor and car group logos', async () => {
 
 test('a weak signal: fonts from this site, no Google, and the portal the same', async () => {
   let r = await request(ctx, 'GET', SITE, '/');
-  assert.ok(r.text.includes('/static/fonts.css'));
+  assert.match(r.text, /<style>@font-face\{font-family:"Michroma"/, 'fonts and styles inside the page (one trip)');
+  assert.ok(!/<link rel="stylesheet"/.test(r.text), 'no stylesheet to wait for');
   assert.ok(!/fonts\.(googleapis|gstatic)\.com/.test(r.text), 'nothing from Google');
-  r = await request(ctx, 'GET', SITE, '/static/fonts.css');
-  assert.equal(r.status, 200);
-  for (const f of r.text.match(/\/static\/fonts\/[a-z0-9-]+\.woff/g)) {
+  for (const f of r.text.match(/\/static\/fonts\/[a-z0-9-]+\.woff2?/g)) {
     const w = await request(ctx, 'GET', SITE, f);
     assert.equal(w.status, 200, f);
     assert.ok(w.buf.length < 40 * 1024, f + ' is small');
   }
   r = await request(ctx, 'GET', SITE, '/host');
   assert.ok(!/fonts\.(googleapis|gstatic)\.com/.test(r.text), 'portal: nothing from Google');
+  assert.ok(!/<link rel="stylesheet"/.test(r.text) && /<style>@font-face/.test(r.text), 'portal: styles inside too');
 });

@@ -38,7 +38,7 @@
     return fetchApi(method, url, body, raw);
   }
   /** After sign-in, the other tabs' lists come in while the host looks at the first one. */
-  if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(function () {});
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(function () {});
   function prefetch() {
     var urls = ['/kit', '/meets', '/recaps', '/members', '/portal-video'].concat(me && me.owner ? ['/site-video'] : []);
     var go = function () { urls.forEach(function (u) { api('GET', u); }); };
@@ -83,7 +83,7 @@
     e.preventDefault();
     api('POST', '/password', { password: $('pass').value }).then(function (r) {
       if (!r.ok) return say($('signMsg'), r.d.error);
-      $('pass').value = ''; say($('signMsg'), ''); boot();
+      $('pass').value = ''; say($('signMsg'), ''); forgetLists(); boot();
     });
   });
   $('again').addEventListener('click', function () { $('fCode').hidden = true; $('fEmail').hidden = false; say($('signMsg'), ''); });
@@ -98,9 +98,11 @@
     api('POST', '/login', { email: $('email').value.trim(), code: $('code').value.trim(), name: $('hName').value.trim(), slug: $('hSlug').value.trim(), city: $('hCity').value.trim() }).then(function (r) {
       if (r.d.needsName) { $('newHost').hidden = false; }
       if (!r.ok) return say($('signMsg'), r.d.error);
-      say($('signMsg'), ''); boot();
+      say($('signMsg'), ''); forgetLists(); boot();
     });
   });
+  // Someone else's lists never show from the phone's copy (sw.js keeps them for weak signal).
+  function forgetLists() { kept = {}; try { if (navigator.serviceWorker && navigator.serviceWorker.controller) navigator.serviceWorker.controller.postMessage({ type: 'forget-lists' }); } catch (e) {} }
 
   function boot() {
     api('GET', '/me').then(function (r) {
@@ -914,7 +916,7 @@
         }
         if ((b = e.target.closest('[data-accent]'))) { accent = b.getAttribute('data-accent'); Array.prototype.forEach.call(document.querySelectorAll('[data-accent]'), function (x) { x.setAttribute('aria-pressed', String(x === b)); }); document.documentElement.style.setProperty('--accent', accent); }
         else if ((b = e.target.closest('[data-del-recap]'))) { if (confirm('Delete this recap and its photos?')) api('DELETE', '/recaps/' + b.getAttribute('data-del-recap')).then(drawSettings); }
-        else if (e.target.id === 'signOut') api('POST', '/logout', {}).then(function () { me = null; showSignin(); });
+        else if (e.target.id === 'signOut') api('POST', '/logout', {}).then(function () { me = null; forgetLists(); showSignin(); });
       };
       $('setForm').onsubmit = function (e) {
         e.preventDefault();

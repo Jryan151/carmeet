@@ -23,6 +23,36 @@ function small(file, size) {
   if (!there) makeSmall(f, size);
   return '/uploads/' + (there ? s : f);
 }
+/** A WebP's width and height, from its header (VP8X, VP8 or VP8L), or null. */
+function webpSize(buf) {
+  if (!buf || buf.length < 30 || buf.toString('latin1', 0, 4) !== 'RIFF' || buf.toString('latin1', 8, 12) !== 'WEBP') return null;
+  const kind = buf.toString('latin1', 12, 16);
+  if (kind === 'VP8X') return { w: 1 + buf.readUIntLE(24, 3), h: 1 + buf.readUIntLE(27, 3) };
+  if (kind === 'VP8 ') return { w: buf.readUInt16LE(26) & 0x3fff, h: buf.readUInt16LE(28) & 0x3fff };
+  if (kind === 'VP8L') { const b = buf.readUInt32LE(21); return { w: 1 + (b & 0x3fff), h: 1 + ((b >> 14) & 0x3fff) }; }
+  return null;
+}
+/* For a big picture (the flyer, the still behind the page): a tiny blurred copy that comes inside the page (well
+   under 1 KB), so its spot shows the picture's colors at once and the sharp one fills in when it arrives; and the
+   sharp copy's size, so nothing jumps when it does. Both are made the first time a page asks. */
+const tinyCache = new Map(); // file → data: URL ('' while it's being made)
+function blurOf(file) {
+  if (!file) return '';
+  const f = path.basename(String(file));
+  if (tinyCache.has(f) && tinyCache.get(f)) return tinyCache.get(f);
+  const s = f.replace(/\.[A-Za-z0-9]+$/, '') + '.s24.webp';
+  try { const b = fs.readFileSync(path.join(UPLOADS(), s)); const u = 'data:image/webp;base64,' + b.toString('base64'); tinyCache.set(f, u); return u; } catch (e) { makeSmall(f, 24); return ''; }
+}
+const sizeCache = new Map();
+function sizeOf(file, size) {
+  if (!file) return null;
+  const s = path.basename(String(file)).replace(/\.[A-Za-z0-9]+$/, '') + `.s${size}.webp`;
+  if (sizeCache.has(s)) return sizeCache.get(s);
+  let d = null;
+  try { const fd = fs.openSync(path.join(UPLOADS(), s), 'r'); const b = Buffer.alloc(32); fs.readSync(fd, b, 0, 32, 0); fs.closeSync(fd); d = webpSize(b); } catch (e) { return null; }
+  sizeCache.set(s, d);
+  return d;
+}
 /* A missing copy is made in the background the first time a page wants it (one at a time, so the server
    never spends more than one ffmpeg on this); the next visit gets it. */
 const making = new Set(); const queue = [];
@@ -56,6 +86,19 @@ function ownFont() {
   return `<style>@font-face{font-family:"Good Times";src:url("/static/fonts/${f}") format("${fmt}");font-display:swap}</style>`;
 }
 
+/* The styles go inside each page (about 7 KB once compressed) rather than in a file of their own: a page shows as soon
+   as it arrives, with no second trip for its look. On one bar of signal that trip is a second or more. */
+let cssCache = null;
+function inlineCss() {
+  const files = ['fonts.css', 'site.css'].map((f) => path.join(__dirname, 'public', f));
+  const at = files.map((f) => fs.statSync(f).mtimeMs).join(',');
+  if (!cssCache || cssCache.at !== at) {
+    const css = files.map((f) => fs.readFileSync(f, 'utf8')).join('\n')
+      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\s*\n\s*/g, '\n').replace(/\n+/g, '\n').trim();
+    cssCache = { at, css: css.replace(/<\/style/gi, '<\\/style') };
+  }
+  return cssCache.css;
+}
 function layout({ title, description, host, body, scripts = [], noindex, image }) {
   const accent = host && /^#[0-9a-f]{6}$/i.test(host.accent || '') ? host.accent : null;
   return `<!doctype html>
@@ -70,9 +113,8 @@ ${description ? `<meta property="og:description" content="${esc(description)}">`
 ${image ? `<meta property="og:image" content="${esc(image)}">` : ''}
 ${noindex ? '<meta name="robots" content="noindex">' : ''}
 <meta name="theme-color" content="#07060b">
-<link rel="preload" href="/static/fonts/instrument-sans-400.woff" as="font" type="font/woff" crossorigin>
-<link rel="stylesheet" href="/static/fonts.css?v=${ver()}">
-<link rel="stylesheet" href="/static/site.css?v=${ver()}">
+<link rel="preload" href="/static/fonts/instrument-sans-400.woff2" as="font" type="font/woff2" crossorigin>
+<style>${inlineCss()}</style>
 ${ownFont()}
 ${accent ? `<style>:root{--accent:${accent}}</style>` : ''}
 </head>
@@ -113,11 +155,18 @@ function footer(host, base, { badge }) {
 }
 
 /** The background loop behind the top of the page (a meet's own clip, or the host's usual one). */
+/** The flyer: its blurred colors at once, the sharp picture over them when it arrives, first in line. */
+function flyerHtml(file, alt) {
+  const src = small(file, 1080), d = sizeOf(file, 1080), blur = blurOf(file);
+  return `<figure class="flyer${blur ? ' has-blur' : ''}"${blur ? ` style="--blur:url('${blur}')"` : ''}><img src="${esc(src)}"${d ? ` width="${d.w}" height="${d.h}"` : ''} alt="${esc(alt)}" fetchpriority="high" decoding="async"></figure>`;
+}
 function heroBg(vid) {
   if (!vid) return '';
-  // Fixed behind the whole page: everything scrolls over the loop.
-  return `<div class="page-bg" aria-hidden="true" style="background-image:url('${esc(small(vid.video_poster, 1280))}')">
-    <video muted loop playsinline preload="none" poster="${esc(small(vid.video_poster, 1280))}" disablepictureinpicture data-bg>${vid.video_hevc ? `<source data-src="/uploads/${esc(vid.video_hevc)}" type='video/mp4; codecs="hvc1"'>` : ''}<source data-src="/uploads/${esc(vid.video)}" type="video/mp4"></video>
+  // Fixed behind the whole page: everything scrolls over the loop. Its still comes as a blur inside the page; the sharp
+  // still and the footage come once the page has shown (bgloop.js), so they never hold up the flyer and the words.
+  const blur = blurOf(vid.video_poster), still = small(vid.video_poster, 1280);
+  return `<div class="page-bg" aria-hidden="true"${blur ? ` style="background-image:url('${blur}')"` : ''} data-still="${esc(still)}">
+    <video muted loop playsinline preload="none" data-poster="${esc(still)}" disablepictureinpicture data-bg>${vid.video_hevc ? `<source data-src="/uploads/${esc(vid.video_hevc)}" type='video/mp4; codecs="hvc1"'>` : ''}<source data-src="/uploads/${esc(vid.video)}" type="video/mp4"></video>
     <noscript><style>.page-bg video{display:none}</style></noscript>
   </div>`;
 }
@@ -238,7 +287,7 @@ function meetPage(host, m, ctx) {
 <section class="hero${vid ? ' has-video' : ''}${m.flyer ? ' with-flyer' : ''}${round ? ' has-avatar' : ''}">
   ${heroBg(vid)}
   ${round ? avatar(host, m) : ''}
-  ${m.flyer ? `<figure class="flyer"><img src="${esc(small(m.flyer, 1080))}" alt="${esc(m.title || host.name)} flyer for ${esc(U.dayLong(t.startsAt, tz))}"></figure>` : '<div class="showcase" aria-hidden="true"></div>'}
+  ${m.flyer ? flyerHtml(m.flyer, `${m.title || host.name} flyer for ${U.dayLong(t.startsAt, tz)}`) : '<div class="showcase" aria-hidden="true"></div>'}
   ${ctx.isHome ? '' : `<p class="small dim" style="text-align:center"><a href="${esc(base || '/')}">Next meet</a></p>`}
   ${over ? '<p class="dim" style="text-align:center">This meet is over.</p>' : m.status === 'canceled' ? '<p class="soon-line">This meet is canceled.</p>' : ''}
   ${!over && m.status === 'on' ? `<div class="actions">
@@ -511,4 +560,4 @@ ${list.length ? `<div class="list-meets">${list.map((r) => {
   return layout({ title: `${SITE()}: car meets`, description: 'Car meets: where, when, and food you can pre-order.', body });
 }
 
-module.exports = { small, ver, layout, meetPage, vendorPage, memberPage, memberEdit, hostEmpty, foodPage, orderPage, message, home, privacy };
+module.exports = { small, ver, inlineCss, layout, meetPage, vendorPage, memberPage, memberEdit, hostEmpty, foodPage, orderPage, message, home, privacy };

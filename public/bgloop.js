@@ -5,6 +5,14 @@
    when it's frozen, and a fresh load when it's stalled. Nothing happens for reduced motion or data saver. */
 (function () {
   'use strict';
+  // The sharp still behind the page, once the page has shown (it came as a blur until then). Always, even with no footage.
+  function stills() {
+    Array.prototype.forEach.call(document.querySelectorAll('.page-bg[data-still]'), function (bg) {
+      var src = bg.getAttribute('data-still'); bg.removeAttribute('data-still');
+      var im = new Image(); im.onload = function () { bg.style.backgroundImage = 'url("' + src + '")'; }; im.src = src;
+    });
+  }
+  if (document.readyState === 'complete') setTimeout(stills, 30); else window.addEventListener('load', function () { setTimeout(stills, 30); });
   if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   if (navigator.connection && navigator.connection.saveData) return;
 
@@ -16,6 +24,7 @@
       var v = list[i]; v.setAttribute('data-started', '');
       var srcs = v.querySelectorAll('source[data-src]');
       for (var j = 0; j < srcs.length; j++) srcs[j].src = srcs[j].getAttribute('data-src');
+      if (v.getAttribute('data-poster')) v.poster = v.getAttribute('data-poster');
       v.preload = 'auto';
       v.addEventListener('playing', function () { this.classList.add('on'); });
       v.load(); play(v);

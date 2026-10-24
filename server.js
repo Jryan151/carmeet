@@ -11,6 +11,7 @@ const V = require('./views');
 const K = require('./kitchen');
 const mail = require('./mail');
 const N = require('./names');
+const zlib = require('zlib');
 const { run, get, all } = D;
 
 const PORT = parseInt(process.env.PORT, 10) || 4100;
@@ -93,6 +94,19 @@ async function pageBySlug(slug) {
   return old ? { k: old, moved: true } : null;
 }
 
+// Pages squeezed too (gzip): with their styles inside, a page is about 10 KB on the wire.
+app.use((req, res, next) => {
+  if (!/\bgzip\b/.test(String(req.get('accept-encoding') || ''))) return next();
+  const send = res.send.bind(res);
+  res.send = (body) => {
+    if (typeof body === 'string' && body.length > 1400 && /text\/html/.test(String(res.get('Content-Type') || '')) && !res.get('Content-Encoding')) {
+      res.set({ 'Content-Encoding': 'gzip', Vary: 'Accept-Encoding' });
+      return send(zlib.gzipSync(body, { level: 6 }));
+    }
+    return send(body);
+  };
+  next();
+});
 // Anything slow is written to the log (pm2 logs carmeet), with the server's load at the time, to find what drags.
 app.use((req, res, next) => {
   const t0 = process.hrtime.bigint();
@@ -132,7 +146,6 @@ app.use(async (req, res, next) => {
 /* The site's scripts and styles, squeezed (brotli or gzip, made once per file and kept in memory: the portal's
    scripts go from about 250 KB to about 60). A link with ?v= names this start's version, so the phone keeps the file
    until the next update instead of asking again every hour. */
-const zlib = require('zlib');
 const PUBLIC = path.join(__dirname, 'public');
 const squeezed = new Map(); // file → { mtime, br, gz, type }
 const TEXT_TYPES = { '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.json': 'application/json', '.txt': 'text/plain; charset=utf-8' };
@@ -183,16 +196,16 @@ const baseOf = (req, host) => (req.own && req.own.id === host.id ? '' : '/' + ho
 const badgeOf = (host, req) => !host.domain_on && !(req && req.isMain);
 const truckCache = new Map(); // meet ref → { at, list }: the public page asks at most once a minute
 /* The trucks in a meet, from the food side. A page never waits on it for long: with a list from the last few minutes
-   it shows that one and refreshes it behind the scenes (once a minute at most); with none, it waits up to 2 seconds
-   and then shows the page without trucks. The portal asks fresh. */
+   (up to an hour old) it shows that one and refreshes it behind the scenes (once a minute at most); with none, it waits
+   under a second and then shows the page without trucks. The portal asks fresh. */
 const truckLoads = new Map(); // meet ref → the request on its way
 async function trucksFor(m, { fresh } = {}) {
   const c = truckCache.get(m.ref);
   if (!fresh && c && Date.now() - c.at < 60000) return c.list;
   if (fresh) return loadTrucks(m);
   const p = truckLoads.get(m.ref) || loadTrucks(m);
-  if (c && Date.now() - c.at < 10 * 60000) return c.list;
-  return Promise.race([p, new Promise((ok) => setTimeout(() => ok(c ? c.list : []), 2000))]);
+  if (c && Date.now() - c.at < 60 * 60000) return c.list;
+  return Promise.race([p, new Promise((ok) => setTimeout(() => ok(c ? c.list : []), 800))]);
 }
 function loadTrucks(m) {
   const p = loadTrucks_(m).finally(() => truckLoads.delete(m.ref));
@@ -325,13 +338,11 @@ async function foodPage(req, res, host, day, truckSlug) {
 
 /* ---------- host portal and its API ---------- */
 // The portal's scripts and styles carry this start's version, so after an update a phone never keeps the old ones.
-let portalHtml = null, portalGz = null;
+let portalHtml = null;
 app.get(['/host', '/host/'], (req, res) => {
-  if (!portalHtml) portalHtml = fs.readFileSync(path.join(__dirname, 'public', 'portal.html'), 'utf8').replace(/\?v=\d+/g, '?v=' + V.ver());
-  if (/\bgzip\b/.test(String(req.get('accept-encoding') || ''))) {
-    if (!portalGz) portalGz = zlib.gzipSync(portalHtml, { level: 9 });
-    return res.set({ 'Cache-Control': 'no-cache', 'Content-Encoding': 'gzip', Vary: 'Accept-Encoding' }).type('html').send(portalGz);
-  }
+  // Its styles inside it too (one trip), like the public pages.
+  if (!portalHtml) portalHtml = fs.readFileSync(path.join(__dirname, 'public', 'portal.html'), 'utf8').replace(/\?v=\d+/g, '?v=' + V.ver())
+    .replace(/<link rel="stylesheet" href="\/static\/fonts\.css">\s*<link rel="stylesheet" href="\/static\/site\.css[^"]*">/, () => '<link rel="preload" href="/static/fonts/instrument-sans-400.woff2" as="font" type="font/woff2" crossorigin>\n<style>' + V.inlineCss() + '</style>');
   res.set('Cache-Control', 'no-cache').type('html').send(portalHtml);
 });
 // The portal's answers, squeezed when they're more than a little (the lists of logos, meets, members).
