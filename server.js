@@ -161,12 +161,17 @@ app.use('/static', (req, res, next) => {
       c = { mtime: st.mtimeMs, br: zlib.brotliCompressSync(raw, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 10 } }), gz: zlib.gzipSync(raw, { level: 9 }) };
       squeezed.set(file, c);
     }
+    if (/^\/fonts(\.css$|\/)/.test(req.path)) res.set('Access-Control-Allow-Origin', '*'); // the trucks' invite pages use them too
     res.set({ 'Content-Type': type, 'Content-Encoding': enc === 'br' ? 'br' : 'gzip', Vary: 'Accept-Encoding',
       'Cache-Control': req.query.v ? 'public, max-age=31536000, immutable' : 'public, max-age=3600' });
     res.end(req.method === 'HEAD' ? undefined : c[enc]);
   });
 });
-app.use('/static', express.static(PUBLIC, { index: false, maxAge: '1h', setHeaders: (res) => { if (res.req && res.req.query && res.req.query.v) res.set('Cache-Control', 'public, max-age=31536000, immutable'); } }));
+app.use('/static', express.static(PUBLIC, { index: false, maxAge: '1h', setHeaders: (res, file) => {
+  if (res.req && res.req.query && res.req.query.v) res.set('Cache-Control', 'public, max-age=31536000, immutable');
+  // The fonts load on the trucks' invite and night pages too (another site), which needs this.
+  if (/[\\/]fonts[\\/][^\\/]+\.(woff2?|css)$|fonts\.css$/.test(file)) res.set('Access-Control-Allow-Origin', '*');
+} }));
 app.use('/uploads', express.static(UPLOAD_DIR, { index: false, dotfiles: 'ignore', maxAge: '30d', immutable: true }));
 app.get('/health', async (req, res) => { try { await get('SELECT 1 AS x'); res.json({ ok: true }); } catch (e) { res.status(503).json({ ok: false }); } });
 app.get('/robots.txt', (req, res) => res.type('text').send('User-agent: *\nDisallow: /host\nDisallow: /o/\nDisallow: /api/\n'));

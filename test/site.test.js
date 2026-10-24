@@ -38,7 +38,7 @@ test('a meet: posted, sent to the food side, on the page with nothing from the o
   meetId = r.json.meet.id;
   assert.equal(r.json.meet.synced, true);
   const put = k().calls.find((c) => c.method === 'PUT');
-  assert.deepEqual([put.body.day, put.body.start, put.body.place, put.body.hostName, put.body.closeMinutes], [day, '19:00', 'Dunlap lot', 'Tasty Tuesday', 120]);
+  assert.deepEqual([put.body.day, put.body.start, put.body.place, put.body.hostName, put.body.closeMinutes], [day, '19:00', 'Dunlap lot', 'JDM night', 120]);
   r = await request(ctx, 'POST', SITE, '/api/host/meets', { cookie: C, body: { day, start: '18:00', end: '20:00', place: 'Elsewhere', title: 'jdm night' } });
   assert.equal(r.status, 409, 'the same meet once a day');
   r = await request(ctx, 'POST', SITE, '/api/host/meets', { cookie: C, body: { day: ymd(-3), start: '18:00', end: '20:00', place: 'Elsewhere' } });
@@ -317,6 +317,7 @@ test('a weak signal: fonts from this site, no Google, and the portal the same', 
     const w = await request(ctx, 'GET', SITE, f);
     assert.equal(w.status, 200, f);
     assert.ok(w.buf.length < 40 * 1024, f + ' is small');
+    assert.equal(w.headers['access-control-allow-origin'], '*', f + ' usable by the trucks’ invite pages');
   }
   r = await request(ctx, 'GET', SITE, '/host');
   assert.ok(!/fonts\.(googleapis|gstatic)\.com/.test(r.text), 'portal: nothing from Google');

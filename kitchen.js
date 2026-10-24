@@ -33,7 +33,7 @@ const tz = () => process.env.TIMEZONE || 'America/Phoenix';
 function syncMeet(host, m, pageUrl) {
   return call('PUT', '/' + encodeURIComponent(m.ref), {
     pageUrl: /^https:\/\//.test(pageUrl || '') ? pageUrl : undefined, // the meet's page (a truck's post links here)
-    hostKey: 'host_' + host.id, hostName: host.name, title: m.title || '', day: m.day, start: m.start_time, end: m.end_time,
+    hostKey: 'host_' + host.id, hostName: m.title || host.name, title: m.title || '', day: m.day, start: m.start_time, end: m.end_time,
     timezone: host.timezone || tz(), place: m.place, address: m.address || '', closeMinutes: host.close_minutes || 120,
     status: m.status === 'canceled' ? 'canceled' : 'on',
     theme: themeOf(host, m),
@@ -44,7 +44,7 @@ function themeOf(host, m) {
   const vid = m.video && m.video_status === 'ready' ? m : host.video && host.video_status === 'ready' ? host : null;
   const up = (f) => (f ? '/uploads/' + f : '');
   return {
-    siteName: host.name,
+    siteName: m.title || host.name, // what the truck sees: "Fuel Friday invited your truck"
     accent: /^#[0-9a-f]{6}$/i.test(host.accent || '') ? host.accent : '#c9adff',
     videoUrl: vid ? up(vid.video) : '', posterUrl: vid ? up(vid.video_poster) : '',
     logoUrl: m.logo ? '/uploads/' + m.logo : host.logo || '',
