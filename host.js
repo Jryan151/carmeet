@@ -1068,12 +1068,16 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
   const memberUrl = (m) => `${SCHEME()}://${SITE_DOMAIN()}/@${m.handle}`;
   async function memberShape(m) {
     const [photos, club] = await Promise.all([
-      all('SELECT id, file, caption FROM member_photos WHERE member_id = ? ORDER BY id', [m.id]),
+      all('SELECT * FROM member_photos WHERE member_id = ? ORDER BY id', [m.id]),
       m.club_id ? get("SELECT id, name, file FROM kit_logos WHERE id = ? AND kind = 'group'", [m.club_id]) : null]);
     return { id: m.id, handle: m.handle, name: m.name, car: m.car || '', mods: m.mods || '', instagram: m.instagram || '', about: m.about || '',
       clubId: club ? club.id : null, clubName: club ? club.name : '', clubLogo: club && club.file ? Vw.small(club.file, 256) : '',
+      header: m.header === 'logo' && m.header_file ? 'logo' : m.header === 'club' && club && club.file ? 'club' : 'photo',
+      headerLogo: m.header_file ? Vw.small(m.header_file, 720) : '',
       url: memberUrl(m), video: videoShape(m), videoReady: V.ffmpegOk(), maxPhotos: MAX_MEMBER_PHOTOS,
-      photos: photos.map((x) => ({ id: x.id, url: Vw.small(x.file, 480), caption: x.caption || '' })) };
+      photos: photos.map((x) => x.kind === 'video'
+        ? { id: x.id, kind: 'video', status: x.status || 'ready', url: x.file ? '/uploads/' + x.file : null, thumb: x.poster ? Vw.small(x.poster, 480) : null, caption: x.caption || '' }
+        : { id: x.id, kind: 'photo', url: Vw.small(x.file, 480), caption: x.caption || '' }) };
   }
   /** The member a request may change: the host's own (signed in), or the one whose link key it carries. */
   async function memberFor(req) {
@@ -1108,6 +1112,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     if (b.mods !== undefined) out.mods = U.cleanBlock(b.mods, 1200);
     if (b.about !== undefined) out.about = U.cleanBlock(b.about, 600);
     if (b.instagram !== undefined) out.instagram = U.handle(b.instagram) || null;
+    if (b.header !== undefined) out.header = ['club', 'logo'].includes(b.header) ? b.header : null;
     return out;
   }
   r.get('/members', signedIn, async (req, res) => {
@@ -1156,8 +1161,8 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
   r.delete('/members/:id', signedIn, async (req, res) => {
     const m = await get('SELECT * FROM members WHERE id = ? AND host_id = ?', [parseInt(req.params.id, 10) || 0, req.me.id]);
     if (!m) return res.status(404).json({ error: 'That page is gone.' });
-    for (const x of await all('SELECT file FROM member_photos WHERE member_id = ?', [m.id])) unlinkUpload(x.file);
-    unlinkUpload(m.video); unlinkUpload(m.video_poster); unlinkUpload(m.video_hevc);
+    for (const x of await all('SELECT file, poster, hevc FROM member_photos WHERE member_id = ?', [m.id])) { unlinkUpload(x.file); unlinkUpload(x.poster); unlinkUpload(x.hevc); }
+    unlinkUpload(m.video); unlinkUpload(m.video_poster); unlinkUpload(m.video_hevc); unlinkUpload(m.header_file);
     await run('DELETE FROM member_photos WHERE member_id = ?', [m.id]);
     await run('DELETE FROM members WHERE id = ?', [m.id]);
     res.json({ ok: true });
@@ -1188,8 +1193,44 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
   });
   r.delete('/members/:id/photos/:pid', memberOnly, async (req, res) => {
     const x = await get('SELECT * FROM member_photos WHERE id = ? AND member_id = ?', [parseInt(req.params.pid, 10) || 0, req.member.id]);
-    if (x) { unlinkUpload(x.file); await run('DELETE FROM member_photos WHERE id = ?', [x.id]); }
+    if (x) { unlinkUpload(x.file); unlinkUpload(x.poster); unlinkUpload(x.hevc); await run('DELETE FROM member_photos WHERE id = ?', [x.id]); }
     res.json({ member: await memberShape(req.member) });
+  });
+  // A clip for the feed: made into the same light 1080p loop as a background (silent, 15 seconds), one at a time.
+  const MAX_MEMBER_CLIPS = 10;
+  r.post('/members/:id/clips', memberOnly, async (req, res) => {
+    const m = req.member;
+    if (!V.ffmpegOk()) return res.status(503).json({ error: 'Clips aren’t set up on the server yet (ffmpeg).' });
+    const [n, nc] = await Promise.all([get('SELECT COUNT(*) AS n FROM member_photos WHERE member_id = ?', [m.id]),
+      get("SELECT COUNT(*) AS n FROM member_photos WHERE member_id = ? AND kind = 'video'", [m.id])]);
+    if (n.n >= MAX_MEMBER_PHOTOS) return res.status(400).json({ error: `${MAX_MEMBER_PHOTOS} photos and clips at most. Remove one first.` });
+    if (nc.n >= MAX_MEMBER_CLIPS) return res.status(400).json({ error: `${MAX_MEMBER_CLIPS} clips at most. Remove one first.` });
+    let up;
+    try { up = await V.receive(req, tmpDir); } catch (e) { return res.status(400).json({ error: e.message }); }
+    const ins = await run("INSERT INTO member_photos (member_id, kind, file, status, caption, created_at) VALUES (?, 'video', '', 'processing', ?, ?)", [m.id, U.clean(req.query.caption, 120) || null, Date.now()]);
+    res.status(202).json({ member: await memberShape(m) });
+    videoQueue = videoQueue.then(async () => {
+      try {
+        const out = await V.process(up.file, UPLOAD_DIR);
+        const still = await get('SELECT id FROM member_photos WHERE id = ?', [ins.lastID]);
+        if (!still) { unlinkUpload(out.video); unlinkUpload(out.hevc); unlinkUpload(out.poster); return; } // removed while it was processing
+        await run("UPDATE member_photos SET file = ?, hevc = ?, poster = ?, status = 'ready' WHERE id = ?", [out.video, out.hevc, out.poster, ins.lastID]);
+      } catch (e) {
+        console.error('member clip:', e.message);
+        await run("UPDATE member_photos SET status = 'failed' WHERE id = ?", [ins.lastID]);
+      } finally { fs.promises.unlink(up.file).catch(() => {}); }
+    });
+  });
+  // A logo for the top of their page (their club's, or their own), trimmed like the host's logo.
+  r.post('/members/:id/header', memberOnly, rawImage, async (req, res) => {
+    const m = req.member;
+    let name = Buffer.isBuffer(req.body) ? await saveImage(req.body) : null;
+    if (!name) return res.status(400).json({ error: 'Use a JPEG or PNG logo.' });
+    const trimmed = await V.trimLogo(path.join(UPLOAD_DIR, name), UPLOAD_DIR);
+    if (trimmed) { fs.promises.unlink(path.join(UPLOAD_DIR, name)).catch(() => {}); name = trimmed; }
+    unlinkUpload(m.header_file);
+    await run("UPDATE members SET header_file = ?, header = 'logo', updated_at = ? WHERE id = ?", [name, Date.now(), m.id]);
+    res.json({ member: await memberShape(await get('SELECT * FROM members WHERE id = ?', [m.id])) });
   });
   r.post('/members/:id/video', memberOnly, (req, res) => takeVideo(req, res, 'members', req.member.id));
   r.delete('/members/:id/video', memberOnly, async (req, res) => { await dropVideo('members', req.member.id); res.json({ member: await memberShape(await get('SELECT * FROM members WHERE id = ?', [req.member.id])) }); });

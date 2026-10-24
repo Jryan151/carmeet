@@ -607,10 +607,10 @@ app.get(/^\/@([a-z0-9-]{3,40})(\/edit)?\/?$/i, async (req, res) => {
   if (!host) return notFound(req, res, null);
   if (mm[2]) return res.set({ 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex', 'Referrer-Policy': 'no-referrer' }).type('html').send(V.memberEdit(host, m));
   const [photos, club] = await Promise.all([
-    all('SELECT id, file, caption FROM member_photos WHERE member_id = ? ORDER BY id DESC', [m.id]),
+    all("SELECT * FROM member_photos WHERE member_id = ? AND (kind = 'photo' OR status = 'ready') ORDER BY id DESC", [m.id]),
     m.club_id ? get("SELECT id, name, file, instagram FROM kit_logos WHERE id = ? AND kind = 'group'", [m.club_id]) : null]);
   // The crew: others in the same club (their first photo as their face), like a top 8.
-  const crew = club ? await all(`SELECT m.handle, m.name, (SELECT file FROM member_photos p WHERE p.member_id = m.id ORDER BY p.id LIMIT 1) AS face
+  const crew = club ? await all(`SELECT m.handle, m.name, (SELECT CASE WHEN p.kind = 'video' THEN p.poster ELSE p.file END FROM member_photos p WHERE p.member_id = m.id AND (p.kind = 'photo' OR p.status = 'ready') ORDER BY p.id LIMIT 1) AS face
     FROM members m WHERE m.club_id = ? AND m.id != ? ORDER BY m.updated_at DESC LIMIT 8`, [club.id, m.id]) : [];
   const vid = m.video_status === 'ready' && m.video ? m : host.video && host.video_status === 'ready' ? host : null;
   res.set('Cache-Control', 'no-cache').type('html').send(V.memberPage(host, m, { photos, club, crew, vid, origin: `${SCHEME}://${req.get('host')}` }));
@@ -669,6 +669,7 @@ async function tidyAtStart() {
     await D.run(`UPDATE ${t} SET video_status = 'failed', video_error = ? WHERE video_status = 'processing'`,
       ['The server restarted while this video was processing. Upload it again.']).catch(() => {});
   }
+  await D.run("UPDATE member_photos SET status = 'failed' WHERE status = 'processing'").catch(() => {});
   if (!Vid.ffmpegOk()) return;
   const redo = async (file) => {
     const f = path.basename(String(file || ''));

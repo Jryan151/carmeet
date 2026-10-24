@@ -152,6 +152,14 @@ async function ensureSchema() {
     id INTEGER PRIMARY KEY AUTOINCREMENT, member_id INTEGER NOT NULL, file TEXT NOT NULL, caption TEXT, created_at INTEGER NOT NULL
   )`);
   await exec('CREATE INDEX IF NOT EXISTS idx_member_photos ON member_photos (member_id, id)');
+  // Clips in the feed too: kind 'video', with its still and HEVC copy; status 'processing' until ready.
+  await addColumn('member_photos', 'kind', "TEXT NOT NULL DEFAULT 'photo'");
+  await addColumn('member_photos', 'poster', 'TEXT');
+  await addColumn('member_photos', 'hevc', 'TEXT');
+  await addColumn('member_photos', 'status', 'TEXT');
+  // The top of a member's page: their photo in a circle (null), their club's logo ('club'), or a logo they uploaded ('logo').
+  await addColumn('members', 'header', 'TEXT');
+  await addColumn('members', 'header_file', 'TEXT');
   for (const t of ['hosts', 'meets', 'site', 'host_portal', 'kit_logos', 'members']) {
     await addColumn(t, 'video', 'TEXT');
     await addColumn(t, 'video_poster', 'TEXT');

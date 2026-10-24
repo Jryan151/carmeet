@@ -35,6 +35,15 @@
         '<label for="meAbout">About</label><textarea id="meAbout" name="about" maxlength="600" rows="3" placeholder="How the car came together, where you take it.">' + esc(m.about) + '</textarea>' +
         '<div class="bar"><button class="btn go" type="submit">Save</button></div><div class="msg" data-me-msg role="status"></div></form></div>' +
 
+        '<div class="card"><h3>Top of the page</h3><p class="small dim">What sits above the name: a photo in a circle, or a logo on the footage (like a meet page).</p>' +
+        '<div class="me-heads">' +
+          headBtn('photo', 'My photo', '<div class="me-h-face">' + (firstPhoto() ? '<img src="' + esc(firstPhoto()) + '" alt="">' : '🚗') + '</div>') +
+          (m.clubLogo ? headBtn('club', 'My club’s logo', '<img src="' + esc(m.clubLogo) + '" alt="">') : '') +
+          (m.headerLogo ? headBtn('logo', 'My logo', '<img src="' + esc(m.headerLogo) + '" alt="">') : '') +
+        '</div>' +
+        '<label class="btn sm" style="display:inline-block">' + (m.headerLogo ? 'Upload a different logo' : 'Upload a logo') + '<input type="file" accept="image/png,image/jpeg" hidden data-me-head></label>' +
+        '<p class="small dim" style="margin:6px 0 0">A PNG with a see-through background looks best; a black square around it is trimmed off.</p>' +
+        '<div class="msg" data-me-hmsg role="status"></div></div>' +
         '<div class="card"><h3>Background clip</h3><p class="small dim">Plays behind the whole page, silent and on repeat. Any clip from your phone: it becomes a 15-second loop.</p>' +
         (v.status === 'ready' ? '<img src="' + esc(v.thumb || v.poster) + '" alt="" style="width:100%;border-radius:8px;margin:6px 0">' : '') +
         (v.status === 'processing' ? '<p class="msg ok">Processing. It shows on the page in a minute or two.</p>' : '') +
@@ -43,16 +52,26 @@
         '<div class="msg" data-me-vmsg role="status"></div>' +
         (v.status === 'ready' || v.status === 'failed' ? '<div class="bar"><button class="btn sm" type="button" data-me-vdrop>Remove clip</button></div>' : '') + '</div>' +
 
-        '<div class="card"><h3>Car photos</h3><p class="small dim">They scroll over the clip on the page, newest first. Up to ' + m.maxPhotos + '.</p>' +
-        (m.photos.length < m.maxPhotos ? '<label class="btn go sm" style="display:inline-block">Add photos<input type="file" accept="image/*" multiple hidden data-me-photos></label>' : '') +
+        '<div class="card"><h3>The feed</h3><p class="small dim">Photos and clips, shown one after another below the top of the page, newest first. Clips play on their own as you scroll, silent, up to 15 seconds each. Up to ' + m.maxPhotos + ' in all.</p>' +
+        (m.photos.length < m.maxPhotos ? '<div class="bar"><label class="btn go sm" style="display:inline-block">Add photos<input type="file" accept="image/*" multiple hidden data-me-photos></label>' +
+          (m.videoReady ? '<label class="btn sm" style="display:inline-block">Add a clip<input type="file" accept="video/*" hidden data-me-clip></label>' : '') + '</div>' : '') +
         '<div class="msg" data-me-pmsg role="status"></div>' +
         '<div class="me-photos">' + m.photos.slice().reverse().map(function (p) {
-          return '<figure><img src="' + esc(p.url) + '" alt="" loading="lazy"><input data-me-cap="' + p.id + '" maxlength="120" placeholder="Caption" value="' + esc(p.caption) + '" aria-label="Caption">' +
+          var face = p.kind === 'video'
+            ? (p.status === 'ready' ? '<div class="me-clip"><img src="' + esc(p.thumb) + '" alt="" loading="lazy"><span aria-hidden="true">▶</span></div>'
+              : '<div class="me-clip wait"><span class="small">' + (p.status === 'failed' ? 'That clip didn’t work' : 'Processing…') + '</span></div>')
+            : '<img src="' + esc(p.url) + '" alt="" loading="lazy">';
+          return '<figure>' + face + '<input data-me-cap="' + p.id + '" maxlength="120" placeholder="Caption" value="' + esc(p.caption) + '" aria-label="Caption">' +
             '<button class="btn sm" type="button" data-me-pdel="' + p.id + '">Remove</button></figure>';
         }).join('') + '</div></div>';
       clearTimeout(poll);
-      if (v.status === 'processing') poll = setTimeout(load, 6000);
+      var waiting = v.status === 'processing' || m.photos.some(function (p) { return p.status === 'processing'; });
+      if (waiting) poll = setTimeout(load, 6000);
     }
+    function headBtn(kind, label, art) {
+      return '<button type="button" data-me-headpick="' + kind + '" aria-pressed="' + (m.header === kind) + '"><span class="art">' + art + '</span><span class="small">' + label + '</span></button>';
+    }
+    function firstPhoto() { var p = m.photos.filter(function (x) { return x.kind !== 'video' || x.thumb; })[0]; return p ? (p.kind === 'video' ? p.thumb : p.url) : ''; }
     function load() { call('GET', '').then(function (r) { if (!r.ok) { box.innerHTML = '<p class="msg bad">' + esc(r.d.error) + '</p>'; return; } m = r.d.member; draw(); }); }
 
     box.addEventListener('submit', function (e) {
@@ -67,6 +86,8 @@
       if (b.hasAttribute('data-me-pdel')) {
         if (!confirm('Remove this photo?')) return;
         call('DELETE', '/photos/' + b.getAttribute('data-me-pdel')).then(function (r) { if (r.ok) { m = r.d.member; draw(); } });
+      } else if (b.hasAttribute('data-me-headpick')) {
+        call('PUT', '', { header: b.getAttribute('data-me-headpick') }).then(function (r) { if (r.ok) { m = r.d.member; draw(); } });
       } else if (b.hasAttribute('data-me-vdrop')) {
         call('DELETE', '/video').then(function (r) { if (r.ok) { m = r.d.member; draw(); } });
       }
@@ -74,20 +95,26 @@
     box.addEventListener('change', function (e) {
       var t = e.target;
       if (t.hasAttribute('data-me-cap')) { call('PUT', '/photos/' + t.getAttribute('data-me-cap'), { caption: t.value.trim() }); return; }
-      if (t.hasAttribute('data-me-video') && t.files[0]) return sendVideo(t);
+      if (t.hasAttribute('data-me-video') && t.files[0]) return sendVideo(t, '/video', '[data-me-vmsg]');
+      if (t.hasAttribute('data-me-head') && t.files[0]) {
+        say('[data-me-hmsg]', 'Uploading…', true);
+        call('POST', '/header', null, t.files[0]).then(function (r) { if (!r.ok) return say('[data-me-hmsg]', r.d.error); m = r.d.member; draw(); });
+        return;
+      }
+      if (t.hasAttribute('data-me-clip') && t.files[0]) return sendVideo(t, '/clips', '[data-me-pmsg]');
       if (t.hasAttribute('data-me-photos') && t.files.length) return sendPhotos(Array.prototype.slice.call(t.files, 0, m.maxPhotos - m.photos.length));
     });
 
-    function sendVideo(input) {
+    function sendVideo(input, where, msg) {
       var f = input.files[0];
-      if (f.size > 400 * 1024 * 1024) return say('[data-me-vmsg]', 'That video is over 400 MB. Trim it on your phone first.');
+      if (f.size > 400 * 1024 * 1024) return say(msg, 'That video is over 400 MB. Trim it on your phone first.');
       var x = new XMLHttpRequest();
-      x.open('POST', base + '/video');
+      x.open('POST', base + where);
       x.setRequestHeader('Content-Type', f.type || 'video/mp4');
       if (key) x.setRequestHeader('X-Member-Key', key);
-      x.upload.onprogress = function (ev) { if (ev.lengthComputable) say('[data-me-vmsg]', 'Uploading… ' + Math.round(ev.loaded / ev.total * 100) + '%', true); };
-      x.onload = function () { var d = {}; try { d = JSON.parse(x.responseText); } catch (er) {} if (x.status >= 400) return say('[data-me-vmsg]', d.error || 'The upload didn’t go through.'); load(); };
-      x.onerror = function () { say('[data-me-vmsg]', 'The upload stopped. Try again on a stronger signal.'); };
+      x.upload.onprogress = function (ev) { if (ev.lengthComputable) say(msg, 'Uploading… ' + Math.round(ev.loaded / ev.total * 100) + '%', true); };
+      x.onload = function () { var d = {}; try { d = JSON.parse(x.responseText); } catch (er) {} if (x.status >= 400) return say(msg, d.error || 'The upload didn’t go through.'); load(); };
+      x.onerror = function () { say(msg, 'The upload stopped. Try again on a stronger signal.'); };
       input.disabled = true; x.send(f);
     }
     /** A photo at most 2000 px on its long side, as a JPEG: a few hundred KB instead of several MB. */

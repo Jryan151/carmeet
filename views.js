@@ -379,38 +379,49 @@ function vendorPage(host, k, ctx) {
    A nod to the old profile pages: the card up top, About and Mods, their crew (a top 8 from the same club), then the
    car photos one after another over the moving background. */
 function memberPage(host, m, ctx) {
-  const photos = ctx.photos || [];
+  const items = ctx.photos || []; // newest first: photos and clips
   const club = ctx.club;
-  const face = photos.length ? small(photos[photos.length - 1].file, 480) : club && club.file ? small(club.file, 256) : null;
+  const still = (x) => (x.kind === 'video' ? x.poster : x.file);
+  const first = items.length ? items[items.length - 1] : null;
+  const face = first ? small(still(first), 480) : club && club.file ? small(club.file, 256) : null;
+  // The top: a logo, like a meet page's (their club's, or one they uploaded), else their photo in a circle.
+  const headLogo = m.header === 'logo' && m.header_file ? small(m.header_file, 720) : m.header === 'club' && club && club.file ? small(club.file, 720) : null;
   const ig = m.instagram ? `https://instagram.com/${encodeURIComponent(m.instagram)}` : null;
   const clubIg = club && club.instagram ? `https://instagram.com/${encodeURIComponent(club.instagram)}` : null;
   const mods = String(m.mods || '').split(/\n|,(?![^(]*\))/).map((x) => x.trim()).filter(Boolean).slice(0, 40);
   const desc = [m.car, club ? club.name : '', m.about].filter(Boolean).join(' · ').slice(0, 200) || `${m.name} on ${host.name}.`;
+  // The top, like a meet page: who it is, then the footage on its own, then the buttons. The feed is below.
   let body = `<main class="wrap member">
-${heroBg(ctx.vid)}
-<section class="m-card">
-  <div class="m-face">${face ? `<img src="${esc(face)}" alt="">` : '<span aria-hidden="true">🚗</span>'}</div>
-  <div class="m-who">
-    <h1 class="m-name">${esc(m.name)}</h1>
-    <p class="m-handle">@${esc(m.handle)}</p>
-    ${m.car ? `<p class="m-car">${esc(m.car)}</p>` : ''}
-    ${club ? `<a class="m-club"${clubIg ? ` href="${esc(clubIg)}" rel="noopener" target="_blank"` : ''}>${club.file ? `<img src="${esc(small(club.file, 256))}" alt="">` : ''}<span>${esc(club.name)}</span></a>` : ''}
-  </div>
+<section class="hero m-hero${ctx.vid ? ' has-video' : ''}">
+  ${heroBg(ctx.vid)}
+  ${headLogo ? `<div class="avatar m-logo"><img src="${esc(headLogo)}" alt="${esc(m.name)}"></div>` : `<div class="m-face${first ? '' : ' logo'}">${face ? `<img src="${esc(face)}" alt="">` : '<span aria-hidden="true">🚗</span>'}</div>`}
+  <h1 class="m-name">${esc(m.name)}</h1>
+  ${m.car ? `<p class="m-car">${esc(m.car)}</p>` : ''}
+  <div class="showcase" aria-hidden="true"></div>
+  ${club ? `<a class="m-club"${clubIg ? ` href="${esc(clubIg)}" rel="noopener" target="_blank"` : ''}>${club.file ? `<img src="${esc(small(club.file, 256))}" alt="">` : ''}<span>${esc(club.name)}</span></a>` : ''}
   <div class="actions">
     ${ig ? `<a class="btn go" href="${esc(ig)}" rel="noopener" target="_blank">Instagram</a>` : ''}
     <button class="btn" type="button" data-share>Share</button>
   </div>
+  ${items.length ? '<p class="m-more" aria-hidden="true">Scroll for the feed ↓</p>' : ''}
 </section>`;
-  if (m.about) body += `<section class="m-box"><h2>About</h2>${String(m.about).split(/\n{2,}/).map((x) => `<p>${esc(x).replace(/\n/g, '<br>')}</p>`).join('')}</section>`;
+  if (items.length) {
+    body += `<section class="m-feed" aria-label="Photos and clips">${items.map((x, i) => {
+      const cap = x.caption ? `<figcaption>${esc(x.caption)}</figcaption>` : '';
+      if (x.kind === 'video') {
+        return `<figure class="m-shot clip"><video muted loop playsinline preload="none" poster="${esc(small(x.poster, 1080))}" data-feed>${x.hevc ? `<source data-src="/uploads/${esc(x.hevc)}" type='video/mp4; codecs="hvc1"'>` : ''}<source data-src="/uploads/${esc(x.file)}" type="video/mp4"></video>${cap}</figure>`;
+      }
+      return `<figure class="m-shot"><img src="${esc(small(x.file, 1080))}" alt="${esc(x.caption || m.car || m.name)}"${i ? ' loading="lazy"' : ''} decoding="async">${cap}</figure>`;
+    }).join('')}</section>`;
+  }
   if (mods.length) body += `<section class="m-box"><h2>The build</h2><ul class="m-mods">${mods.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></section>`;
+  if (m.about) body += `<section class="m-box"><h2>About</h2>${String(m.about).split(/\n{2,}/).map((x) => `<p>${esc(x).replace(/\n/g, '<br>')}</p>`).join('')}</section>`;
   if (ctx.crew && ctx.crew.length) {
     body += `<section class="m-box"><h2>${esc(club.name)} crew</h2><div class="m-crew">${ctx.crew.map((c) => `<a href="/@${esc(c.handle)}"><div class="mini">${c.face ? `<img src="${esc(small(c.face, 256))}" alt="" loading="lazy">` : '<span class="emoji" aria-hidden="true">🚗</span>'}</div><span>${esc(c.name)}</span></a>`).join('')}</div></section>`;
   }
-  if (photos.length) {
-    body += `<section class="m-feed" aria-label="Photos">${photos.map((x, i) => `<figure class="m-shot"><img src="${esc(small(x.file, 1080))}" alt="${esc(x.caption || m.car || m.name)}"${i ? ' loading="lazy"' : ''} decoding="async">${x.caption ? `<figcaption>${esc(x.caption)}</figcaption>` : ''}</figure>`).join('')}</section>`;
-  } else body += `<section class="m-box"><p class="dim">Photos coming soon.</p></section>`;
-  body += `</main><footer><div class="wrap"><p>${esc(host.name)} · ${esc(SITE())}</p></div></footer>`;
-  const img = ctx.origin ? (photos.length ? ctx.origin + small(photos[0].file, 1080) : ctx.vid ? `${ctx.origin}/uploads/${ctx.vid.video_poster}` : null) : null;
+  if (!items.length && !mods.length && !m.about) body += `<section class="m-box"><p class="dim">Photos coming soon.</p></section>`;
+  body += `</main><footer><div class="wrap"><p>@${esc(m.handle)} · ${esc(SITE())}</p></div></footer>`;
+  const img = ctx.origin ? (first ? ctx.origin + small(still(items[0]), 1080) : ctx.vid ? `${ctx.origin}/uploads/${ctx.vid.video_poster}` : null) : null;
   return layout({ title: `${m.name}${m.car ? ' · ' + m.car : ''}`, description: desc, host, body, scripts: ['site.js', 'member.js'], image: img });
 }
 /** The editor a member's link opens (the key is after the # in the link, so it's never sent in a request line). */

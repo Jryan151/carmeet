@@ -57,16 +57,44 @@ test('the host starts a page and texts the link; the link edits that page only',
   assert.equal(r.status, 404);
 });
 
-test('the page: the card, the build, the crew, the feed; the editor page is never indexed', { skip: !hasFfmpeg }, async () => {
-  await new Promise((ok) => setTimeout(ok, 800));
-  let r = await request(ctx, 'GET', SITE, '/@jays-m3');
+test('the page: the top, the feed with photos and clips, the build, the crew; the editor page is never indexed', { skip: !hasFfmpeg }, async () => {
+  // A clip for the feed (the host's session works too): processing, then in the feed.
+  const f = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'clip-')), 'c.mp4');
+  spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc2=s=640x360:r=30', '-t', '2', '-pix_fmt', 'yuv420p', f]);
+  let r = await request(ctx, 'POST', SITE, `/api/host/members/${jay.id}/clips?caption=Pulling%20in`, { cookie: C, raw: { buf: fs.readFileSync(f), type: 'video/mp4' } });
+  assert.equal(r.status, 202, r.text);
+  assert.equal(r.json.member.photos.find((x) => x.kind === 'video').status, 'processing');
+  r = await request(ctx, 'GET', SITE, '/@jays-m3');
+  assert.doesNotMatch(r.text, /data-feed/, 'not in the feed until it’s ready');
+  for (let i = 0; i < 60; i++) {
+    await new Promise((ok) => setTimeout(ok, 1000));
+    r = await request(ctx, 'GET', SITE, `/api/host/members/${jay.id}`, { cookie: C });
+    if (r.json.member.photos.some((x) => x.kind === 'video' && x.status !== 'processing')) break;
+  }
+  assert.equal(r.json.member.photos.find((x) => x.kind === 'video').status, 'ready');
+  r = await request(ctx, 'GET', SITE, '/@jays-m3');
   assert.equal(r.status, 200);
   assert.match(r.text, /<h1 class="m-name">Jay Ramirez<\/h1>/);
   assert.match(r.text, /2021 BMW M3/);
   assert.match(r.text, /<li>Stage 2 tune<\/li><li>Carbon hood<\/li><li>Air lift<\/li>/, (r.text.match(/m-mods[\s\S]{0,200}/) || [''])[0]);
   assert.match(r.text, /Unforsaken crew[\s\S]*href="\/@lu-car"/);
   assert.equal((r.text.match(/class="m-shot"/g) || []).length, 2);
+  assert.match(r.text, /<figure class="m-shot clip"><video muted loop playsinline preload="none" poster="[^"]+" data-feed>[\s\S]*?<source data-src="\/uploads\/bg-[0-9a-f]+\.mp4" type="video\/mp4"><\/video><figcaption>Pulling in<\/figcaption>/);
+  assert.ok(r.text.indexOf('m-shot clip') < r.text.indexOf('class="m-shot"'), 'newest first');
+  assert.ok(r.text.indexOf('class="showcase"') < r.text.indexOf('m-feed'), 'the feed is below the open top');
   assert.match(r.text, /instagram\.com\/jays_m3/);
+  // The top: their club's logo instead of their photo, or one they upload.
+  r = await request(ctx, 'PUT', SITE, `/api/host/members/${jay.id}`, { cookie: C, body: { header: 'club' } });
+  assert.equal(r.json.member.header, 'club');
+  r = await request(ctx, 'GET', SITE, '/@jays-m3');
+  assert.match(r.text, /<div class="avatar m-logo"><img src="\/uploads\/[^"]+" alt="Jay Ramirez"><\/div>/);
+  assert.doesNotMatch(r.text, /class="m-face/);
+  r = await request(ctx, 'POST', SITE, `/api/host/members/${jay.id}/header`, { cookie: C, raw: { buf: png(), type: 'image/png' } });
+  assert.equal(r.json.member.header, 'logo');
+  assert.ok(r.json.member.headerLogo);
+  r = await request(ctx, 'PUT', SITE, `/api/host/members/${jay.id}`, { cookie: C, body: { header: 'photo' } });
+  r = await request(ctx, 'GET', SITE, '/@jays-m3');
+  assert.match(r.text, /class="m-face/);
   r = await request(ctx, 'GET', SITE, '/@JAYS-M3');
   assert.equal(r.status, 301);
   r = await request(ctx, 'GET', SITE, '/@jays-m3/edit');
