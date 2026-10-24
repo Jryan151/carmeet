@@ -285,6 +285,10 @@ test('the main page header: the owner uploads it in Settings; until then the own
   await D.run("UPDATE hosts SET video = 'own.mp4', video_poster = 'own.jpg', video_status = 'ready' WHERE id = 1");
   let r = await request(ctx, 'GET', SITE, '/');
   assert.match(r.text, /data-src="\/uploads\/own\.mp4"/, 'no header yet: the owner’s background');
+  for (const page of ['/members', '/meets', '/vendors']) {
+    const x = await request(ctx, 'GET', SITE, page);
+    assert.match(x.text, /data-src="\/uploads\/own\.mp4"/, page + ': the same live background');
+  }
   await D.run("UPDATE site SET video = 'main.mp4', video_poster = 'main.jpg', video_status = 'ready' WHERE id = 1");
   r = await request(ctx, 'GET', SITE, '/');
   assert.match(r.text, /data-src="\/uploads\/main\.mp4"/, 'the header once it’s ready');
