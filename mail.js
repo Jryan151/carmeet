@@ -25,7 +25,7 @@ async function deliver(msg) {
   if (!configured()) return { ok: false, retry: false, error: 'email not set up' };
   try {
     const r = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
+      method: 'POST', signal: AbortSignal.timeout(10000), // a slow provider: kept in the outbox and retried, never waited on
       headers: { authorization: 'Bearer ' + process.env.RESEND_API_KEY, 'content-type': 'application/json', 'idempotency-key': msg.key },
       body: JSON.stringify({ from: msg.fromName ? `${msg.fromName.replace(/[<>"]/g, '')} <${String(process.env.MAIL_FROM).replace(/^.*</, '').replace(/>.*$/, '')}>` : process.env.MAIL_FROM,
         to: [msg.to], subject: msg.subject, html: msg.html, text: msg.text, headers: msg.headers }),

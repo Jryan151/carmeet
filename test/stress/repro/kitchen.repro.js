@@ -54,7 +54,7 @@ test('an order’s copy here isn’t wiped by a bad reply (FINDING if this fails
   await req('GET', '/api/orders/' + tok);
   F.mode = 'ok';
   const row = (await sql('SELECT status, payment, ticket, total FROM orders WHERE token = ?', [tok]))[0];
-  assert.deepEqual(row, { status: 'Paid', payment: 'paid', ticket: 104, total: 14 });
+  assert.deepEqual({ ...row }, { status: 'Paid', payment: 'paid', ticket: 104, total: 14 });
 });
 
 test('with the food side hung, a settings change answers within ~10 s (FINDING if this fails)', async () => {

@@ -7,10 +7,24 @@ const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{1,38}[a-z0-9])$/;
 const EMAIL_RE = /^[^\s@<>"]{1,64}@[^\s@<>"]{1,180}\.[a-z]{2,24}$/i;
 const RESERVED = new Set(['host', 'api', 'o', 'hooks', 'food-photo', 'uploads', 'alerts', 'static', 'admin', 'login', 'about', 'help', 'privacy', 'terms', 'site', 'www', 'meets', 'meet', 'members', 'vendors', 'clubs']);
 
-const zone = (tz) => { try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); return tz; } catch (e) { return 'America/Phoenix'; } };
+// Building an Intl.DateTimeFormat costs far more than using one (it loads the zone's rules): make each once, keep it.
+const zones = new Map();
+const zone = (tz) => {
+  let z = zones.get(tz);
+  if (z === undefined) { try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); z = tz; } catch (e) { z = 'America/Phoenix'; } if (zones.size < 500) zones.set(tz, z); }
+  return z;
+};
+const formatters = new Map();
+function formatter(tz, key, opts) {
+  const k = tz + '|' + key;
+  let f = formatters.get(k);
+  if (!f) { f = new Intl.DateTimeFormat('en-US', Object.assign({ timeZone: tz }, opts)); if (formatters.size < 2000) formatters.set(k, f); }
+  return f;
+}
+const PARTS = { hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', weekday: 'short' };
 /** The parts of an instant on a clock: { y, m, d, h, min, wd }. */
 function parts(ms, tz) {
-  const f = new Intl.DateTimeFormat('en-US', { timeZone: zone(tz), hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', weekday: 'short' });
+  const f = formatter(zone(tz), 'parts', PARTS);
   const o = {};
   for (const p of f.formatToParts(new Date(ms))) o[p.type] = p.value;
   return { y: +o.year, m: +o.month, d: +o.day, h: +o.hour % 24, min: +o.minute, wd: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(o.weekday) };
@@ -34,13 +48,20 @@ function validDate(s) {
   return t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d;
 }
 /** A meet's start and end instants. An end at or before the start runs past midnight. */
+// The same meet's times are asked for many times per page (lists of 80 meets): worked out once per day/time/zone.
+const timesSeen = new Map();
 function meetTimes(m, tz) {
+  const key = `${tz}|${m.day}|${m.start_time}|${m.end_time}`;
+  const hit = timesSeen.get(key);
+  if (hit) return { startsAt: hit.startsAt, endsAt: hit.endsAt };
   const at = (k, hm) => { const [y, mo, d] = k.split('-').map(Number); const [h, mi] = hm.split(':').map(Number); return zonedTime(y, mo, d, h, mi, tz); };
   const startsAt = at(m.day, m.start_time);
   const endsAt = m.end_time > m.start_time ? at(m.day, m.end_time) : at(addDays(m.day, 1), m.end_time);
+  if (timesSeen.size >= 5000) timesSeen.clear();
+  timesSeen.set(key, { startsAt, endsAt });
   return { startsAt, endsAt };
 }
-const fmt = (ms, tz, opts) => new Intl.DateTimeFormat('en-US', Object.assign({ timeZone: zone(tz) }, opts)).format(new Date(ms));
+const fmt = (ms, tz, opts) => formatter(zone(tz), JSON.stringify(opts), opts).format(new Date(ms));
 const time12 = (ms, tz) => fmt(ms, tz, { hour: 'numeric', minute: '2-digit' }).replace(':00', '');
 const dayLong = (ms, tz) => fmt(ms, tz, { weekday: 'long', month: 'long', day: 'numeric' });
 const dayShort = (ms, tz) => fmt(ms, tz, { weekday: 'short', month: 'short', day: 'numeric' });

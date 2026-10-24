@@ -37,6 +37,15 @@ app.use((req, res, next) => {
 app.use('/meet', require('./meetproxy').middleware(SCHEME));
 const MEET_MODE = () => process.env.MEET_MODE === '1';
 
+/** The address this request is for, as one this site really answers to: the site, www, a vendor's subdomain, or a
+    host's own domain that's turned on. Anything else (a forged Host header) gets the site's own name. */
+async function publicOrigin(req) {
+  const h = String(req.hostname || '').toLowerCase();
+  const ok = h === SITE_DOMAIN || h === 'www.' + SITE_DOMAIN || !!U.subOf(h) ||
+    (h && !!(await get('SELECT 1 AS x FROM hosts WHERE custom_domain = ? AND domain_on = 1', [h.replace(/^www\./, '')])));
+  return `${SCHEME}://${ok ? req.get('host') : SITE_DOMAIN}`;
+}
+
 /* ---------- rate limits (per network) ---------- */
 function limit(windowMs, max, name) {
   const hits = new Map();
@@ -50,9 +59,9 @@ function limit(windowMs, max, name) {
     next();
   };
 }
-const limitForm = limit(10 * 60 * 1000, 12, 'form');
-const limitOrder = limit(10 * 60 * 1000, 30, 'order');
-const limitRead = limit(60 * 1000, 120, 'read');
+const limitForm = limit(10 * 60 * 1000, 60, 'form'); // a meet's crowd on one network signs up together
+const limitOrder = limit(10 * 60 * 1000, 150, 'order');
+const limitRead = limit(60 * 1000, 900, 'read'); // menu photos: one menu is 20+ of them, for every phone on the network
 
 /* ---------- the food side's notices (raw body: the signature covers the exact bytes) ---------- */
 app.post('/hooks/kitchen', express.raw({ type: 'application/json', limit: '20kb' }), async (req, res) => {
@@ -69,6 +78,9 @@ app.post('/hooks/kitchen', express.raw({ type: 'application/json', limit: '20kb'
   res.json({ ok: true });
 });
 
+// The logo sheet splitter sends up to 16 cut-outs at once (base64): that one route takes up to 20 MB, parsed here
+// before the site-wide 50 KB limit would refuse it.
+app.use('/api/host/logo-read', express.json({ limit: '20mb' }));
 app.use(express.json({ limit: '50kb' }));
 
 /* ---------- which host a request is for: a host's own domain, or the site's ---------- */
@@ -76,7 +88,7 @@ app.use(express.json({ limit: '50kb' }));
 // Only from Caddy on this server. Yes for the site itself, a host's own domain, and a vendor profile's subdomain.
 app.get('/caddy/ask', async (req, res) => {
   const ip = String(req.socket.remoteAddress || '');
-  if (!/^(127\.|::1$|::ffff:127\.)/.test(ip)) return res.status(404).end();
+  if (!/^(127\.|::1$|::ffff:127\.)/.test(ip) || req.get('x-forwarded-for')) return res.status(404).end();
   const d = String(req.query.domain || '').toLowerCase().replace(/\.$/, '');
   if (!/^[a-z0-9.-]{1,253}$/.test(d)) return res.status(404).end();
   if (d === SITE_DOMAIN || d === 'www.' + SITE_DOMAIN) return res.status(200).end();
@@ -94,14 +106,19 @@ async function pageBySlug(slug) {
   return old ? { k: old, moved: true } : null;
 }
 
-// Pages squeezed too (gzip): with their styles inside, a page is about 10 KB on the wire.
+// Pages squeezed too (gzip): with their styles inside, a page is about 10 KB on the wire. Off the event loop (zlib's
+// thread pool), so a page being squeezed never holds up the next request. GZIP_PAGES=0 when Caddy's encode does it.
 app.use((req, res, next) => {
-  if (!/\bgzip\b/.test(String(req.get('accept-encoding') || ''))) return next();
+  if (process.env.GZIP_PAGES === '0' || !/\bgzip\b/.test(String(req.get('accept-encoding') || ''))) return next();
   const send = res.send.bind(res);
   res.send = (body) => {
     if (typeof body === 'string' && body.length > 1400 && /text\/html/.test(String(res.get('Content-Type') || '')) && !res.get('Content-Encoding')) {
-      res.set({ 'Content-Encoding': 'gzip', Vary: 'Accept-Encoding' });
-      return send(zlib.gzipSync(body, { level: 6 }));
+      zlib.gzip(body, { level: 5 }, (err, buf) => {
+        if (err || res.headersSent) return err ? send(body) : undefined;
+        res.set({ 'Content-Encoding': 'gzip', Vary: 'Accept-Encoding' });
+        send(buf);
+      });
+      return res;
     }
     return send(body);
   };
@@ -135,6 +152,48 @@ app.use(async (req, res, next) => {
   if (h && h !== SITE_DOMAIN && h !== 'www.' + SITE_DOMAIN && h !== 'localhost' && h !== '127.0.0.1') {
     req.own = await get('SELECT * FROM hosts WHERE custom_domain = ? AND domain_on = 1', [h.replace(/^www\./, '')]);
   }
+  next();
+});
+
+/* ---------- public pages, kept for a few seconds ----------
+   At 7 PM hundreds of phones ask for the same meet page within seconds. Each page is the same for everyone (nothing
+   signed-in on it), so one render serves them all for PAGE_CACHE_MS (default 5 s), and phones asking while it is being
+   made wait for that one render instead of starting their own. Only while the site is busy (PAGE_CACHE_BUSY requests
+   at once, default 8): at quiet times every page is fresh, as before. Any write empties it. Anyone with a portal
+   session, and every page that isn't public (portal, orders, editors, API, files), always gets a fresh one. */
+const PAGE_MS = () => (process.env.PAGE_CACHE_MS === undefined ? 5000 : Number(process.env.PAGE_CACHE_MS));
+const pageCache = new Map(); // key → { at, status, headers, body }
+const pageWaits = new Map(); // key → [res] waiting on the render in progress
+let inFlight = 0;
+app.use((req, res, next) => {
+  inFlight++; let done = false; const off = () => { if (!done) { done = true; inFlight--; } };
+  res.on('finish', off); res.on('close', off);
+  if (req.method !== 'GET' && req.method !== 'HEAD') pageCache.clear(); // something changed: pages are made fresh
+  next();
+});
+const PRIVATE_RE = /^\/(api|host|o|meet|hooks|caddy|static|uploads|food-photo|alerts|sw\.js|health)(\/|$)|\/edit\/?$/;
+app.use((req, res, next) => {
+  if (!PAGE_MS() || inFlight < (Number(process.env.PAGE_CACHE_BUSY) || 8) || req.method !== 'GET' || PRIVATE_RE.test(req.path) || /mh_session=/.test(String(req.headers.cookie || '')) || req.query.demo) return next();
+  const gz = /\bgzip\b/.test(String(req.get('accept-encoding') || ''));
+  const key = `${req.hostname}|${req.originalUrl}|${gz ? 'gz' : ''}`;
+  const hit = pageCache.get(key);
+  const reply = (r, h) => { r.status(h.status).set(h.headers); r.end(h.body); };
+  if (hit && Date.now() - hit.at < PAGE_MS()) return reply(res, hit);
+  if (pageWaits.has(key)) return pageWaits.get(key).push(res);
+  pageWaits.set(key, []);
+  const chunks = []; const write = res.write.bind(res); const end = res.end.bind(res);
+  res.write = (c, ...a) => { if (c) chunks.push(Buffer.from(c)); return write(c, ...a); };
+  res.end = (c, ...a) => {
+    if (c && typeof c !== 'function') chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c));
+    const out = end(c, ...a);
+    const waiting = pageWaits.get(key) || []; pageWaits.delete(key);
+    const h = { at: Date.now(), status: res.statusCode, headers: {}, body: Buffer.concat(chunks) };
+    for (const k of ['content-type', 'content-encoding', 'vary', 'cache-control', 'x-robots-tag', 'location']) if (res.get(k)) h.headers[k] = res.get(k);
+    if (res.statusCode === 200 && /text\/html/.test(h.headers['content-type'] || '')) { if (pageCache.size > 500) pageCache.clear(); pageCache.set(key, h); }
+    for (const r of waiting) reply(r, h);
+    return out;
+  };
+  res.on('close', () => { if (!res.writableEnded && pageWaits.get(key)) { for (const r of pageWaits.get(key)) r.status(503).end(); pageWaits.delete(key); } });
   next();
 });
 
@@ -202,10 +261,12 @@ const truckCache = new Map(); // meet ref → { at, list }: the public page asks
 const truckLoads = new Map(); // meet ref → the request on its way
 async function trucksFor(m, { fresh } = {}) {
   const c = truckCache.get(m.ref);
-  if (!fresh && c && Date.now() - c.at < 60000) return c.list;
+  // A meet that just changed (stale): asked for again, the page waiting under a second for it, then the kept list.
+  const age = c && !c.stale ? Date.now() - c.at : Infinity;
+  if (!fresh && age < 60000) return c.list;
   if (fresh) return loadTrucks(m);
   const p = truckLoads.get(m.ref) || loadTrucks(m);
-  if (c && Date.now() - c.at < 60 * 60000) return c.list;
+  if (age < 60 * 60000) return c.list;
   return Promise.race([p, new Promise((ok) => setTimeout(() => ok(c ? c.list : []), 800))]);
 }
 function loadTrucks(m) {
@@ -216,9 +277,11 @@ function loadTrucks(m) {
 async function loadTrucks_(m) {
   const c = truckCache.get(m.ref);
   const r = await K.meetVendors(m.ref);
-  const list = r.ok ? (r.data.vendors || []) : (c ? c.list : []);
-  truckCache.set(m.ref, { at: Date.now(), list });
-  if (r.ok) {
+  // Only a real list replaces the one kept: anything else (an error, a body of the wrong shape) keeps the last good one.
+  const got = r.ok && Array.isArray(r.data.vendors) ? r.data.vendors.filter((v) => v && typeof v === 'object' && !Array.isArray(v)) : null;
+  const list = got || (c ? c.list : []);
+  truckCache.set(m.ref, { at: got ? Date.now() : (c ? c.at : Date.now()), list }); // a failed ask clears "stale": the kept list shows at once
+  if (got) {
     // A truck that came in on a plain invite (it typed its name) joins the host's Food vendors, tied to its profile.
     // Only trucks still in the meet, and never one the host deleted.
     for (const v of list.filter((x) => x.hostProfile && x.slug && x.name && ['in', 'invited'].includes(x.status))) {
@@ -226,8 +289,9 @@ async function loadTrucks_(m) {
       const gone = !have && await get('SELECT 1 AS x FROM kit_gone WHERE host_id = ? AND truck_slug = ?', [m.host_id, v.slug]);
       if (!have && !gone) await run("INSERT INTO kit_logos (host_id, kind, name, file, truck_slug, created_at) VALUES (?, 'vendor', ?, '', ?, ?)", [m.host_id, v.name, v.slug, Date.now()]).catch(() => {});
     }
-    for (const v of list.filter((x) => x.status === 'in' && x.slug)) {
-      // The meets a Food vendor served at, for "At 6 meets" on their profile.
+    const goneHere = new Set((await all('SELECT truck_slug FROM kit_gone WHERE host_id = ?', [m.host_id])).map((x) => x.truck_slug));
+    for (const v of list.filter((x) => x.status === 'in' && x.slug && !goneHere.has(x.slug))) {
+      // The meets a Food vendor served at, for "At 6 meets" on their profile. Never one the host deleted.
       const kit = await get("SELECT id FROM kit_logos WHERE host_id = ? AND truck_slug = ? AND kind IN ('vendor', 'sponsor')", [m.host_id, v.slug]);
       if (kit) await run('INSERT OR IGNORE INTO kit_meets (kit_id, meet_id) VALUES (?, ?)', [kit.id, m.id]).catch(() => {});
       await run('INSERT INTO host_vendors (host_id, slug, name, emoji, last_meet_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT (host_id, slug) DO UPDATE SET name = excluded.name, emoji = excluded.emoji, last_meet_at = MAX(COALESCE(host_vendors.last_meet_at, 0), excluded.last_meet_at)',
@@ -257,13 +321,17 @@ async function latestRecap(host) {
   return Object.assign(r, { photos: photos.map((p) => '/uploads/' + p.file) });
 }
 async function renderMeet(req, res, host, m, isHome) {
-  const [trucks, last, recap, upcoming, kitVendors, kitAll] = await Promise.all([trucksFor(m), lastTurnout(host), latestRecap(host), upcomingOf(host),
+  const [trucks0, last, recap, upcoming, kitVendors, kitAll, gone] = await Promise.all([trucksFor(m), lastTurnout(host), latestRecap(host), upcomingOf(host),
     all('SELECT k.id, k.kind, k.name, k.file, k.instagram, k.truck_slug, k.page_slug, k.page_on, v.truck_slug AS meet_truck FROM meet_kit_vendors v JOIN kit_logos k ON k.id = v.kit_id WHERE v.meet_id = ? AND k.host_id = ? ORDER BY v.created_at, v.kit_id', [m.id, host.id]),
-    all("SELECT id, kind, name, file, instagram, truck_slug, page_slug, page_on FROM kit_logos WHERE host_id = ? AND kind IN ('vendor', 'sponsor')", [host.id])]);
+    all("SELECT id, kind, name, file, instagram, truck_slug, page_slug, page_on FROM kit_logos WHERE host_id = ? AND kind IN ('vendor', 'sponsor')", [host.id]),
+    all('SELECT truck_slug FROM kit_gone WHERE host_id = ?', [host.id])]);
+  // A truck the host deleted isn't listed, even before the food side has let it go.
+  const goneSet = new Set(gone.map((x) => x.truck_slug));
+  const trucks = trucks0.filter((v) => !goneSet.has(v.slug));
   const venue = m.venue_id ? await get("SELECT name, file, instagram, note FROM kit_logos WHERE id = ? AND host_id = ? AND kind = 'venue'", [m.venue_id, host.id]) : null;
   // The other weeks listed: on a meet name's address, only that meet's; on the host's page, their own.
   const ups = req.meetName ? upcoming.filter((x) => x.page_name === req.meetName) : upcoming.filter((x) => !N.onName(host, x) || x.page_name === m.page_name || N.homeNames(host).has(x.page_name));
-  res.set('Cache-Control', 'no-cache').type('html').send(V.meetPage(host, m, { tz: tzOf(host), base: baseOf(req, host), trucks: trucks.map(truckFace), kitVendors, kitAll, last, recap, upcoming: ups, isHome, venue, badge: badgeOf(host, req), meetMode: MEET_MODE(), headerVid: req.isMain ? await mainHeader() : null, origin: `${SCHEME}://${req.get('host')}` }));
+  res.set('Cache-Control', 'no-cache').type('html').send(V.meetPage(host, m, { tz: tzOf(host), base: baseOf(req, host), trucks: trucks.map(truckFace), kitVendors, kitAll, last, recap, upcoming: ups, isHome, venue, badge: badgeOf(host, req), meetMode: MEET_MODE(), headerVid: req.isMain ? await mainHeader() : null, origin: await publicOrigin(req) }));
 }
 const notFound = (req, res, host) => res.status(404).type('html').send(V.message(host || null, { title: 'Nothing here', text: 'The link may be old, or the address may have a typo.', href: host ? baseOf(req, host) || '/' : '/', cta: host ? 'See the next meet' : 'Go to the main page' }));
 
@@ -294,7 +362,7 @@ async function renderDemo(req, res, host) {
   const [last, recap] = await Promise.all([lastTurnout(host), latestRecap(host)]);
   res.set({ 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex' }).type('html').send(V.meetPage(host, Object.assign({}, m, { status: 'on' }), {
     tz, base: baseOf(req, host), trucks: DEMO_TRUCKS, kitVendors: kit.map((k) => Object.assign({ truck_slug: null }, k)), kitAll: [], last, recap, upcoming: up,
-    isHome: true, badge: badgeOf(host, req), meetMode: MEET_MODE(), origin: `${SCHEME}://${req.get('host')}`, demo: true }));
+    isHome: true, badge: badgeOf(host, req), meetMode: MEET_MODE(), origin: await publicOrigin(req), demo: true }));
 }
 
 async function hostHome(req, res, host) {
@@ -353,8 +421,13 @@ app.use('/api', (req, res, next) => {
   res.json = (body) => {
     const buf = Buffer.from(JSON.stringify(body));
     if (buf.length < 1400 || res.get('Content-Encoding')) return json(body);
-    res.set({ 'Content-Type': 'application/json; charset=utf-8', 'Content-Encoding': 'gzip', Vary: 'Accept-Encoding' });
-    return res.end(zlib.gzipSync(buf, { level: 6 }));
+    zlib.gzip(buf, { level: 5 }, (err, out) => {
+      if (res.headersSent) return;
+      if (err) return json(body);
+      res.set({ 'Content-Type': 'application/json; charset=utf-8', 'Content-Encoding': 'gzip', Vary: 'Accept-Encoding' });
+      res.end(out);
+    });
+    return res;
   };
   next();
 });
@@ -383,7 +456,7 @@ app.post('/api/meets/:id/food/:truck/order', limitOrder, async (req, res) => {
   if (b.website) return res.status(400).json({ error: 'Couldn’t place the order. Try again.' });
   const email = U.clean(b.email, 120).toLowerCase();
   if (!U.EMAIL_RE.test(email)) return res.status(400).json({ error: 'Add your email so we can tell you when it’s ready.' });
-  const origin = `${SCHEME}://${req.get('host')}`;
+  const origin = await publicOrigin(req);
   const device = /^[A-Za-z0-9_-]{16,64}$/.test(String(b.device || '')) ? D.sha('dev:' + b.device).slice(0, 32) : D.sha('ip:' + (req.ip || '')).slice(0, 32);
   const r = await K.order(f.m.ref, req.params.truck, {
     name: U.clean(b.name, 40), items: Array.isArray(b.items) ? b.items.slice(0, 30) : [], pickupAt: Number(b.pickupAt), clientKey: String(b.clientKey || ''),
@@ -408,7 +481,7 @@ async function orderView(o) {
 }
 async function refreshOrder(o, how) {
   const r = how === 'confirm' ? await K.confirmOrder(o.token) : how === 'cancel' ? await K.cancelOrder(o.token) : await K.orderStatus(o.token);
-  if (r.ok) {
+  if (r.ok && typeof r.data.status === 'string' && typeof r.data.payment === 'string') {
     await run('UPDATE orders SET status = ?, payment = ?, ticket = ?, total = ?, updated_at = ? WHERE id = ?', [r.data.status, r.data.payment, r.data.ticket, r.data.total, Date.now(), o.id]);
     o = await get('SELECT * FROM orders WHERE id = ?', [o.id]);
     await orderMail(o);
@@ -470,11 +543,12 @@ app.post('/api/alerts', limitForm, async (req, res) => {
   if (have && have.sent_at && Date.now() - have.sent_at < 5 * 60000) return res.json({ ok: true, message: 'Check your email for the link we just sent.' });
   if (have) await run('UPDATE subscribers SET token_hash = ?, off_at = NULL, sent_at = ? WHERE id = ?', [D.sha(t), Date.now(), have.id]);
   else await run('INSERT INTO subscribers (host_id, email, token_hash, created_at, sent_at) VALUES (?, ?, ?, ?, ?)', [host.id, email, D.sha(t), Date.now(), Date.now()]);
-  const link = `${SCHEME}://${req.get('host')}/alerts/yes?t=${t}`;
-  await mail.send({ key: 'alerts-confirm-' + D.sha(t).slice(0, 20), to: email, fromName: host.name, subject: `Confirm alerts from ${host.name}`,
+  const link = `${await publicOrigin(req)}/alerts/yes?t=${t}`;
+  // Sent behind the scenes: the answer doesn't depend on it (a failed send waits in the outbox and is retried).
+  mail.send({ key: 'alerts-confirm-' + D.sha(t).slice(0, 20), to: email, fromName: host.name, subject: `Confirm alerts from ${host.name}`,
     text: `Tap to get an email when ${host.name} posts a meet or something changes:\n${link}\n\nDidn't ask for this? Ignore it and you won't hear from us.`,
     html: mail.shell({ from: host.name, title: 'One tap to confirm', html: `<p>Get an email when ${mail.esc(host.name)} posts a meet or something changes.</p><p><a href="${link}" style="display:inline-block;background:#f2a33a;color:#1c1e23;padding:12px 18px;border-radius:8px;text-decoration:none;font-weight:600">Yes, send me alerts</a></p>`,
-      footer: 'Didn’t ask for this? Ignore it and you won’t hear from us.' }) });
+      footer: 'Didn’t ask for this? Ignore it and you won’t hear from us.' }) }).catch((e) => console.error('alerts mail:', e.message));
   const dev = process.env.DEV_CODES === 'true' && process.env.NODE_ENV !== 'production' ? { devLink: link } : {};
   res.json(Object.assign({ ok: true, message: 'Check your email and tap the link to confirm.' }, dev));
 });
@@ -486,6 +560,7 @@ app.get('/alerts/:act', async (req, res) => {
   const host = s ? await get('SELECT * FROM hosts WHERE id = ?', [s.host_id]) : null;
   if (!s || !host) return res.status(404).type('html').send(V.message(null, { title: 'That link is old', text: 'Sign up again from the meet page.', href: '/', cta: 'Go to the main page' }));
   const home = `${SCHEME}://${host.domain_on && host.custom_domain ? host.custom_domain : SITE_DOMAIN + '/' + host.slug}`;
+  res.set('Cache-Control', 'no-store');
   if (req.params.act === 'yes') {
     await run('UPDATE subscribers SET verified_at = COALESCE(verified_at, ?), off_at = NULL WHERE id = ?', [Date.now(), s.id]);
     return res.type('html').send(V.message(host, { title: 'You’re on the list', text: `You’ll get an email when ${host.name} posts a meet or something changes.`, href: home, cta: 'See the next meet' }));
@@ -567,7 +642,7 @@ async function vendorProfile(req, res, k) {
   // Their own clip, or the host's usual one.
   const vid = k.video && k.video_status === 'ready' ? k : host.video && host.video_status === 'ready' ? host : null;
   res.set('Cache-Control', preview ? 'no-store' : 'no-cache').type('html').send(V.vendorPage(host, k, {
-    tz, vid, logos, photos, spots, meets: served ? served.n : 0, at, hostUrl, preview, origin: `${SCHEME}://${req.get('host')}` }));
+    tz, vid, logos, photos, spots, meets: served ? served.n : 0, at, hostUrl, preview, origin: await publicOrigin(req) }));
 }
 app.get('/v/:slug', async (req, res) => {
   if (req.vendorSub) return notFound(req, res, null);
@@ -615,9 +690,10 @@ async function siteOwner() {
   return get('SELECT * FROM hosts ORDER BY id LIMIT 1');
 }
 /** Every meet still to come, on every host, each with its page address. */
-async function allUpcoming() {
+async function allUpcoming({ canceled } = {}) {
+  // With canceled: also the ones called off (shown as canceled where people look for the night's meets).
   const rows = await all(`SELECT m.*, h.slug, h.name AS host_name, h.timezone, h.logo AS host_logo, h.domain_on, h.custom_domain FROM meets m JOIN hosts h ON h.id = m.host_id
-    WHERE m.status = 'on' AND m.day >= ? ORDER BY m.day, m.start_time LIMIT 80`, [U.addDays(U.dayKey(Date.now(), TZ()), -1)]);
+    WHERE m.status IN ('on'${canceled ? ", 'canceled'" : ''}) AND m.day >= ? ORDER BY m.day, m.start_time LIMIT 80`, [U.addDays(U.dayKey(Date.now(), TZ()), -1)]);
   return rows.filter((r) => U.meetTimes(r, r.timezone || TZ()).endsAt > Date.now())
     .map((r) => Object.assign(r, { url: N.meetUrl({ id: r.host_id, slug: r.slug, name: r.host_name, domain_on: r.domain_on, custom_domain: r.custom_domain }, r) }));
 }
@@ -634,7 +710,7 @@ async function siteFace(site, owner, meets) {
 }
 app.get('/meets', async (req, res, next) => {
   if (req.own) return next();
-  const [site, meets, owner] = await Promise.all([siteRow(), allUpcoming(), siteOwner()]);
+  const [site, meets, owner] = await Promise.all([siteRow(), allUpcoming({ canceled: true }), siteOwner()]);
   res.set('Cache-Control', 'no-cache').type('html').send(V.meetsPage(await siteFace(site, owner, meets), { meets, instagram: owner && owner.instagram }));
 });
 app.get('/members', async (req, res, next) => {
@@ -681,7 +757,7 @@ app.get('/', async (req, res) => {
   const main = onSite ? await homeHost() : null;
   if (main && !(main.domain_on && main.custom_domain)) { req.isMain = true; return hostHome(req, res, main); }
   const [site, meets, owner] = await Promise.all([siteRow(), allUpcoming(), siteOwner()]);
-  res.set('Cache-Control', 'no-cache').type('html').send(V.landing(await siteFace(site, owner, meets), { meets, instagram: owner && owner.instagram, origin: `${SCHEME}://${req.get('host')}` }));
+  res.set('Cache-Control', 'no-cache').type('html').send(V.landing(await siteFace(site, owner, meets), { meets, instagram: owner && owner.instagram, origin: await publicOrigin(req) }));
 });
 /* ---------- a club member's page (/@handle), and the editor their link opens ---------- */
 app.get(/^\/@([a-z0-9-]{3,40})(\/edit)?\/?$/i, async (req, res) => {
@@ -700,7 +776,7 @@ app.get(/^\/@([a-z0-9-]{3,40})(\/edit)?\/?$/i, async (req, res) => {
   const crew = club ? await all(`SELECT m.handle, m.name, m.car, (SELECT CASE WHEN p.kind = 'video' THEN p.poster ELSE p.file END FROM member_photos p WHERE p.member_id = m.id AND (p.kind = 'photo' OR p.status = 'ready') ORDER BY p.id LIMIT 1) AS face
     FROM members m WHERE m.club_id = ? AND m.id != ? ORDER BY m.updated_at DESC LIMIT 8`, [club.id, m.id]) : [];
   const vid = m.video_status === 'ready' && m.video ? m : host.video && host.video_status === 'ready' ? host : null;
-  res.set('Cache-Control', 'no-cache').type('html').send(V.memberPage(host, m, { photos, club, crew, vid, origin: `${SCHEME}://${req.get('host')}` }));
+  res.set('Cache-Control', 'no-cache').type('html').send(V.memberPage(host, m, { photos, club, crew, vid, origin: await publicOrigin(req) }));
 });
 
 app.get('/:a', async (req, res, next) => {
@@ -713,9 +789,9 @@ app.get('/:a', async (req, res, next) => {
   const a = String(req.params.a).toLowerCase();
   const host = await get('SELECT * FROM hosts WHERE slug = ?', [a]);
   if (!host) {
-    // A meet name (<site>/fuel-friday): its next week.
+    // A meet name (<site>/fuel-friday): its next week. A renamed one's old address forwards.
     const nh = await N.hostOfName(a);
-    if (!nh) return notFound(req, res, null);
+    if (!nh) { const mv = await N.movedName(a); return mv ? res.redirect(301, '/' + mv.page_name + (req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '')) : notFound(req, res, null); }
     req.meetName = a;
     return hostHome(req, res, nh);
   }
@@ -728,9 +804,9 @@ app.get('/:a/:b', async (req, res, next) => {
   const a = String(req.params.a).toLowerCase();
   const host = await get('SELECT * FROM hosts WHERE slug = ?', [a]);
   if (!host) {
-    // A week of a meet name (<site>/fuel-friday/<date>).
+    // A week of a meet name (<site>/fuel-friday/<date>). A renamed one's old address forwards.
     const nh = await N.hostOfName(a);
-    if (!nh) return notFound(req, res, null);
+    if (!nh) { const mv = await N.movedName(a); return mv && U.validDate(req.params.b) ? res.redirect(301, `/${mv.page_name}/${req.params.b}`) : notFound(req, res, null); }
     req.meetName = a;
     const m = await meetOn(nh, req.params.b, a);
     return m ? renderMeet(req, res, nh, m, false) : notFound(req, res, nh);
@@ -753,8 +829,16 @@ app.get('/:a/:b/food/:truck', async (req, res) => {
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));
 app.use((req, res) => notFound(req, res, req.own));
 app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
-  console.error('Error:', err);
+  // A mistake in the request (bad JSON, a body too big, a range past the end, a broken %-escape) keeps its own 4xx;
+  // only our own failures are 500s (and logged as errors).
+  const code = err instanceof URIError ? 400 : Number(err.status || err.statusCode) || 500;
+  if (code >= 500) console.error('Error:', err);
   if (res.headersSent) return;
+  if (code < 500) {
+    if (err.headers) res.set(err.headers); // Content-Range on a 416
+    const msg = code === 413 ? 'That’s too big to send.' : code === 416 ? 'Range not satisfiable.' : 'That request didn’t look right.';
+    return req.path.startsWith('/api/') ? res.status(code).json({ error: msg }) : res.status(code).type('text').send(msg);
+  }
   if (req.path.startsWith('/api/')) return res.status(500).json({ error: 'Something went wrong on our side. Try again.' });
   res.status(500).type('html').send(V.message(null, { title: 'Something went wrong', text: 'Try again in a minute.', href: '/', cta: 'Go to the main page' }));
 });
@@ -774,6 +858,8 @@ async function tidyAtStart() {
       ['The server restarted while this video was processing. Upload it again.']).catch(() => {});
   }
   await D.run("UPDATE member_photos SET status = 'failed' WHERE status = 'processing'").catch(() => {});
+  // Their uploads (up to 400 MB each) are of no use now: the host is asked to upload again.
+  try { for (const f of fs.readdirSync(path.join(UPLOAD_DIR, 'tmp'), { withFileTypes: true })) if (f.isFile() && /^in-[a-f0-9]+$/.test(f.name)) fs.promises.unlink(path.join(UPLOAD_DIR, 'tmp', f.name)).catch(() => {}); } catch (e) { /* no tmp folder yet */ }
   if (!Vid.ffmpegOk()) return;
   const redo = async (file) => {
     const f = path.basename(String(file || ''));

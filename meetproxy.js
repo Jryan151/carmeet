@@ -66,7 +66,9 @@ function middleware(scheme) {
       res.writeHead(r.statusCode || 502, out);
       r.pipe(res);
     });
-    up.setTimeout(0);
+    // A menu that hasn't started answering in 15 s won't: the phone gets the "not loading" page instead of a spinner
+    // that never ends (and the connection is let go).
+    up.setTimeout(15000, () => up.destroy(new Error('the food side took too long')));
     up.on('error', () => {
       if (res.headersSent) return res.destroy();
       res.status(502).type('html').send('<!doctype html><meta name="viewport" content="width=device-width"><body style="background:#07060b;color:#eee;font:16px system-ui;padding:40px;text-align:center">The menu isn’t loading right now. Try again in a minute.</body>');

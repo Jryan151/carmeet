@@ -155,6 +155,8 @@ async function ensureSchema() {
   await exec('CREATE INDEX IF NOT EXISTS idx_meets_page_name ON meets (page_name)');
   // A Food vendor the host deleted: its truck isn't put back in the lists from an old invite on the food side.
   await exec('CREATE TABLE IF NOT EXISTS kit_gone (host_id INTEGER NOT NULL, truck_slug TEXT NOT NULL, PRIMARY KEY (host_id, truck_slug))');
+  // A meet name's old addresses (renamed in the meet's form): a shared link still lands on the new one.
+  await exec('CREATE TABLE IF NOT EXISTS meet_old_names (name TEXT PRIMARY KEY, host_id INTEGER NOT NULL, page_name TEXT NOT NULL, created_at INTEGER NOT NULL)');
   // Club members' own pages (/@handle): the host starts one, the member finishes it from their link.
   await exec(`CREATE TABLE IF NOT EXISTS members (
     id INTEGER PRIMARY KEY AUTOINCREMENT, host_id INTEGER NOT NULL, club_id INTEGER, handle TEXT UNIQUE NOT NULL, name TEXT NOT NULL,

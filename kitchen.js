@@ -22,7 +22,9 @@ async function call(method, p, body, ms) {
     });
     let data = null;
     try { data = await r.json(); } catch (e) { data = null; }
-    return { ok: r.ok, status: r.status, data: data || { error: 'The food side didn’t answer properly.' } };
+    // A 2xx whose body isn't a JSON object is a failure, not "ok with nothing in it".
+    const good = !!data && typeof data === 'object' && !Array.isArray(data);
+    return { ok: r.ok && good, status: r.ok && !good ? 502 : r.status, data: good ? data : { error: 'The food side didn’t answer properly.' } };
   } catch (e) {
     return { ok: false, status: 0, data: { error: 'The food side isn’t answering right now. Try again in a minute.' } };
   } finally { clearTimeout(t); }
@@ -73,7 +75,7 @@ async function profileLogo(hostKey, slug, buf, type) {
 }
 const profileMenu = (hostKey, slug, items) => call('PUT', '/profiles/' + encodeURIComponent(slug) + '/menu', { hostKey, items, mode: 'replace' });
 /* The names on logos, and what each one is (food, club, another vendor), read by the food side's AI. */
-const readLogos = (hostKey, files) => call('POST', '/logo-read', { hostKey, files }, 70000);
+const readLogos = (hostKey, files) => call('POST', '/logo-read', { hostKey, files }, 30000); // the AI read: longer than other calls, never minutes
 const addKnown = (ref, slug) => call('POST', '/' + encodeURIComponent(ref) + '/vendors', { slug });
 const dropInvite = (ref, id) => call('DELETE', '/' + encodeURIComponent(ref) + '/invites/' + encodeURIComponent(id));
 const notice = (ref, subject, text) => call('POST', '/' + encodeURIComponent(ref) + '/notice', { subject, text });

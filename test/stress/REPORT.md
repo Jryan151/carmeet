@@ -1,5 +1,7 @@
 # AZ Monarchy (carmeet) — stress test report
 
+> **Applied.** All 14 fixes in `fixes/` are now in the app code on `restart` (applied in order on top of this commit). The diffs stay here as the record; they will not apply again. With them: existing suite 52/52, reproductions 44/44 (run `node test/stress/fixtures.js --big` first).
+
 Branch `restart` at `fe1c6eb` ("Member name is optional…"), tested 23–24 Oct 2026. App code was not changed: every
 script, test and proposed fix lives under `test/stress/`. Each proposed fix was applied to a scratch copy of the repo,
 checked against the existing suite (52/52 pass) and against the reproduction it targets; the diffs in `fixes/` are

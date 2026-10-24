@@ -43,9 +43,16 @@ function receive(req, dir) {
 /* Video work never crowds out the pages: ffmpeg runs at the lowest priority and leaves a core free (the server also
    runs the food side). An encode takes a little longer; the site stays quick while it does. VIDEO_THREADS overrides. */
 const THREADS = () => String(Math.max(1, parseInt(process.env.VIDEO_THREADS, 10) || (require('os').cpus().length - 1) || 1));
+/* Every ffmpeg running, so a restart (pm2 sends SIGTERM) stops them too: otherwise they keep encoding for minutes after,
+   writing files nothing will use. */
+const kids = new Set();
+const stopKids = () => { for (const p of kids) { try { p.kill('SIGKILL'); } catch (e) { /* gone */ } } };
+process.once('exit', stopKids);
+for (const sig of ['SIGTERM', 'SIGINT']) process.once(sig, () => { stopKids(); process.exit(0); });
 function run(args, ms) {
   return new Promise((ok, no) => {
     const p = spawn(process.env.FFMPEG || 'ffmpeg', args, { stdio: ['ignore', 'ignore', 'pipe'] });
+    kids.add(p); p.on('close', () => kids.delete(p));
     try { if (p.pid) require('os').setPriority(p.pid, 19); } catch (e) { /* not allowed here: it still runs */ }
     let err = '';
     p.stderr.on('data', (d) => { err = (err + d).slice(-2000); });
@@ -104,6 +111,8 @@ const S = 400;
 function pixels(input) {
   return new Promise((ok) => {
     const p = spawn(process.env.FFMPEG || 'ffmpeg', ['-hide_banner', '-i', input, '-frames:v', '1', '-vf', `scale=${S}:${S},format=rgba`, '-f', 'rawvideo', '-'], { stdio: ['ignore', 'pipe', 'pipe'] });
+    kids.add(p); p.on('close', () => kids.delete(p));
+    try { if (p.pid) require('os').setPriority(p.pid, 19); } catch (e) { /* still runs */ }
     const out = []; let err = '';
     p.stdout.on('data', (d) => out.push(d));
     p.stderr.on('data', (d) => { err = (err + d).slice(-8000); });

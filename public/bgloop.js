@@ -26,7 +26,7 @@
       for (var j = 0; j < srcs.length; j++) srcs[j].src = srcs[j].getAttribute('data-src');
       if (v.getAttribute('data-poster')) v.poster = v.getAttribute('data-poster');
       v.preload = 'auto';
-      v.addEventListener('playing', function () { this.classList.add('on'); });
+      v.addEventListener('playing', function () { this.classList.add('on'); state(this).reloads = 0; }); // playing again: a fresh start on tries
       v.load(); play(v);
     }
   }
@@ -43,7 +43,10 @@
     v.addEventListener('error', function () { setTimeout(function () { reload(v); }, 3000); });
   }
   function reload(v) {
-    var s = state(v); if (s.reloads > 5) return; // a clip that keeps failing is left as its still frame
+    var s = state(v);
+    // A clip that keeps failing rests as its still frame, then tries again every 30 s (the signal comes back at a meet);
+    // it never gives up for the rest of the visit.
+    if (s.reloads > 5) { if (!s.later) s.later = setTimeout(function () { s.later = null; s.reloads = 4; reload(v); }, 30000); return; }
     s.reloads++; var t = v.currentTime || 0;
     v.load();
     v.addEventListener('loadedmetadata', function once() { v.removeEventListener('loadedmetadata', once); try { v.currentTime = t; } catch (e) {} play(v); });
@@ -68,4 +71,9 @@
   document.addEventListener('visibilitychange', function () { if (!document.hidden) setTimeout(check, 50); });
   window.addEventListener('pageshow', function () { setTimeout(check, 50); });
   window.addEventListener('focus', function () { setTimeout(check, 50); });
+  // Back online: anything stuck tries again now.
+  window.addEventListener('online', function () {
+    var list = document.querySelectorAll('.page-bg video');
+    for (var i = 0; i < list.length; i++) { var s = state(list[i]); s.reloads = 0; if (list[i].readyState < 3) reload(list[i]); }
+  });
 })();

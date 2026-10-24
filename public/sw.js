@@ -25,7 +25,7 @@ const MAX_CLIPS = 8;                    // the most recent 8 clips kept; older o
 const MAX_BYTES = 40 * 1024 * 1024;     // a clip bigger than this isn't kept (a 15-second loop is far smaller)
 const CLIP_RE = /^\/uploads\/[A-Za-z0-9._-]+\.mp4$/;
 const PIC_RE = /^\/uploads\/[A-Za-z0-9._-]+\.(webp|jpe?g|png|gif)$/i;
-const LIST_RE = /^\/api\/host\/(me|kit|meets|recaps|members|lots|portal-video)$/;
+const LIST_RE = /^\/api\/host\/(me|kit|meets|recaps|members|lots|portal-video|dashboard)$/; // dashboard: the first screen, offline too
 const NO_PAGE_RE = /^\/(api|o|meet|caddy|food-photo|uploads|static|health|sw\.js)(\/|$)|\/edit\/?$|\/food\//;
 
 self.addEventListener('install', () => self.skipWaiting());
@@ -129,6 +129,8 @@ function startLoad(key, e) {
     if (e && e.waitUntil) e.waitUntil(pump); // keep the worker alive until the clip is in
     return true;
   })().catch(() => { L.failed = true; return false; });
+  // A download that never got going (no signal at all) is forgotten, so the next ask starts a fresh one.
+  L.ready.then((ok) => { if (!ok && loads.get(key) === L) loads.delete(key); });
   loads.set(key, L);
   return L;
 }
@@ -171,11 +173,13 @@ async function clip(req, key, e) {
     const saved = await cache.match(key);
     if (saved) { const blob = await saved.blob(); return range ? piece(blob, range) : whole(blob); }
     const L = loads.get(key) || startLoad(key, e);
-    if (!(await L.ready)) return fetch(req); // couldn't start it this way: plain from the site
+    // Couldn't start it this way: straight from the site, range and all (the player resumes where it got to), with a
+    // time limit so a dead spot can't hold it open.
+    if (!(await L.ready)) return fetch(req, { signal: AbortSignal.any ? AbortSignal.any([req.signal, AbortSignal.timeout(20000)]) : req.signal });
     const r = parse(range, L.size);
     if (!r) return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${L.size}` } });
     const headers = { 'Content-Type': 'video/mp4', 'Accept-Ranges': 'bytes', 'Content-Length': String(r.to - r.from + 1) };
-    if (!range) return new Response(streamOf(L, 0, L.size - 1), { status: 200, headers });
+    if (!range || r.whole) return new Response(streamOf(L, 0, L.size - 1), { status: 200, headers });
     headers['Content-Range'] = `bytes ${r.from}-${r.to}/${L.size}`;
     return new Response(streamOf(L, r.from, r.to), { status: 206, headers });
   } catch (err) {
@@ -198,6 +202,8 @@ const whole = (blob) => new Response(blob, { status: 200, headers: { 'Content-Ty
 function parse(range, size) {
   if (!range) return { from: 0, to: size - 1 };
   const m = /^bytes=(\d*)-(\d*)$/.exec(String(range).trim());
+  // Not one range we can read (garbage, several ranges): answered whole, as a server does (RFC 9110 14.2).
+  if (!m || (m[1] === '' && m[2] === '')) return { from: 0, to: size - 1, whole: true };
   let from, to;
   if (m && m[1] !== '') { from = Number(m[1]); to = m[2] !== '' ? Math.min(Number(m[2]), size - 1) : size - 1; }
   else if (m && m[2] !== '') { from = Math.max(0, size - Number(m[2])); to = size - 1; }
@@ -208,6 +214,7 @@ function parse(range, size) {
 function piece(blob, range) {
   const r = parse(range, blob.size);
   if (!r) return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${blob.size}` } });
+  if (r.whole) return whole(blob);
   return new Response(blob.slice(r.from, r.to + 1), { status: 206, headers: {
     'Content-Type': 'video/mp4', 'Content-Length': String(r.to - r.from + 1), 'Content-Range': `bytes ${r.from}-${r.to}/${blob.size}`, 'Accept-Ranges': 'bytes' } });
 }

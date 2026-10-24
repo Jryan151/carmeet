@@ -19,6 +19,7 @@ function small(file, size) {
   const hit = smallSeen.get(s);
   if (hit === true || (hit && Date.now() - hit < 60000)) return '/uploads/' + (hit === true ? s : f);
   const there = fs.existsSync(path.join(UPLOADS(), s));
+  if (smallSeen.size > 20000) smallSeen.clear(); // a cache, not a record: it fills again from the disk
   smallSeen.set(s, there ? true : Date.now());
   if (!there) makeSmall(f, size);
   return '/uploads/' + (there ? s : f);
@@ -41,7 +42,7 @@ function blurOf(file) {
   const f = path.basename(String(file));
   if (tinyCache.has(f) && tinyCache.get(f)) return tinyCache.get(f);
   const s = f.replace(/\.[A-Za-z0-9]+$/, '') + '.s24.webp';
-  try { const b = fs.readFileSync(path.join(UPLOADS(), s)); const u = 'data:image/webp;base64,' + b.toString('base64'); tinyCache.set(f, u); return u; } catch (e) { makeSmall(f, 24); return ''; }
+  try { const b = fs.readFileSync(path.join(UPLOADS(), s)); const u = 'data:image/webp;base64,' + b.toString('base64'); if (tinyCache.size > 2000) tinyCache.clear(); tinyCache.set(f, u); return u; } catch (e) { makeSmall(f, 24); return ''; }
 }
 const sizeCache = new Map();
 function sizeOf(file, size) {
@@ -50,8 +51,16 @@ function sizeOf(file, size) {
   if (sizeCache.has(s)) return sizeCache.get(s);
   let d = null;
   try { const fd = fs.openSync(path.join(UPLOADS(), s), 'r'); const b = Buffer.alloc(32); fs.readSync(fd, b, 0, 32, 0); fs.closeSync(fd); d = webpSize(b); } catch (e) { return null; }
+  if (sizeCache.size > 20000) sizeCache.clear();
   sizeCache.set(s, d);
   return d;
+}
+/** An upload deleted: nothing about it stays remembered. */
+function forget(file) {
+  const f = path.basename(String(file || ''));
+  const base = f.replace(/\.[A-Za-z0-9]+$/, '');
+  tinyCache.delete(f);
+  for (const n of [24, 256, 480, 512, 720, 1080, 1280]) { smallSeen.delete(`${base}.s${n}.webp`); sizeCache.delete(`${base}.s${n}.webp`); making.delete(f + n); }
 }
 /* A missing copy is made in the background the first time a page wants it (one at a time, so the server
    never spends more than one ffmpeg on this); the next visit gets it. */
@@ -70,6 +79,7 @@ async function drain() {
       if (fs.existsSync(src)) {
         const name = await require('./video').small(src, UPLOADS(), size);
         if (name) smallSeen.set(name, true);
+        making.delete(f + size); // done (or failed): a later page may ask again
       }
     }
   } finally { busy = false; }
@@ -591,7 +601,7 @@ function meetCard(r, tz) {
   const t = U.meetTimes(r, r.timezone || tz);
   const pic = r.flyer ? small(r.flyer, 480) : r.logo && /^\/uploads\//.test(r.logo) ? small(r.logo, 256) : r.host_logo && /^\/uploads\//.test(r.host_logo) ? small(r.host_logo, 256) : null;
   return `<a class="mcard" href="${esc(r.url)}"><div class="mcard-pic${r.flyer ? '' : ' logo'}">${pic ? `<img src="${esc(pic)}" alt="" loading="lazy" decoding="async">` : '<span aria-hidden="true">🏁</span>'}</div>
-  <div class="mcard-info"><b>${esc(meetName(r))}</b><span class="mcard-when">${esc(U.dayShort(t.startsAt, r.timezone || tz))} · ${esc(U.time12(t.startsAt, r.timezone || tz))}</span><span class="dim">${esc(r.place)}</span>${t.startsAt <= Date.now() ? '<span class="live-tag">Happening now</span>' : ''}</div></a>`;
+  <div class="mcard-info"><b>${esc(meetName(r))}</b><span class="mcard-when">${esc(U.dayShort(t.startsAt, r.timezone || tz))} · ${esc(U.time12(t.startsAt, r.timezone || tz))}</span><span class="dim">${esc(r.place)}</span>${r.status === 'canceled' ? '<span class="live-tag">Canceled</span>' : t.startsAt <= Date.now() ? '<span class="live-tag">Happening now</span>' : ''}</div></a>`;
 }
 function landing(site, ctx) {
   const tz = process.env.TIMEZONE || 'America/Phoenix';
@@ -660,4 +670,4 @@ function vendorsPage(site, ctx) {
   return layout({ title: `Vendors · ${SITE()}`, description: `Ask for a vendor spot at a car meet on ${SITE()}.`, body, scripts: ['site.js'] });
 }
 
-module.exports = { landing, meetsPage, membersPage, vendorsPage, small, ver, inlineCss, layout, meetPage, vendorPage, memberPage, memberEdit, hostEmpty, foodPage, orderPage, message, home, privacy };
+module.exports = { forget, landing, meetsPage, membersPage, vendorsPage, small, ver, inlineCss, layout, meetPage, vendorPage, memberPage, memberEdit, hostEmpty, foodPage, orderPage, message, home, privacy };

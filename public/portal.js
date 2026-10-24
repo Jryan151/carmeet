@@ -348,11 +348,11 @@
     if (!me.foodOn) html += '<p class="small dim">Food pre-orders aren’t connected on this site yet.</p>';
     html += trucks.length ? trucks.map(function (v) {
       var name = v.name ? (v.emoji ? v.emoji + ' ' : '') + v.name : 'Invite ' + (v.code || '');
-      var st = v.status === 'in' ? '<span class="tag in">' + (v.hostProfile && !v.setUp ? 'In · setting up' : 'Confirmed') + ' · ' + v.preorders + ' pre-order' + (v.preorders === 1 ? '' : 's') + (v.plates !== null ? ' · ' + v.plates + ' plates sold' : '') + (v.cardReady ? '' : v.payAtTruck ? ' · paid at the truck' : ' · order at the truck') + (v.paused ? ' · paused' : '') + (v.openNow ? ' · open now' : '') + '</span>'
+      var st = v.status === 'in' ? '<span class="tag in">' + (v.hostProfile && !v.setUp ? 'In · setting up' : 'Confirmed') + ' · ' + esc(v.preorders) + ' pre-order' + (v.preorders === 1 ? '' : 's') + (v.plates !== null ? ' · ' + esc(v.plates) + ' plates sold' : '') + (v.cardReady ? '' : v.payAtTruck ? ' · paid at the truck' : ' · order at the truck') + (v.paused ? ' · paused' : '') + (v.openNow ? ' · open now' : '') + '</span>'
         : v.status === 'invited' ? '<span class="tag">Link sent, waiting</span>' : '<span class="tag">' + esc(v.status === 'declined' ? 'Declined' : v.status === 'left' ? 'Not coming' : v.status) + '</span>';
       var again = v.hostProfile && ['in', 'invited'].indexOf(v.status) >= 0 && !m.over ? '<button class="btn sm" data-send-slug="' + esc(v.slug) + '">' + (v.status === 'in' ? 'New link' : 'Link again') + '</button>' : '';
       return '<div class="rowx"><div><div>' + esc(name) + '</div>' + st + '</div><div class="bar" style="margin:0;flex:none">' + again +
-        (['in', 'invited'].indexOf(v.status) >= 0 && !m.over ? '<button class="btn sm" data-drop-truck="' + v.inviteId + '">Remove</button>' : '') + '</div></div>';
+        (['in', 'invited'].indexOf(v.status) >= 0 && !m.over ? '<button class="btn sm" data-drop-truck="' + esc(v.inviteId) + '">Remove</button>' : '') + '</div></div>';
     }).join('') : '<p class="small dim">No trucks yet.</p>';
     if (!m.over && m.status === 'on' && me.foodOn) {
       if (invite && invite.meet === m.id) {
@@ -363,7 +363,7 @@
         vendors.map(function (k) { return '<button type="button" data-send-kit="' + k.id + '"><span class="art">' + (k.url ? '<img src="' + esc(k.thumb || k.url) + '" alt="" loading="lazy" decoding="async">' : '🍽') + '</span><span>' + esc(k.name) + '</span></button>'; }).join('') + '</div>';
       html += '<div class="bar"><button class="btn sm" data-new-invite="' + m.id + '">Invite a truck not in your list</button></div>' +
         '<p class="small dim" style="margin:6px 0 0">They type their truck’s name, and it’s added to your Food vendors.</p>';
-      if (known && known.length) html += '<p class="small dim" style="margin:14px 0 6px">Trucks with their own Online Kitchen (one tap, they accept in their app):</p><div class="bar">' +
+      if (known && known.length) html += '<p class="small dim" style="margin:14px 0 6px">Trucks with their own ordering account (one tap, they accept in their app):</p><div class="bar">' +
         known.map(function (k) { return '<button class="btn sm" data-add-known="' + esc(k.slug) + '">+ ' + esc((k.emoji ? k.emoji + ' ' : '') + k.name) + '</button>'; }).join('') + '</div>';
     }
     return html + '<div class="msg" id="truckMsg" role="status"></div></div>';

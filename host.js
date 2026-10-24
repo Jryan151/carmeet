@@ -88,10 +88,13 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
   r.get('/sign-in-options', (req, res) => res.set('Cache-Control', 'no-store').json({ password: !!demoHost() }));
   r.post('/password', async (req, res) => {
     if (!demoHost()) return res.status(404).json({ error: 'Sign in with your email.' });
-    if (limited('pw:' + (req.ip || ''), 10, 15 * 60000)) return res.status(429).json({ error: 'Too many tries. Wait a few minutes.' });
+    // Per network (an IPv6 address counts by its /64, which one phone or one attacker gets whole) and for everyone:
+    // 30 wrong tries in 15 minutes across all addresses close it for the rest of those 15 minutes.
+    const ip = String(req.ip || ''); const net = ip.includes(':') && !ip.startsWith('::ffff:') ? ip.split(':').slice(0, 4).join(':') : ip;
+    if (limited('pw:' + net, 10, 15 * 60000) || (hits.get('pw:all') && hits.get('pw:all').n >= 30 && hits.get('pw:all').reset > Date.now())) return res.status(429).json({ error: 'Too many tries. Wait a few minutes.' });
     const given = D.sha('pw:' + String((req.body || {}).password || ''));
     const want = D.sha('pw:' + process.env.DEMO_PASSWORD);
-    if (!crypto.timingSafeEqual(Buffer.from(given), Buffer.from(want))) return res.status(400).json({ error: 'That password isn’t right.' });
+    if (!crypto.timingSafeEqual(Buffer.from(given), Buffer.from(want))) { limited('pw:all', 1e9, 15 * 60000); return res.status(400).json({ error: 'That password isn’t right.' }); }
     const host = await get('SELECT * FROM hosts WHERE slug = ? OR lower(email) = ?', [demoHost(), demoHost()]);
     if (!host) return res.status(404).json({ error: 'That workspace isn’t set up yet.' });
     const t = D.token(24);
@@ -149,17 +152,26 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
       over: t.endsAt < Date.now(), people: m.turnout_people, cars: m.turnout_cars, video: videoShape(m), flyer: m.flyer ? '/uploads/' + m.flyer : null, lot: LotMap.clean(m.lot), venueId: m.venue_id || null, logo: m.logo ? '/uploads/' + m.logo : null, synced: !!m.synced_at && !m.sync_error, syncError: m.sync_error || '', url: N.meetUrl(h, m),
       pageName: m.page_name || '', nameUrl: N.onName(h, m) ? N.nameUrl(h, m) : null, namesOn: true, siteDomain: SITE_DOMAIN() };
   }
+  // The kept truck list is marked old (asked for again on the next view), never thrown away: if the food side is down
+  // at that moment, the page still has the last list to show.
+  const staleTrucks = (ref) => { const c = truckCache.get(ref); if (c) c.stale = true; };
   async function sync(h, m) {
     const s = await K.syncMeet(h, m, N.meetUrl(h, m));
     await run('UPDATE meets SET synced_at = ?, sync_error = ? WHERE id = ?', [s.ok ? Date.now() : null, s.ok ? null : (s.data.error || 'not sent'), m.id]);
-    truckCache.delete(m.ref);
+    staleTrucks(m.ref);
     return s;
   }
   // The look of the trucks' menus follows the host's page (logo, video, colors): re-send upcoming meets when it changes.
+  /** Re-sends meets to the food side, three at a time, without anyone waiting on it. */
+  function syncAll(h, meets) {
+    const list = meets.slice();
+    const worker = async () => { for (let m; (m = list.shift());) await sync(h, m).catch(() => {}); };
+    return Promise.all([worker(), worker(), worker()]).catch((e) => console.error('sync:', e.message));
+  }
   async function refreshLook(hostId) {
     try {
       const h = await get('SELECT * FROM hosts WHERE id = ?', [hostId]);
-      for (const m of await all("SELECT * FROM meets WHERE host_id = ? AND day >= ? AND status = 'on'", [h.id, U.addDays(U.dayKey(Date.now(), tzOf(h)), -1)])) await sync(h, m);
+      await syncAll(h, await all("SELECT * FROM meets WHERE host_id = ? AND day >= ? AND status = 'on'", [h.id, U.addDays(U.dayKey(Date.now(), tzOf(h)), -1)]));
     } catch (e) { console.error('refresh look:', e.message); }
   }
   const own = (req, id) => get('SELECT * FROM meets WHERE id = ? AND host_id = ?', [parseInt(id, 10) || 0, req.me.id]);
@@ -185,8 +197,11 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     res.set('Cache-Control', 'no-store').json({ host: hostShape(h), meet: m ? meetShape(m, h) : null, trucks, preorders: trucks.reduce((n, v) => n + (v.preorders || 0), 0),
       subscribers: subs.n, requests: reqs.n, unlogged, last: last ? meetShape(last, h) : null });
   });
-  const truckShape = (v) => ({ inviteId: v.inviteId, status: v.status, code: v.code, slug: v.slug || null, name: v.name || null, emoji: v.emoji || '',
-    cardReady: !!v.cardReady, payAtTruck: !!v.payAtTruck, paused: !!v.paused, openNow: !!v.openNow, setUp: v.setUp !== false, hostProfile: !!v.hostProfile, preorders: v.preorders || 0, plates: v.plates === undefined ? null : v.plates });
+  // What the food side sends, in the types the portal expects (it puts numbers straight into the page).
+  const num = (x) => (Number.isFinite(Number(x)) ? Number(x) : 0);
+  const str = (x) => (x === undefined || x === null ? null : String(x));
+  const truckShape = (v) => ({ inviteId: num(v.inviteId), status: str(v.status), code: str(v.code), slug: str(v.slug), name: str(v.name), emoji: str(v.emoji) || '',
+    cardReady: !!v.cardReady, payAtTruck: !!v.payAtTruck, paused: !!v.paused, openNow: !!v.openNow, setUp: v.setUp !== false, hostProfile: !!v.hostProfile, preorders: num(v.preorders), plates: v.plates === undefined || v.plates === null ? null : num(v.plates) });
 
   /* ---------- meets ---------- */
   r.get('/meets', signedIn, async (req, res) => {
@@ -209,10 +224,12 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     const rows = await all('SELECT id, title FROM meets WHERE host_id = ? AND day = ? AND id != ?', [h.id, day, notId || 0]);
     return rows.some((x) => name(x.title) === name(title));
   }
-  function readMeet(b, h) {
+  function readMeet(b, h, old) {
     const day = String(b.day || ''); const start = String(b.start || ''); const end = String(b.end || '');
     if (!U.validDate(day)) return { error: 'Pick a date.' };
-    if (day < U.dayKey(Date.now(), tzOf(h))) return { error: 'That date already passed.' };
+    // A meet still going (one that runs past midnight, edited at 12:30 AM) keeps its date.
+    const live = old && old.day === day && U.meetTimes(old, tzOf(h)).endsAt > Date.now();
+    if (day < U.dayKey(Date.now(), tzOf(h)) && !live) return { error: 'That date already passed.' };
     if (!U.TIME_RE.test(start) || !U.TIME_RE.test(end) || start === end) return { error: 'Set a start and end time.' };
     const place = U.clean(b.place, 80);
     if (!place) return { error: 'Where is it?' };
@@ -247,7 +264,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     const h = req.me;
     const old = await own(req, req.params.id);
     if (!old) return res.status(404).json({ error: 'That meet is gone.' });
-    const m = readMeet(req.body || {}, h);
+    const m = readMeet(req.body || {}, h, old);
     if (m.error) return res.status(400).json({ error: m.error });
     if (m.pageName && String(m.pageName).toLowerCase() !== old.page_name) {
       const nm = await N.ensure(h, Object.assign({}, old), m.pageName);
@@ -273,6 +290,8 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     const today = U.dayKey(Date.now(), tzOf(h));
     while (day < today) day = U.addDays(day, 7);
     if (await sameMeetThatDay(h, day, src.title || '')) return res.status(409).json({ error: `You already have this meet on ${day}.` });
+    const upcoming = await get('SELECT COUNT(*) AS n FROM meets WHERE host_id = ? AND day >= ?', [h.id, today]);
+    if (upcoming.n >= 30) return res.status(400).json({ error: 'You have 30 meets coming up. That’s the limit for now.' });
     const now = Date.now();
     // Same spot, same parking map, same header logo (its own copy, so changing one week never touches another).
     let logo = null;
@@ -322,7 +341,8 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
   r.get('/meets/:id/trucks', signedIn, async (req, res) => {
     const m = await own(req, req.params.id);
     if (!m) return res.status(404).json({ error: 'That meet is gone.' });
-    const list = (await trucksFor(m, { fresh: true })).map(truckShape).filter((v) => v.status !== 'removed');
+    const gone = new Set((await all('SELECT truck_slug FROM kit_gone WHERE host_id = ?', [req.me.id])).map((x) => x.truck_slug));
+    const list = (await trucksFor(m, { fresh: true })).map(truckShape).filter((v) => v.status !== 'removed' && !gone.has(v.slug));
     const inNow = new Set(list.filter((v) => v.slug && ['in', 'invited'].includes(v.status)).map((v) => v.slug));
     const vendorRows = await all("SELECT * FROM kit_logos WHERE host_id = ? AND kind = 'vendor' ORDER BY name COLLATE NOCASE", [req.me.id]);
     const mine = new Set(vendorRows.map((k) => k.truck_slug).filter(Boolean));
@@ -339,7 +359,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     if (!m.synced_at) { const s = await sync(req.me, m); if (!s.ok) return res.status(502).json({ error: s.data.error || 'The food side didn’t answer.' }); }
     const r2 = await K.inviteLink(m.ref);
     if (!r2.ok) return res.status(r2.status || 502).json({ error: r2.data.error || 'Couldn’t make a link.' });
-    truckCache.delete(m.ref);
+    staleTrucks(m.ref);
     const tz = tzOf(req.me); const t = U.meetTimes(m, tz);
     const text = `Hey! We'd love to have you at ${m.title || req.me.name + "'s meet"}: ${m.place}, ${U.dayShort(t.startsAt, tz)} ${U.time12(t.startsAt, tz)}–${U.time12(t.endsAt, tz)}. People can pre-order from you ahead of time and pay at your truck. Open this to set up (no account needed): ${r2.data.url}`;
     res.status(201).json({ url: r2.data.url, code: r2.data.code, text });
@@ -372,7 +392,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     await run('DELETE FROM kit_gone WHERE host_id = ? AND truck_slug = ?', [h.id, pf.slug]);
     const r2 = await K.inviteLink(m.ref, pf.slug);
     if (!r2.ok) return { status: r2.status || 502, body: { error: r2.data.error || 'Couldn’t make a link.' } };
-    truckCache.delete(m.ref);
+    staleTrucks(m.ref);
     const text = r2.data.signIn
       ? `Here's a new link for ${k.name}'s pre-order screen (it works once, on the phone that opens it): ${r2.data.url}`
       : `Hey ${k.name}! You're on for ${m.title || h.name + "'s meet"}: ${when}. People can pre-order from you ahead of time and pay at your truck. Open this to set up (no account needed): ${r2.data.url}`;
@@ -386,7 +406,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     if (!m.synced_at) await sync(req.me, m);
     const r2 = await K.addKnown(m.ref, slug);
     if (!r2.ok) return res.status(r2.status || 502).json({ error: r2.data.error || 'Couldn’t invite them.' });
-    truckCache.delete(m.ref);
+    staleTrucks(m.ref);
     res.status(201).json({ ok: true });
   });
   r.delete('/meets/:id/trucks/:inviteId', signedIn, async (req, res) => {
@@ -394,7 +414,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     if (!m) return res.status(404).json({ error: 'That meet is gone.' });
     const r2 = await K.dropInvite(m.ref, req.params.inviteId);
     if (!r2.ok) return res.status(r2.status || 502).json({ error: r2.data.error || 'Couldn’t remove it.' });
-    truckCache.delete(m.ref);
+    staleTrucks(m.ref);
     res.json({ ok: true });
   });
   r.get('/requests', signedIn, async (req, res) => {
@@ -469,13 +489,16 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     if (to.alerts) {
       const subs = await all('SELECT id, email FROM subscribers WHERE host_id = ? AND verified_at IS NOT NULL AND off_at IS NULL', [h.id]);
       const page = m ? N.meetUrl(h, m) : pageUrl(h);
-      for (const s of subs) {
+      // Eight at a time (the provider allows more): 200 people take a few seconds, not a minute.
+      const queue = subs.slice();
+      const one = async (s) => {
         const off = `${SCHEME()}://${SITE_DOMAIN()}/alerts/off?s=${s.id}.${offSig(s.id)}`;
         const ok = await mail.send({ key: `upd-${ins.lastID}-${s.id}`, to: s.email, fromName: h.name, subject, text: `${text}\n\n${page}\n\nStop these emails: ${off}`,
           headers: { 'List-Unsubscribe': `<${off}>` },
           html: mail.shell({ from: h.name, title: subject, html: `<p>${mail.esc(text).replace(/\n/g, '<br>')}</p><p><a href="${page}">See the meet</a></p>`, footer: `<a href="${off}">Stop these emails</a>` }) }).catch(() => false);
         if (ok || !mail.configured()) sent++;
-      }
+      };
+      await Promise.all(Array.from({ length: 8 }, async () => { for (let s; (s = queue.shift());) await one(s); }));
     }
     if (to.vendors && m) { const r2 = await K.notice(m.ref, subject, text); if (r2.ok) sent += r2.data.sent || 0; }
     await run('UPDATE updates SET sent = ? WHERE id = ?', [sent, ins.lastID]);
@@ -538,7 +561,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
   r.delete('/recaps/:id', signedIn, async (req, res) => {
     const x = await get('SELECT * FROM recaps WHERE id = ? AND host_id = ?', [parseInt(req.params.id, 10) || 0, req.me.id]);
     if (!x) return res.status(404).json({ error: 'That recap is gone.' });
-    for (const p of await all('SELECT file FROM recap_photos WHERE recap_id = ?', [x.id])) fs.promises.unlink(path.join(UPLOAD_DIR, p.file)).catch(() => {});
+    for (const p of await all('SELECT file FROM recap_photos WHERE recap_id = ?', [x.id])) unlinkUpload(p.file);
     await run('DELETE FROM recap_photos WHERE recap_id = ?', [x.id]);
     await run('DELETE FROM recaps WHERE id = ?', [x.id]);
     res.json({ ok: true });
@@ -550,6 +573,8 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     const isJpeg = buf.length > 4 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
     const isPng = buf.length > 8 && buf.slice(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
     if (!isJpeg && !isPng) return null;
+    const dim = isJpeg ? jpegSize(buf) : buf.length > 24 ? { w: buf.readUInt32BE(16), h: buf.readUInt32BE(20) } : null;
+    if (!dim || !dim.w || !dim.h || dim.w * dim.h > MAX_PIXELS) return null; // a phone photo is 12 to 50 megapixels
     const out = isJpeg ? stripJpeg(buf) : stripPng(buf);
     if (!out) return null;
     const name = D.token(12) + (isJpeg ? '.jpg' : '.png');
@@ -572,14 +597,14 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     if (!m) return res.status(404).json({ error: 'That meet is gone.' });
     const name = Buffer.isBuffer(req.body) ? await saveImage(req.body) : null;
     if (!name) return res.status(400).json({ error: 'Use the flyer as a JPEG or PNG (a screenshot works).' });
-    if (m.flyer) fs.promises.unlink(path.join(UPLOAD_DIR, path.basename(m.flyer))).catch(() => {});
+    if (m.flyer) unlinkUpload(m.flyer);
     await run('UPDATE meets SET flyer = ?, updated_at = ? WHERE id = ?', [name, Date.now(), m.id]);
     res.json({ meet: meetShape(await get('SELECT * FROM meets WHERE id = ?', [m.id]), req.me) });
   });
   r.delete('/meets/:id/flyer', signedIn, async (req, res) => {
     const m = await own(req, req.params.id);
     if (!m) return res.status(404).json({ error: 'That meet is gone.' });
-    if (m.flyer) fs.promises.unlink(path.join(UPLOAD_DIR, path.basename(m.flyer))).catch(() => {});
+    if (m.flyer) unlinkUpload(m.flyer);
     await run('UPDATE meets SET flyer = NULL, updated_at = ? WHERE id = ?', [Date.now(), m.id]);
     res.json({ meet: meetShape(await get('SELECT * FROM meets WHERE id = ?', [m.id]), req.me) });
   });
@@ -710,9 +735,9 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
       const twin = rows.find((x) => x.id !== t.id && x.file && !x.truck_slug && norm(x.name) && norm(x.name) === norm(t.name));
       if (twin) { await mergeInto(t, twin); twin.merged = true; }
     }
-    for (const k of await all("SELECT * FROM kit_logos WHERE host_id = ? AND truck_slug IS NOT NULL AND file != '' AND (logo_synced IS NULL OR logo_synced != file)", [h.id])) {
-      await syncLogo(h, k).catch(() => {});
-    }
+    const unsent = await all("SELECT * FROM kit_logos WHERE host_id = ? AND truck_slug IS NOT NULL AND file != '' AND (logo_synced IS NULL OR logo_synced != file)", [h.id]);
+    // Sent behind the scenes, one after another: the list answers now.
+    (async () => { for (const k of unsent) await syncLogo(h, k).catch(() => {}); })();
   }
   // What the reader's answer means in the lists: food → Food vendors, club → Clubs, vendor → Vendors (non-food).
   const KIND_OF = { food: 'vendor', club: 'group', vendor: 'sponsor' };
@@ -772,7 +797,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     let name = Buffer.isBuffer(req.body) ? await saveImage(req.body) : null;
     if (!name) return res.status(400).json({ error: 'Use a JPEG or PNG logo.' });
     const trimmed = await V.trimLogo(path.join(UPLOAD_DIR, name), UPLOAD_DIR);
-    if (trimmed) { fs.promises.unlink(path.join(UPLOAD_DIR, name)).catch(() => {}); name = trimmed; }
+    if (trimmed) { unlinkUpload(name); name = trimmed; }
     const ins = await run('INSERT INTO kit_logos (host_id, kind, name, file, created_at) VALUES (?, ?, ?, ?, ?)', [req.me.id, kind, nm, name, Date.now()]);
     res.status(201).json({ logo: kitShape(await get('SELECT * FROM kit_logos WHERE id = ?', [ins.lastID])) });
   });
@@ -818,16 +843,16 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     let name = Buffer.isBuffer(req.body) ? await saveImage(req.body) : null;
     if (!name) return res.status(400).json({ error: 'Use a JPEG or PNG logo.' });
     const trimmed = await V.trimLogo(path.join(UPLOAD_DIR, name), UPLOAD_DIR);
-    if (trimmed) { fs.promises.unlink(path.join(UPLOAD_DIR, name)).catch(() => {}); name = trimmed; }
+    if (trimmed) { unlinkUpload(name); name = trimmed; }
     await run('UPDATE kit_logos SET file = ? WHERE id = ?', [name, k.id]);
-    if (k.file) fs.promises.unlink(path.join(UPLOAD_DIR, k.file)).catch(() => {});
+    if (k.file) unlinkUpload(k.file);
     syncLogo(req.me, await get('SELECT * FROM kit_logos WHERE id = ?', [k.id])).catch(() => {}); // and onto their profile on the food side
     res.json({ logo: kitShape(await get('SELECT * FROM kit_logos WHERE id = ?', [k.id])) });
   });
   r.delete('/kit/:id', signedIn, async (req, res) => {
     const k = await get('SELECT * FROM kit_logos WHERE id = ? AND host_id = ?', [parseInt(req.params.id, 10) || 0, req.me.id]);
     if (!k) return res.status(404).json({ error: 'That logo is gone.' });
-    if (k.file) fs.promises.unlink(path.join(UPLOAD_DIR, k.file)).catch(() => {});
+    if (k.file) unlinkUpload(k.file);
     // Its profile goes with it: pictures, clip, spots, meet history, old addresses.
     for (const x of await all('SELECT file FROM kit_media WHERE kit_id = ?', [k.id])) unlinkUpload(x.file);
     unlinkUpload(k.video); unlinkUpload(k.video_poster); unlinkUpload(k.video_hevc);
@@ -837,20 +862,34 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     await run('UPDATE meets SET venue_id = NULL WHERE venue_id = ?', [k.id]);
     await run('UPDATE members SET club_id = NULL WHERE club_id = ?', [k.id]);
     if (k.truck_slug) {
-      // Its truck leaves every meet still to come, and isn't put back in the lists from an old invite.
+      // Its truck leaves every meet still to come, and isn't put back in the lists from an old invite. The food side
+      // is told behind the scenes, and told again (dropGone, every few minutes) until every invite is gone.
       await run('INSERT OR IGNORE INTO kit_gone (host_id, truck_slug) VALUES (?, ?)', [req.me.id, k.truck_slug]);
       await run('DELETE FROM host_vendors WHERE host_id = ? AND slug = ?', [req.me.id, k.truck_slug]);
-      const tz = tzOf(req.me);
-      const meets = (await all('SELECT * FROM meets WHERE host_id = ? AND ref IS NOT NULL AND day >= ?', [req.me.id, U.addDays(U.dayKey(Date.now(), tz), -1)]))
-        .filter((m) => U.meetTimes(m, tz).endsAt > Date.now());
-      for (const m of meets) {
-        const list = await trucksFor(m, { fresh: true }).catch(() => []);
-        for (const v of list.filter((x) => x.slug === k.truck_slug && ['in', 'invited'].includes(x.status))) await K.dropInvite(m.ref, v.inviteId).catch(() => {});
-        truckCache.delete(m.ref);
-      }
+      await Promise.race([dropGone(req.me.id).catch(() => {}), new Promise((ok) => setTimeout(ok, 5000))]); // usually done by then
     }
     res.json({ ok: true });
   });
+
+  /** Every truck the host deleted (kit_gone) leaves the meets still to come on the food side. Only a real list from
+      the food side counts: a meet whose list can't be had is tried again next time. */
+  async function dropGone(hostId) {
+    const h = await get('SELECT * FROM hosts WHERE id = ?', [hostId]);
+    const gone = new Set((await all('SELECT truck_slug FROM kit_gone WHERE host_id = ?', [hostId])).map((x) => x.truck_slug));
+    if (!h || !gone.size) return;
+    const tz = tzOf(h);
+    const meets = (await all('SELECT * FROM meets WHERE host_id = ? AND day >= ?', [h.id, U.addDays(U.dayKey(Date.now(), tz), -1)])).filter((m) => U.meetTimes(m, tz).endsAt > Date.now());
+    for (const m of meets) {
+      const r2 = await K.meetVendors(m.ref);
+      if (!r2.ok || !Array.isArray(r2.data.vendors)) continue;
+      for (const v of r2.data.vendors.filter((x) => x && gone.has(x.slug) && ['in', 'invited'].includes(x.status))) {
+        // Still deleted? (The host may have sent the same truck a new link since this started.)
+        if (await get('SELECT 1 AS x FROM kit_gone WHERE host_id = ? AND truck_slug = ?', [hostId, v.slug])) await K.dropInvite(m.ref, v.inviteId).catch(() => {});
+      }
+      staleTrucks(m.ref);
+    }
+  }
+  setInterval(async () => { try { for (const x of await all('SELECT DISTINCT host_id FROM kit_gone')) await dropGone(x.host_id); } catch (e) { /* next time */ } }, Number(process.env.DROP_RETRY_MS) || 5 * 60000).unref();
 
   /* ---------- a Food vendor's menu, put in by the host (a photo of their board), so the truck only checks it ---------- */
   r.get('/kit/:id/menu', signedIn, async (req, res) => {
@@ -959,7 +998,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     if (!name) return res.status(400).json({ error: 'Use a JPEG or PNG image.' });
     if (kind === 'logo') {
       const trimmed = await V.trimLogo(path.join(UPLOAD_DIR, name), UPLOAD_DIR);
-      if (trimmed) { fs.promises.unlink(path.join(UPLOAD_DIR, name)).catch(() => {}); name = trimmed; }
+      if (trimmed) { unlinkUpload(name); name = trimmed; }
     }
     await run('INSERT INTO kit_media (kit_id, host_id, kind, file, label, created_at) VALUES (?, ?, ?, ?, ?, ?)', [k.id, req.me.id, kind, name, U.clean(req.query.label, 40) || null, Date.now()]);
     res.status(201).json({ profile: await profileShape(k) });
@@ -1031,8 +1070,8 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     let name = Buffer.isBuffer(req.body) ? await saveImage(req.body) : null;
     if (!name) return res.status(400).json({ error: 'Use a JPEG or PNG image.' });
     const trimmed = await V.trimLogo(path.join(UPLOAD_DIR, name), UPLOAD_DIR);
-    if (trimmed) { fs.promises.unlink(path.join(UPLOAD_DIR, name)).catch(() => {}); name = trimmed; }
-    if (m.logo) fs.promises.unlink(path.join(UPLOAD_DIR, path.basename(m.logo))).catch(() => {});
+    if (trimmed) { unlinkUpload(name); name = trimmed; }
+    if (m.logo) unlinkUpload(m.logo);
     await run('UPDATE meets SET logo = ?, updated_at = ? WHERE id = ?', [name, Date.now(), m.id]);
     const row = await get('SELECT * FROM meets WHERE id = ?', [m.id]);
     sync(req.me, row).catch(() => {}); // the trucks' menus for this meet wear it too
@@ -1041,7 +1080,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
   r.delete('/meets/:id/logo', signedIn, async (req, res) => {
     const m = await own(req, req.params.id);
     if (!m) return res.status(404).json({ error: 'That meet is gone.' });
-    if (m.logo) fs.promises.unlink(path.join(UPLOAD_DIR, path.basename(m.logo))).catch(() => {});
+    if (m.logo) unlinkUpload(m.logo);
     await run('UPDATE meets SET logo = NULL, updated_at = ? WHERE id = ?', [Date.now(), m.id]);
     const row = await get('SELECT * FROM meets WHERE id = ?', [m.id]);
     sync(req.me, row).catch(() => {});
@@ -1052,29 +1091,46 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     if (!name) return res.status(400).json({ error: 'Use a JPEG or PNG image.' });
     // Trimmed to the logo itself (no black margin around it); the untrimmed copy is dropped.
     const trimmed = await V.trimLogo(path.join(UPLOAD_DIR, name), UPLOAD_DIR);
-    if (trimmed) { fs.promises.unlink(path.join(UPLOAD_DIR, name)).catch(() => {}); name = trimmed; }
-    if (req.me.logo && req.me.logo.startsWith('/uploads/')) fs.promises.unlink(path.join(UPLOAD_DIR, path.basename(req.me.logo))).catch(() => {});
+    if (trimmed) { unlinkUpload(name); name = trimmed; }
+    if (req.me.logo && req.me.logo.startsWith('/uploads/')) unlinkUpload(req.me.logo);
     await run('UPDATE hosts SET logo = ?, updated_at = ? WHERE id = ?', ['/uploads/' + name, Date.now(), req.me.id]);
     refreshLook(req.me.id);
     res.json({ host: hostShape(await get('SELECT * FROM hosts WHERE id = ?', [req.me.id])) });
   });
 
   /* ---------- background video: the host's default, or one for a single meet ---------- */
-  let videoQueue = Promise.resolve(); // one at a time, so a big upload never starves the site of CPU
-  // The smaller HEVC copies wait behind every new clip: a clip shows as soon as its H.264 loop is made, and its HEVC copy
-  // (about four times the work) follows when the queue is free. Kept only if the row still plays that same clip.
-  let hevcQueue = Promise.resolve();
+  /* Video work, one encode at a time for real: a new clip's H.264 loop goes first (it shows as soon as it's made), the
+     HEVC copies after, never two at once (the HEVC copy used to start next to the next clip's H.264). */
+  const jobs = { main: [], hevc: [] };
+  let working = false;
+  async function pump() {
+    if (working) return;
+    working = true;
+    try { for (let fn; (fn = jobs.main.shift() || jobs.hevc.shift());) { try { await fn(); } catch (e) { console.error('video:', e.message); } } } finally { working = false; }
+  }
+  const enqueue = (kind, fn) => { jobs[kind].push(fn); pump(); };
   function hevcLater(table, id, video, fileCol, hevcCol) {
-    hevcQueue = hevcQueue.then(() => videoQueue).then(async () => {
+    enqueue('hevc', async () => {
+      const still = await get(`SELECT 1 AS x FROM ${table} WHERE id = ? AND ${fileCol} = ?`, [id, video]);
+      if (!still) return; // replaced or removed while it waited
       const hv = await V.hevcOf(video, UPLOAD_DIR);
       if (!hv) return;
       const r2 = await run(`UPDATE ${table} SET ${hevcCol} = ? WHERE id = ? AND ${fileCol} = ?`, [hv, id, video]);
       if (!r2.changes) unlinkUpload(hv); // replaced or removed meanwhile
-    }).catch((e) => console.error('hevc:', e.message));
+    });
   }
   const tmpDir = path.join(UPLOAD_DIR, 'tmp');
   fs.mkdirSync(tmpDir, { recursive: true });
-  const unlinkUpload = (f) => { if (f) fs.promises.unlink(path.join(UPLOAD_DIR, path.basename(f))).catch(() => {}); };
+  /** An upload removed, with its phone-size copies (<name>.s<size>.webp) and what the pages remembered about it. */
+  const COPY_SIZES = [24, 256, 480, 512, 720, 1080, 1280];
+  const unlinkUpload = (f) => {
+    if (!f) return;
+    const name = path.basename(String(f));
+    fs.promises.unlink(path.join(UPLOAD_DIR, name)).catch(() => {});
+    const base = name.replace(/\.[A-Za-z0-9]+$/, '');
+    for (const n of COPY_SIZES) fs.promises.unlink(path.join(UPLOAD_DIR, `${base}.s${n}.webp`)).catch(() => {});
+    Vw.forget(name);
+  };
   async function takeVideo(req, res, table, id) {
     if (!V.ffmpegOk()) return res.status(503).json({ error: 'Video processing isn’t installed on the server yet (ffmpeg).' });
     const row = await get(`SELECT * FROM ${table} WHERE id = ?`, [id]);
@@ -1083,7 +1139,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     try { up = await V.receive(req, tmpDir); } catch (e) { return res.status(400).json({ error: e.message }); }
     await run(`UPDATE ${table} SET video_status = 'processing', video_error = NULL WHERE id = ?`, [id]);
     res.status(202).json({ video: { status: 'processing' } });
-    videoQueue = videoQueue.then(async () => {
+    enqueue('main', async () => {
       try {
         const out = await V.process(up.file, UPLOAD_DIR);
         const old = await get(`SELECT video, video_poster, video_hevc FROM ${table} WHERE id = ?`, [id]);
@@ -1128,7 +1184,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     let name = Buffer.isBuffer(req.body) ? await saveImage(req.body) : null;
     if (!name) return res.status(400).json({ error: 'Use a JPEG or PNG image.' });
     const trimmed = await V.trimLogo(path.join(UPLOAD_DIR, name), UPLOAD_DIR);
-    if (trimmed) { fs.promises.unlink(path.join(UPLOAD_DIR, name)).catch(() => {}); name = trimmed; }
+    if (trimmed) { unlinkUpload(name); name = trimmed; }
     const old = await get('SELECT logo FROM site WHERE id = 1');
     if (old && old.logo) unlinkUpload(old.logo);
     await run('UPDATE site SET logo = ?, updated_at = ? WHERE id = 1', [name, Date.now()]);
@@ -1185,7 +1241,12 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
       [name, U.clean(pick('tagline', 'tagline'), 120), U.clean(pick('city', 'city'), 60), accent, U.handle(pick('instagram', 'instagram')), U.handle(pick('tiktok', 'tiktok')), U.handle(pick('youtube', 'youtube')),
         U.cleanBlock(pick('rules', 'rules'), 600), close, domain || null, domainOn, Date.now(), h.id]);
     const fresh = await get('SELECT * FROM hosts WHERE id = ?', [h.id]);
-    if (closeChanged || name !== h.name || accent !== h.accent) { for (const m of await all("SELECT * FROM meets WHERE host_id = ? AND day >= ? AND status = 'on'", [h.id, U.dayKey(Date.now(), tzOf(h))])) await sync(fresh, m); }
+    // The food side hears about it behind the scenes (each meet shows "not sent" until it has), so a slow or hung
+    // food side never holds up saving Settings.
+    if (closeChanged || name !== h.name || accent !== h.accent) {
+      const all3 = syncAll(fresh, await all("SELECT * FROM meets WHERE host_id = ? AND day >= ? AND status = 'on'", [h.id, U.dayKey(Date.now(), tzOf(h))]));
+      await Promise.race([all3, new Promise((ok) => setTimeout(ok, 5000))]); // usually done by then; never more than 5 s
+    }
     res.json({ host: hostShape(fresh) });
   });
 
@@ -1326,8 +1387,11 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     if (n.n >= MAX_MEMBER_PHOTOS) return res.status(400).json({ error: `${MAX_MEMBER_PHOTOS} photos at most. Remove one first.` });
     const name = Buffer.isBuffer(req.body) ? await saveImage(req.body) : null;
     if (!name) return res.status(400).json({ error: 'Use a JPEG or PNG photo.' });
-    await run('INSERT INTO member_photos (member_id, file, caption, created_at) VALUES (?, ?, ?, ?)', [m.id, name, U.clean(req.query.caption, 120) || null, Date.now()]);
-    V.small(path.join(UPLOAD_DIR, name), UPLOAD_DIR, 1080).catch(() => {}); // the feed's size, ready before anyone looks
+    // Counted and added in one statement: photos arriving together can't pass the limit.
+    const added = await run('INSERT INTO member_photos (member_id, file, caption, created_at) SELECT ?, ?, ?, ? WHERE (SELECT COUNT(*) FROM member_photos WHERE member_id = ?) < ?',
+      [m.id, name, U.clean(req.query.caption, 120) || null, Date.now(), m.id, MAX_MEMBER_PHOTOS]);
+    if (!added.changes) { unlinkUpload(name); return res.status(400).json({ error: `${MAX_MEMBER_PHOTOS} photos at most. Remove one first.` }); }
+    Vw.small(name, 1080); // the feed's size, queued with the other picture copies (one ffmpeg at a time)
     res.status(201).json({ member: await memberShape(m) });
   });
   r.put('/members/:id/photos/:pid', memberOnly, async (req, res) => {
@@ -1352,7 +1416,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     try { up = await V.receive(req, tmpDir); } catch (e) { return res.status(400).json({ error: e.message }); }
     const ins = await run("INSERT INTO member_photos (member_id, kind, file, status, caption, created_at) VALUES (?, 'video', '', 'processing', ?, ?)", [m.id, U.clean(req.query.caption, 120) || null, Date.now()]);
     res.status(202).json({ member: await memberShape(m) });
-    videoQueue = videoQueue.then(async () => {
+    enqueue('main', async () => {
       try {
         const out = await V.process(up.file, UPLOAD_DIR);
         const still = await get('SELECT id FROM member_photos WHERE id = ?', [ins.lastID]);
@@ -1371,7 +1435,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     let name = Buffer.isBuffer(req.body) ? await saveImage(req.body) : null;
     if (!name) return res.status(400).json({ error: 'Use a JPEG or PNG logo.' });
     const trimmed = await V.trimLogo(path.join(UPLOAD_DIR, name), UPLOAD_DIR);
-    if (trimmed) { fs.promises.unlink(path.join(UPLOAD_DIR, name)).catch(() => {}); name = trimmed; }
+    if (trimmed) { unlinkUpload(name); name = trimmed; }
     unlinkUpload(m.header_file);
     await run("UPDATE members SET header_file = ?, header = 'logo', updated_at = ? WHERE id = ?", [name, Date.now(), m.id]);
     res.json({ member: await memberShape(await get('SELECT * FROM members WHERE id = ?', [m.id])) });
@@ -1382,6 +1446,19 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
   return r;
 };
 
+/* Its width and height, from the first frame header (SOF0–SOF15, not DHT/JPG/DAC), or null. */
+const MAX_PIXELS = 50e6;
+function jpegSize(buf) {
+  let i = 2;
+  while (i + 9 < buf.length) {
+    if (buf[i] !== 0xff) return null;
+    const m = buf[i + 1];
+    if (m >= 0xc0 && m <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(m)) return { h: buf.readUInt16BE(i + 5), w: buf.readUInt16BE(i + 7) };
+    if ((m >= 0xd0 && m <= 0xd7) || m === 0x01) { i += 2; continue; }
+    i += 2 + buf.readUInt16BE(i + 2);
+  }
+  return null;
+}
 /* A JPEG without its APP1 (Exif, XMP: camera, time and GPS) and APP13 (IPTC) blocks. Everything else is kept as is. */
 function stripJpeg(buf) {
   const out = [buf.slice(0, 2)];
