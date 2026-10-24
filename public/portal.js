@@ -132,8 +132,8 @@
   function videoCard(v, scope, id) {
     var where = scope === 'meet' ? 'this meet' : scope === 'site' ? 'the front page' : scope === 'portal' ? 'your portal' : scope === 'vendor' ? 'their profile' : 'your page';
     var st = v && v.status;
-    return '<div class="card"><h3>' + (scope === 'site' ? 'Front page video' : scope === 'portal' ? 'Portal background' : scope === 'vendor' ? 'Their clip' : 'Background video' + (scope === 'meet' ? ' for this meet' : '')) + '</h3>' +
-      '<p class="small dim">' + (scope === 'vendor' ? 'Plays behind their profile and their menu. Pick footage that fits them (their truck at a meet is the best). Without one, your usual background plays.' : scope === 'portal' ? 'Plays behind this portal, only for you.' : scope === 'meet' ? 'Plays behind this meet’s date instead of your usual one. Last week’s recap footage works well.' : scope === 'site' ? 'Plays at the top of ' + esc(location.host) + ', the site’s own front page. Only you see this.' : 'Plays behind the date at the top of your page, silent and on repeat.') +
+    return '<div class="card"><h3>' + (scope === 'site' ? 'Main page header' : scope === 'portal' ? 'Portal background' : scope === 'vendor' ? 'Their clip' : 'Background video' + (scope === 'meet' ? ' for this meet' : '')) + '</h3>' +
+      '<p class="small dim">' + (scope === 'vendor' ? 'Plays behind their profile and their menu. Pick footage that fits them (their truck at a meet is the best). Without one, your usual background plays.' : scope === 'portal' ? 'Plays behind this portal, only for you.' : scope === 'meet' ? 'Plays behind this meet’s date instead of your usual one. Last week’s recap footage works well.' : scope === 'site' ? 'Plays at the top of ' + esc(location.host) + ', the main page, silent and on repeat. Only you can change it.' : 'Plays behind the date at the top of your page, silent and on repeat.') +
       ' Any clip from your phone: it becomes a 15-second 1080p loop.</p>' +
       (st === 'ready' ? '<img src="' + esc(v.thumb || v.poster) + '" alt="" loading="lazy" decoding="async" style="width:100%;max-height:260px;object-fit:cover;border-radius:8px;margin:6px 0">' : '') +
       (st === 'processing' ? '<p class="msg ok">Processing. It shows on ' + where + ' in a minute or two.</p>' : '') +
@@ -729,11 +729,12 @@
 
   /* ---------- settings and recaps ---------- */
   /* ---------- Settings: Food vendors and Clubs (kept as logos in the kit, each with an Instagram) ---------- */
-  var listOpen = null, menuDraft = null;
+  var listOpen = null, menuDraft = null, allLogos = [];
   function drawLists() {
     api('GET', '/kit').then(function (r) {
       if (!r.ok || !$('listVendors') || !$('listClubs')) return;
       var logos = r.d.logos || [];
+      allLogos = logos;
       $('listVendors').innerHTML = listCard('vendor', 'Food vendors', 'Trucks you work with. For a meet, each gets its own link (no email or phone): it opens straight to their truck, with their menu ready. Their logo shows under Food on your page.',
         logos.filter(function (l) { return l.kind === 'vendor'; }));
       $('listOthers').innerHTML = listCard('sponsor', 'Vendors (not food)', 'Shops, merch, detailers, sponsors. Their logos show under Vendors on your page and open their Instagram.', logos.filter(function (l) { return l.kind === 'sponsor'; }));
@@ -742,6 +743,14 @@
       if (listOpen && menuDraft === null) { var k = logos.filter(function (l) { return l.id === listOpen; })[0]; if (k && k.kind !== 'group') api('GET', '/kit/' + k.id + '/menu').then(function (m) { var el = document.querySelector('[data-menu-count="' + k.id + '"]'); if (el && m.ok) el.textContent = m.d.foodOn ? (m.d.items ? m.d.items + ' item' + (m.d.items === 1 ? '' : 's') + ' on their menu' : 'No menu yet') : ''; }); }
       ['listVendors', 'listOthers', 'listClubs', 'listVenues'].forEach(function (id) { $(id).onclick = listClick; $(id).onchange = listChange; });
     });
+  }
+  // The same vendor twice (a truck with no logo, and its logo in the lists): pick the logo and the two become one.
+  function useLogoPick(l) {
+    var others = allLogos.filter(function (x) { return x.id !== l.id && x.url && x.kind !== 'venue' && (!x.truckSlug || !l.truckSlug || x.truckSlug === l.truckSlug); });
+    if (!others.length) return '';
+    return '<label>Or use a logo already in your lists</label><select data-ent-use="' + l.id + '"><option value="">Pick one…</option>' +
+      others.map(function (x) { return '<option value="' + x.id + '">' + esc(x.name) + '</option>'; }).join('') + '</select>' +
+      '<p class="small dim" style="margin:4px 0 0">The two become one vendor with that logo (it goes to their menu page too).</p>';
   }
   function face(l) { return l.url ? '<img src="' + esc(l.thumb || l.url) + '" alt="" loading="lazy" decoding="async">' : '<span>' + (l.kind === 'group' ? '🚗' : '🍽') + '</span>'; }
   function listCard(kind, title, sub, list) {
@@ -759,6 +768,7 @@
             '<label>Instagram</label><input name="instagram" maxlength="60" placeholder="@handle" value="' + esc(l.instagram ? '@' + l.instagram : '') + '">' +
             (club ? '<label>A short line (optional)</label><input name="note" maxlength="80" value="' + esc(l.note) + '">' : '') +
             '<label>Logo</label><input type="file" accept="image/jpeg,image/png" data-ent-logo="' + l.id + '">' +
+            (kind === 'vendor' ? useLogoPick(l) : '') +
             (club ? '' : '<label>Profile page</label><p class="small dim" style="margin:0 0 6px">' + (l.pageOn ? 'On: ' + esc(l.pageUrl.replace(/^https?:\/\//, '')) : 'Off. Build it from their Instagram, then turn it on.') + '</p><button class="btn sm" type="button" data-profile="' + l.id + '">Edit profile page</button>') +
             (club ? '' : '<label>Menu</label><p class="small dim" data-menu-count="' + l.id + '">…</p>' + menuDraftHtml(l) +
               '<label class="btn sm" style="display:inline-flex;margin:0">Snap their menu board<input type="file" accept="image/jpeg,image/png" data-ent-menu="' + l.id + '" hidden></label>' +
@@ -825,6 +835,11 @@
   }
   function listChange(e) {
     var t = e.target, f = t.files && t.files[0];
+    if (t.hasAttribute('data-ent-use') && t.value) {
+      var uid = t.getAttribute('data-ent-use');
+      api('PUT', '/kit/' + uid, { logoFrom: +t.value }).then(function (r) { if (!r.ok) return say(document.querySelector('[data-ent-msg="' + uid + '"]'), r.d.error); drawLists(); });
+      return;
+    }
     if (t.hasAttribute('data-ent-logo') && f) {
       var id = t.getAttribute('data-ent-logo');
       api('POST', '/kit/' + id + '/image', null, f).then(function (r) { if (!r.ok) return say(document.querySelector('[data-ent-msg="' + id + '"]'), r.d.error); drawLists(); });
@@ -956,22 +971,24 @@
         '<div class="grid2"><div><label for="sTt">TikTok</label><input id="sTt" maxlength="60" value="' + esc(me.tiktok) + '"></div><div><label for="sYt">YouTube</label><input id="sYt" maxlength="60" value="' + esc(me.youtube) + '"></div></div>' +
         '<div class="checks"><label><input type="checkbox" id="sAlerts"' + (me.alertsOn ? ' checked' : '') + '> Email alerts: a sign-up on your page, and an email to the list when you post or change a meet</label></div>' +
         '<label for="sRules">House rules (one per line)</label><textarea id="sRules" maxlength="600">' + esc(me.rules) + '</textarea>' +
-        '<label for="sClose">Food pre-orders close</label><select id="sClose">' + [[30, '30 minutes before'], [60, '1 hour before'], [120, '2 hours before'], [180, '3 hours before'], [240, '4 hours before'], [360, '6 hours before']].map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === me.closeMinutes ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select>' +
+        '<h3 style="margin:18px 0 4px">Food orders</h3><p class="small dim" style="margin:0">Pre-ordering until the meet starts, ordering during the meet, then closed. Trucks that take cards always take orders; this switch is for trucks paid at the truck.</p>' +
+        '<div class="checks"><label><input type="checkbox" id="sFoodOn"' + (me.foodOrdersOn ? ' checked' : '') + '> Online orders for food trucks paid at the truck</label></div>' +
+        '<label for="sStop">Stop taking orders</label><select id="sStop">' + [[15, '15 minutes before the end'], [30, '30 minutes before the end'], [45, '45 minutes before the end'], [60, '1 hour before the end'], [90, '1½ hours before the end'], [120, '2 hours before the end']].map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === (me.stopMinutes || 30) ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select>' +
         '<div class="bar"><button class="btn go" type="submit">Save</button></div><div class="msg" id="setMsg" role="status"></div></form></div>';
       html += '<div class="card"><h3>Logo</h3>' + (me.logo ? '<img src="' + esc(me.logo) + '" alt="" style="width:64px;height:64px;border-radius:10px;object-fit:cover;margin-bottom:8px">' : '') +
         '<input type="file" id="logoFile" accept="image/jpeg,image/png" aria-label="Logo image"><div class="msg" id="logoMsg" role="status"></div></div>';
       html += '<div id="listVendors"></div><div id="listClubs"></div><div id="listOthers"></div><div id="listVenues"></div>';
       html += videoCard(me.video, 'host');
+      if (me.owner && siteVideo) html += videoCard(siteVideo, 'site');
       html += videoCard(portalVideo, 'portal');
       html += '<div class="card"><h3>Demo mode</h3><p class="small dim">See your page filled in: sample food trucks plus every vendor and club logo in your Flyer kit. Only you see it; nothing is saved or shown to anyone else.</p>' +
         '<div class="bar"><a class="btn go" href="/' + esc(me.slug) + '?demo=1" target="_blank" rel="noopener">Open demo</a></div></div>';
       if (me.owner && siteVideo) {
-        html += '<div class="card"><h3>Front page</h3><p class="small dim">' + esc(location.host) + ' itself: your logo on top, a line under it, then Upcoming meets, Member profiles and Vendors over the front page video. <a href="/" target="_blank" rel="noopener">See it</a></p>' +
+        html += '<div class="card"><h3>Front page</h3><p class="small dim">' + esc(location.host) + ' itself: your logo on top, a line under it, then Upcoming meets, Member profiles and Vendors over the main page header (set it above with the other backgrounds). <a href="/" target="_blank" rel="noopener">See it</a></p>' +
           (siteFront.logo ? '<img src="' + esc(siteFront.logo) + '" alt="" style="max-width:200px;max-height:90px;object-fit:contain;margin:6px 0;background:#000;border-radius:8px;padding:6px">' : '') +
           '<label for="siteLogo">' + (siteFront.logo ? 'Change the logo' : 'Logo (a PNG with a see-through background looks best)') + '</label><input type="file" id="siteLogo" accept="image/jpeg,image/png">' +
           '<label for="siteLine">Line under it (optional)</label><input id="siteLine" maxlength="120" placeholder="Arizona car meets, clubs and builds" value="' + esc(siteFront.tagline || '') + '">' +
           '<div class="bar"><button class="btn sm go" type="button" id="siteLineSave">Save</button></div><div class="msg" id="siteMsg" role="status"></div></div>';
-        html += videoCard(siteVideo, 'site');
       }
       html += '<div class="card"><h3>Recap</h3><p class="small dim">The newest recap shows on your page: a video link and up to 9 photos.</p><form id="recapForm">' +
         '<label for="rVideo">Video link (YouTube, Instagram, TikTok, Vimeo)</label><input id="rVideo" maxlength="300" placeholder="https://youtube.com/watch?v=…">' +
@@ -990,7 +1007,7 @@
         var b;
         if ((b = e.target.closest('[data-video-drop]'))) {
           var sc = b.getAttribute('data-video-drop');
-          if (confirm(sc === 'site' ? 'Remove the front page video?' : sc === 'portal' ? 'Remove the portal background?' : 'Remove the background video?')) api('DELETE', sc === 'site' ? '/site-video' : sc === 'portal' ? '/portal-video' : '/video').then(drawSettings);
+          if (confirm(sc === 'site' ? 'Remove the main page header?' : sc === 'portal' ? 'Remove the portal background?' : 'Remove the background video?')) api('DELETE', sc === 'site' ? '/site-video' : sc === 'portal' ? '/portal-video' : '/video').then(drawSettings);
           return;
         }
         if ((b = e.target.closest('[data-accent]'))) { accent = b.getAttribute('data-accent'); Array.prototype.forEach.call(document.querySelectorAll('[data-accent]'), function (x) { x.setAttribute('aria-pressed', String(x === b)); }); document.documentElement.style.setProperty('--accent', accent); }
@@ -999,7 +1016,7 @@
       };
       $('setForm').onsubmit = function (e) {
         e.preventDefault();
-        api('PUT', '/settings', { name: $('sName').value.trim(), city: $('sCity').value.trim(), accent: accent, instagram: $('sIg').value.trim(), tiktok: $('sTt').value.trim(), youtube: $('sYt').value.trim(), rules: $('sRules').value, closeMinutes: +$('sClose').value, alertsOn: $('sAlerts').checked })
+        api('PUT', '/settings', { name: $('sName').value.trim(), city: $('sCity').value.trim(), accent: accent, instagram: $('sIg').value.trim(), tiktok: $('sTt').value.trim(), youtube: $('sYt').value.trim(), rules: $('sRules').value, foodOrdersOn: $('sFoodOn').checked, stopMinutes: +$('sStop').value, alertsOn: $('sAlerts').checked })
           .then(function (r) { if (!r.ok) return say($('setMsg'), r.d.error); me = r.d.host; $('whoName').textContent = me.name; say($('setMsg'), 'Saved.', true); });
       };
       if ($('siteLogo')) $('siteLogo').onchange = function () {

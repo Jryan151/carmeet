@@ -280,6 +280,35 @@ test('only the site owner sets the front page (with none named, the first host)'
   assert.equal(me.owner, false);
 });
 
+test('the main page header: the owner uploads it in Settings; until then the owner’s own background plays', async () => {
+  const D = (() => { process.env.DB_FILE = ctx.dbFile; return require('../db'); })();
+  await D.run("UPDATE hosts SET video = 'own.mp4', video_poster = 'own.jpg', video_status = 'ready' WHERE id = 1");
+  let r = await request(ctx, 'GET', SITE, '/');
+  assert.match(r.text, /data-src="\/uploads\/own\.mp4"/, 'no header yet: the owner’s background');
+  await D.run("UPDATE site SET video = 'main.mp4', video_poster = 'main.jpg', video_status = 'ready' WHERE id = 1");
+  r = await request(ctx, 'GET', SITE, '/');
+  assert.match(r.text, /data-src="\/uploads\/main\.mp4"/, 'the header once it’s ready');
+  assert.ok(!/own\.mp4/.test(r.text));
+  await D.run("UPDATE site SET video = NULL, video_poster = NULL, video_status = NULL WHERE id = 1");
+  await D.run("UPDATE hosts SET video = NULL, video_poster = NULL, video_status = NULL WHERE id = 1");
+});
+
+test('food orders in Settings: one switch (off to start) and when ordering stops, sent to the food side', async () => {
+  let me = (await request(ctx, 'GET', SITE, '/api/host/me', { cookie: C })).json.host;
+  assert.equal(me.foodOrdersOn, false, 'off to start');
+  assert.equal(me.stopMinutes, 30);
+  const r = await request(ctx, 'PUT', SITE, '/api/host/settings', { cookie: C, body: { foodOrdersOn: true, stopMinutes: 45 } });
+  assert.equal(r.status, 200, r.text);
+  me = (await request(ctx, 'GET', SITE, '/api/host/me', { cookie: C })).json.host;
+  assert.equal(me.foodOrdersOn, true);
+  assert.equal(me.stopMinutes, 45);
+  const put = k().calls.filter((c) => c.method === 'PUT' && c.body && c.body.stopMinutes !== undefined).slice(-1)[0];
+  assert.ok(put, 'upcoming meets re-sent');
+  assert.equal(put.body.stopMinutes, 45);
+  assert.equal(put.body.payAtTruckOrders, true);
+  await request(ctx, 'PUT', SITE, '/api/host/settings', { cookie: C, body: { foodOrdersOn: false, stopMinutes: 30 } });
+});
+
 test('a meet’s flyer is the page’s main picture and its link preview', async () => {
   const zlib = require('node:zlib');
   // A tiny real PNG (1×1).

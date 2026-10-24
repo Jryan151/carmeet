@@ -184,7 +184,7 @@ function minis(list) {
   return `<div class="minis">${list.map((k) => {
     const face = k.img ? `<img src="${esc(k.img)}" alt="" loading="lazy">` : `<span class="emoji" aria-hidden="true">${esc(k.emoji || '🍽')}</span>`;
     const open = k.open ? '<span class="live" aria-hidden="true"></span>' : '';
-    const label = `${k.name}${k.open ? ', open now' : ''}${k.tag ? ': ' + (k.can ? 'pre-order' : 'menu') : k.profile ? '' : k.external ? ': Instagram' : ''}`;
+    const label = `${k.name}${k.open ? ', open now' : ''}${k.tag ? ': ' + (k.can ? 'order' : 'menu') : k.profile ? '' : k.external ? ': Instagram' : ''}`;
     const newTab = !k.profile && (k.external || !k.tag);
     return k.href
       ? `<a class="mini${k.tag ? ' menu' : ''}" href="${esc(k.href)}"${newTab ? ' rel="noopener" target="_blank"' : ''} aria-label="${esc(label)}" title="${esc(k.name)}">${face}${open}${k.tag ? `<span class="tag">${k.tag}</span>` : ''}</a>`
@@ -204,7 +204,7 @@ function menuLink(v, m, mpath, ctx, canOrder) {
 }
 
 /** When and where: day, date, time, the spot with directions, and how soon. Shown under "The spot". */
-function when(m, tz, { live } = {}) {
+function when(m, tz, { live, venue } = {}) {
   const t = U.meetTimes(m, tz);
   const off = m.status === 'canceled';
   const date = U.fmt(t.startsAt, tz, { month: 'short', day: 'numeric' });
@@ -215,8 +215,8 @@ function when(m, tz, { live } = {}) {
   <div class="date">${esc(date)}</div>
   <div class="time">${esc(U.time12(t.startsAt, tz))}–${esc(U.time12(t.endsAt, tz))}</div>
   ${off ? '<div class="soon">Canceled</div>' : live ? `<div class="soon" data-countdown="${t.startsAt}" data-ends="${t.endsAt}"></div>` : ''}
-  <p class="where">${esc(m.place)}${m.address ? `<br><span class="dim">${esc(m.address)}</span>` : ''}</p>
-  ${maps ? `<a class="btn" href="${esc(maps)}" rel="noopener">Directions</a>` : ''}
+  ${venue ? '' : `<p class="where">${esc(m.place)}${m.address ? `<br><span class="dim">${esc(m.address)}</span>` : ''}</p>
+  ${maps ? `<a class="btn" href="${esc(maps)}" rel="noopener">Directions</a>` : ''}`}
 </div>`;
 }
 
@@ -254,12 +254,16 @@ function parkingMap(m) {
 }
 
 /** The business the meet is at (it lets them use its lot): logo, name, a line about it, its Instagram. */
-function venueCard(v) {
+/** Where the meet is, when it's at a saved location: just the address (tap for directions), with the location's logo
+    and Instagram when it has them. It's the only place the address shows then. */
+function venueCard(v, m) {
   if (!v) return '';
   const ig = v.instagram ? `https://instagram.com/${encodeURIComponent(v.instagram)}` : null;
+  const addr = m.address || m.place;
+  const maps = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}`;
   return `<div class="venue">
   <div class="mini">${v.file ? `<img src="${esc(small(v.file, 256))}" alt="" loading="lazy">` : '<span class="emoji" aria-hidden="true">📍</span>'}</div>
-  <div class="v-info"><div class="small dim">At</div><div class="v-title">${esc(v.name)}</div>${v.note ? `<div class="small dim">${esc(v.note)}</div>` : ''}</div>
+  <a class="v-info" href="${esc(maps)}" rel="noopener" style="text-decoration:none;color:inherit"><div class="v-title">${esc(addr)}</div><div class="small dim">Tap for directions</div></a>
   ${ig ? `<a class="btn sm" href="${esc(ig)}" rel="noopener" target="_blank">Instagram</a>` : ''}
 </div>`;
 }
@@ -272,14 +276,17 @@ function meetPage(host, m, ctx) {
   const over = t.endsAt < Date.now();
   const trucks = (ctx.trucks || []).filter((v) => v.status === 'in');
   // Who takes pre-orders: card trucks, and in meet mode also trucks paid at the truck (the night kit), unless paused.
-  const takes = (v) => !v.paused && (v.cardReady || (ctx.meetMode && v.payAtTruck));
+  // Who's taking orders right now: the food side says the stage (pre-ordering, ordering, or closed: off, paused,
+  // or past the cutoff); a food side without stages falls back to cards, or paid at the truck in meet mode.
+  const takes = (v) => (v.ordering ? v.ordering !== 'closed' : !v.paused && (v.cardReady || (ctx.meetMode && v.payAtTruck)));
   const anyPreorder = !over && m.status === 'on' && trucks.some(takes);
   const mpath = `${base}/${m.day}`;
   const rules = String(host.rules || '').split('\n').map((s) => s.trim()).filter(Boolean);
   const foodNames = trucks.map((v) => v.name).concat((ctx.kitVendors || []).filter((k) => k.kind === 'vendor').map((k) => k.name)).filter((n, i, a) => n && a.indexOf(n) === i);
   const desc = `${U.dayLong(t.startsAt, tz)}, ${U.time12(t.startsAt, tz)} at ${ctx.venue ? ctx.venue.name + ', ' : ''}${m.place}.${foodNames.length ? ' Food: ' + foodNames.join(', ') + '.' : ''}`;
   // The background loop: this meet's own clip, or the host's usual one.
-  const vid = m.video && m.video_status === 'ready' ? m : host.video && host.video_status === 'ready' ? host : null;
+  // On the site's main page, the owner's main page header plays first.
+  const vid = ctx.headerVid || (m.video && m.video_status === 'ready' ? m : host.video && host.video_status === 'ready' ? host : null);
   // The top of the page: the host's logo (or name), the flyer, and the buttons. When and where are under "The spot".
   const round = !!(m.logo || host.logo); // the meet's own header logo, else the host's usual one
   let body = (ctx.demo ? `<div class="demo-bar" role="note"><b>Demo mode</b> · sample trucks and every logo in your kit. Only you see this. <a href="/host">Back to the portal</a></div>` : '') +
@@ -291,13 +298,13 @@ function meetPage(host, m, ctx) {
   ${ctx.isHome ? '' : `<p class="small dim" style="text-align:center"><a href="${esc(base || '/')}">Next meet</a></p>`}
   ${over ? '<p class="dim" style="text-align:center">This meet is over.</p>' : m.status === 'canceled' ? '<p class="soon-line">This meet is canceled.</p>' : ''}
   ${!over && m.status === 'on' ? `<div class="actions">
-    ${anyPreorder ? `<a class="btn go" href="#food">Pre-order food</a>` : ''}
+    ${anyPreorder ? `<a class="btn go" href="#food">${trucks.some((v) => v.ordering === 'now') ? 'Order food' : 'Pre-order food'}</a>` : ''}
     ${alertsBtn(host, !anyPreorder)}
   </div>` : ''}
   ${m.notes ? `<p class="dim" style="margin-top:10px">${esc(m.notes)}</p>` : ''}
 </section>`;
   // When and where, right under the top.
-  body += `<section id="spot"><h2>The spot</h2>${when(m, tz, { live: !over })}${venueCard(ctx.venue)}
+  body += `<section id="spot"><h2>The spot</h2>${when(m, tz, { live: !over, venue: !!ctx.venue })}${venueCard(ctx.venue, m)}
     ${m.lot && !over ? `<h3 style="margin:20px 0 10px" id="parking">Where to park</h3>${parkingMap(m)}` : ''}
     ${rules.length ? `<h3 style="margin:16px 0 8px">House rules</h3><ul class="rules">${rules.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>` : ''}</section>`;
   body += `<section id="food"><h2>Food</h2>`;
@@ -315,13 +322,16 @@ function meetPage(host, m, ctx) {
     all.find((k) => k.kind === 'vendor' && !k.truck_slug && norm(k.name) === norm(v.name));
   const used = new Set();
   const profileHref = (k) => (k && k.page_on && k.page_slug && !ctx.demo ? U.vendorUrl(k.page_slug) : null);
+  // One circle per truck, with its own logo. Taking orders (pre-ordering, or ordering during the meet): it opens their
+  // menu. Closed (not yet on, paused, or past the cutoff): it opens their Instagram, else their profile page.
   const items = trucks.map((v) => {
     const k = kitOf(v); if (k) used.add(k.id);
-    const href = hrefOf(v);
-    // A vendor whose profile page is on opens it (their Order button is there); the tag still says they're serving.
+    const open = live && takes(v);
+    const menu = open ? hrefOf(v) : null;
     const page = profileHref(k);
-    return { img: k && k.file ? small(k.file, 256) : v.logo || null, emoji: v.emoji, name: v.name, href: page || href || ig(k && k.instagram) || ig(v.instagram),
-      tag: href ? (live && anyPreorder && takes(v) ? 'Order' : 'Menu') : null, can: !!(href && live && anyPreorder && takes(v)), open: !!(live && v.openNow), profile: !!page };
+    const insta = ig(k && k.instagram) || ig(v.instagram);
+    return { img: k && k.file ? small(k.file, 256) : v.logo || null, emoji: v.emoji, name: v.name, href: menu || insta || page || hrefOf(v), // nothing else to open: their menu to look at
+      tag: menu ? 'Order' : null, can: !!menu, open: !!(live && v.openNow), external: !menu && !!insta, profile: !menu && !insta && !!page };
   });
   // A Food vendor the host sent a link to shows right away (their Order button comes once they've set up).
   for (const v of (ctx.trucks || []).filter((x) => x.status === 'invited' && x.slug)) {
@@ -486,7 +496,7 @@ function memberEdit(host, m) {
 
 /** A host with nothing scheduled yet. */
 function hostEmpty(host, ctx) {
-  const vid = host.video && host.video_status === 'ready' ? host : null;
+  const vid = ctx.headerVid || (host.video && host.video_status === 'ready' ? host : null);
   const body = (host.logo ? '' : top(host, ctx.base)) + `<main class="wrap"><section class="hero${vid ? ' has-video' : ''}${host.logo ? ' has-avatar' : ''}">
   ${heroBg(vid)}
   ${avatar(host)}

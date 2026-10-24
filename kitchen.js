@@ -35,6 +35,7 @@ function syncMeet(host, m, pageUrl) {
     pageUrl: /^https:\/\//.test(pageUrl || '') ? pageUrl : undefined, // the meet's page (a truck's post links here)
     hostKey: 'host_' + host.id, hostName: m.title || host.name, title: m.title || '', day: m.day, start: m.start_time, end: m.end_time,
     timezone: host.timezone || tz(), place: m.place, address: m.address || '', closeMinutes: host.close_minutes || 120,
+    stopMinutes: host.stop_minutes || 30, payAtTruckOrders: !!host.food_orders_on, // ordering stages and the host's switch
     status: m.status === 'canceled' ? 'canceled' : 'on',
     theme: themeOf(host, m),
   });
@@ -60,6 +61,16 @@ const profiles = (hostKey) => call('GET', '/profiles?hostKey=' + encodeURICompon
 const createProfile = (hostKey, name, timezone) => call('POST', '/profiles', { hostKey, name, timezone });
 const updateProfile = (hostKey, slug, fields) => call('PUT', '/profiles/' + encodeURIComponent(slug), Object.assign({ hostKey }, fields));
 const profileMenuRead = (hostKey, slug, files) => call('POST', '/profiles/' + encodeURIComponent(slug) + '/menu-read', { hostKey, files }, 90000);
+/** A Food vendor's logo onto their profile on the food side (raw image body). */
+async function profileLogo(hostKey, slug, buf, type) {
+  if (!on()) return { ok: false, status: 0, data: { error: 'Food pre-orders aren’t set up on this site yet.' } };
+  try {
+    const r = await fetch(base() + '/api/meets/partner/profiles/' + encodeURIComponent(slug) + '/logo?hostKey=' + encodeURIComponent(hostKey), {
+      method: 'PUT', headers: { 'x-meet-key': key(), 'content-type': type }, body: buf, signal: AbortSignal.timeout(20000) });
+    let data = null; try { data = await r.json(); } catch (e) { data = null; }
+    return { ok: r.ok, status: r.status, data: data || {} };
+  } catch (e) { return { ok: false, status: 0, data: { error: 'The food side isn’t answering right now.' } }; }
+}
 const profileMenu = (hostKey, slug, items) => call('PUT', '/profiles/' + encodeURIComponent(slug) + '/menu', { hostKey, items, mode: 'replace' });
 /* The names on logos, and what each one is (food, club, another vendor), read by the food side's AI. */
 const readLogos = (hostKey, files) => call('POST', '/logo-read', { hostKey, files }, 70000);
@@ -97,4 +108,4 @@ function photoSource(sub, rest) {
   return `${k.protocol}//${sub === '_' ? '' : sub + '.'}${k.host}${rest}`;
 }
 
-module.exports = { readLogos, themeOf, on, call, syncMeet, meetVendors, inviteLink, profiles, createProfile, updateProfile, profileMenuRead, profileMenu, addKnown, dropInvite, notice, menu, order, orderStatus, confirmOrder, cancelOrder, verify, photoPath, photoSource };
+module.exports = { readLogos, themeOf, on, call, syncMeet, meetVendors, inviteLink, profiles, createProfile, updateProfile, profileMenuRead, profileMenu, profileLogo, addKnown, dropInvite, notice, menu, order, orderStatus, confirmOrder, cancelOrder, verify, photoPath, photoSource };

@@ -263,7 +263,7 @@ async function renderMeet(req, res, host, m, isHome) {
   const venue = m.venue_id ? await get("SELECT name, file, instagram, note FROM kit_logos WHERE id = ? AND host_id = ? AND kind = 'venue'", [m.venue_id, host.id]) : null;
   // The other weeks listed: on a meet name's address, only that meet's; on the host's page, their own.
   const ups = req.meetName ? upcoming.filter((x) => x.page_name === req.meetName) : upcoming.filter((x) => !N.onName(host, x) || x.page_name === m.page_name || N.homeNames(host).has(x.page_name));
-  res.set('Cache-Control', 'no-cache').type('html').send(V.meetPage(host, m, { tz: tzOf(host), base: baseOf(req, host), trucks: trucks.map(truckFace), kitVendors, kitAll, last, recap, upcoming: ups, isHome, venue, badge: badgeOf(host, req), meetMode: MEET_MODE(), origin: `${SCHEME}://${req.get('host')}` }));
+  res.set('Cache-Control', 'no-cache').type('html').send(V.meetPage(host, m, { tz: tzOf(host), base: baseOf(req, host), trucks: trucks.map(truckFace), kitVendors, kitAll, last, recap, upcoming: ups, isHome, venue, badge: badgeOf(host, req), meetMode: MEET_MODE(), headerVid: req.isMain ? await mainHeader() : null, origin: `${SCHEME}://${req.get('host')}` }));
 }
 const notFound = (req, res, host) => res.status(404).type('html').send(V.message(host || null, { title: 'Nothing here', text: 'The link may be old, or the address may have a typo.', href: host ? baseOf(req, host) || '/' : '/', cta: host ? 'See the next meet' : 'Go to the main page' }));
 
@@ -311,7 +311,7 @@ async function hostHome(req, res, host) {
     if (mine.length) up = mine;
   }
   const next = up.find((m) => m.status === 'on') || up[0];
-  if (!next) return res.set('Cache-Control', 'no-cache').type('html').send(V.hostEmpty(host, { base: baseOf(req, host), badge: badgeOf(host, req) }));
+  if (!next) return res.set('Cache-Control', 'no-cache').type('html').send(V.hostEmpty(host, { base: baseOf(req, host), badge: badgeOf(host, req), headerVid: req.isMain ? await mainHeader() : null }));
   return renderMeet(req, res, host, next, true);
 }
 async function meetOn(host, day, name) {
@@ -600,6 +600,11 @@ app.get('/o', async (req, res) => {
 
 // The site's own front page is its landing page (every meet, the members, vendors). HOME_HOST=<slug> makes it one
 // host's page instead.
+/** The main page header the site owner uploaded (Settings), when it's ready. */
+async function mainHeader() {
+  const site = await siteRow();
+  return site && site.video && site.video_status === 'ready' ? site : null;
+}
 async function homeHost() {
   if (process.env.HOME_HOST) return get('SELECT * FROM hosts WHERE slug = ?', [String(process.env.HOME_HOST).toLowerCase()]);
   return null;
@@ -620,6 +625,12 @@ const siteRow = () => get('SELECT * FROM site WHERE id = 1');
 app.get('/meets', async (req, res, next) => {
   if (req.own) return next();
   const [site, meets, owner] = await Promise.all([siteRow(), allUpcoming(), siteOwner()]);
+  // No main page header yet: the owner's own background, else the next meet's clip, so the top is never still.
+  let face = site;
+  if (!(site && site.video && site.video_status === 'ready')) {
+    const fill = (owner && owner.video && owner.video_status === 'ready' ? owner : null) || (meets || []).find((m) => m.video && m.video_status === 'ready') || null;
+    if (fill) face = Object.assign({}, site || {}, { video: fill.video, video_poster: fill.video_poster, video_hevc: fill.video_hevc, video_status: 'ready' });
+  }
   res.set('Cache-Control', 'no-cache').type('html').send(V.meetsPage(site, { meets, instagram: owner && owner.instagram }));
 });
 app.get('/members', async (req, res, next) => {
@@ -666,7 +677,13 @@ app.get('/', async (req, res) => {
   const main = onSite ? await homeHost() : null;
   if (main && !(main.domain_on && main.custom_domain)) { req.isMain = true; return hostHome(req, res, main); }
   const [site, meets, owner] = await Promise.all([siteRow(), allUpcoming(), siteOwner()]);
-  res.set('Cache-Control', 'no-cache').type('html').send(V.landing(site, { meets, instagram: owner && owner.instagram, origin: `${SCHEME}://${req.get('host')}` }));
+  // No main page header yet: the owner's own background, else the next meet's clip, so the top is never still.
+  let face = site;
+  if (!(site && site.video && site.video_status === 'ready')) {
+    const fill = (owner && owner.video && owner.video_status === 'ready' ? owner : null) || (meets || []).find((m) => m.video && m.video_status === 'ready') || null;
+    if (fill) face = Object.assign({}, site || {}, { video: fill.video, video_poster: fill.video_poster, video_hevc: fill.video_hevc, video_status: 'ready' });
+  }
+  res.set('Cache-Control', 'no-cache').type('html').send(V.landing(face, { meets, instagram: owner && owner.instagram, origin: `${SCHEME}://${req.get('host')}` }));
 });
 /* ---------- a club member's page (/@handle), and the editor their link opens ---------- */
 app.get(/^\/@([a-z0-9-]{3,40})(\/edit)?\/?$/i, async (req, res) => {

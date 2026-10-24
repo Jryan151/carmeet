@@ -96,9 +96,9 @@ test('not at a meet: "Not serving tonight"; at one taking pre-orders: Order open
   assert.ok(r.text.includes(`href="/meet/${ref}/birria-bros/"`), 'Order opens the menu on this address');
   assert.match(r.text, /Pre-order for/);
   assert.match(r.text, /Dunlap lot/);
-  // On the meet page, their logo opens the profile (the Order tag still shows).
+  // On the meet page, taking orders: their logo opens their menu (closed, it opens their Instagram or profile).
   r = await request(ctx, 'GET', SITE, '/tasty-tuesday');
-  assert.ok(r.text.includes('href="/v/birria-bros"'), 'logo opens the profile');
+  assert.ok(r.text.includes(`href="/meet/${ref}/birria-bros/"`), 'open: logo opens the menu');
   assert.match(r.text, /class="tag">Order/);
   // A paused truck: the menu, not Order.
   k().meets[ref].vendors[0].paused = true;
@@ -108,6 +108,33 @@ test('not at a meet: "Not serving tonight"; at one taking pre-orders: Order open
   assert.match(r.text, /paused/);
   k().meets[ref].vendors[0].paused = false;
   await request(ctx, 'GET', SITE, `/api/host/meets/${meetId}/trucks`, { cookie: C });
+});
+
+test('one logo per truck: it reaches the food side, and a stray same-named logo merges into the truck', async () => {
+  const logoPuts = (slug) => k().calls.filter((c) => c.method === 'PUT' && c.url.startsWith(`/api/meets/partner/profiles/${slug}/logo`)).length;
+  const settle = async (fn) => { for (let i = 0; i < 40 && !fn(); i++) await new Promise((ok) => setTimeout(ok, 25)); };
+  // A new logo on the truck's entry goes to its profile on the food side, once.
+  const before = logoPuts('birria-bros');
+  let r = await request(ctx, 'POST', SITE, `/api/host/kit/${kid}/image`, { cookie: C, raw: { buf: png('0x3366ff'), type: 'image/png' } });
+  assert.ok(r.status < 300, r.text);
+  await settle(() => logoPuts('birria-bros') > before);
+  assert.equal(logoPuts('birria-bros'), before + 1, 'sent to the food side');
+  await request(ctx, 'GET', SITE, '/api/host/kit', { cookie: C });
+  assert.equal(logoPuts('birria-bros'), before + 1, 'not sent again');
+  // A truck added by name (no logo), then its logo uploaded as its own entry: one entry, with the logo.
+  r = await request(ctx, 'POST', SITE, '/api/host/kit/entry', { cookie: C, body: { kind: 'vendor', name: 'Wing Stop' } });
+  const wid = r.json.logo.id;
+  r = await request(ctx, 'PUT', SITE, `/api/host/kit/${wid}/menu`, { cookie: C, body: { items: [{ name: 'Wings', price: 9 }] } });
+  assert.equal(r.status, 200, r.text);
+  r = await request(ctx, 'POST', SITE, '/api/host/kit?kind=vendor&name=Wing%20Stop', { cookie: C, raw: { buf: png('0x22aa55'), type: 'image/png' } });
+  assert.equal(r.status, 201, r.text);
+  r = await request(ctx, 'GET', SITE, '/api/host/kit', { cookie: C });
+  const wings = (r.json.logos || []).filter((x) => x.name === 'Wing Stop');
+  assert.equal(wings.length, 1, 'one entry');
+  assert.equal(wings[0].id, wid, 'the truck’s entry stays');
+  assert.ok(wings[0].url || wings[0].file, 'with the logo');
+  await settle(() => logoPuts('wing-stop') > 0);
+  assert.equal(logoPuts('wing-stop'), 1, 'and the food side has it');
 });
 
 test('a rename keeps the old address working', async () => {

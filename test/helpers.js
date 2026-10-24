@@ -44,6 +44,11 @@ function fakeKitchen() {
       if (String(p[0] || '').split('?')[0] === 'profiles') {
         if (req.method === 'GET' && p.length === 1) return send(res, 200, { profiles: state.profiles.filter((x) => x.hostKey === new URL('http://x' + req.url).searchParams.get('hostKey')) });
         if (req.method === 'POST' && p.length === 1) { const pr = { hostKey: body.hostKey, slug: String(body.name).toLowerCase().replace(/[^a-z0-9]+/g, '-'), name: body.name, items: 0, instagram: '' }; state.profiles.push(pr); return send(res, 201, { profile: pr }); }
+        if (req.method === 'PUT' && p.length === 3 && p[2].split('?')[0] === 'logo') {
+          const lp = state.profiles.find((x) => x.slug === p[1] && x.hostKey === new URL('http://x' + req.url).searchParams.get('hostKey'));
+          if (!lp) return send(res, 404, { error: 'No such truck.' });
+          lp.logo = raw.length; return send(res, 200, { logo: '/uploads/' + lp.slug + '.png' });
+        }
         const pr = state.profiles.find((x) => x.slug === p[1] && x.hostKey === body.hostKey);
         if (!pr) return send(res, 404, { error: 'No such truck.' });
         if (req.method === 'PUT' && p.length === 2) { Object.assign(pr, body.name ? { name: body.name } : {}, body.instagram !== undefined ? { instagram: body.instagram } : {}); return send(res, 200, { profile: pr }); }

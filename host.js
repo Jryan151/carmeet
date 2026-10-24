@@ -29,7 +29,9 @@ function offOk(s) { const [id, sig] = String(s || '').split('.'); return /^\d+$/
 
 /** The site owner (SITE_OWNER_EMAIL) also sets the front page's background video. */
 // The site's owner (the front page is theirs): SITE_OWNER_EMAIL, or with none set, the first host to sign up.
-const isOwner = (h) => (process.env.SITE_OWNER_EMAIL ? String(h.email).toLowerCase() === String(process.env.SITE_OWNER_EMAIL).trim().toLowerCase() : h.id === 1);
+// The host whose page is the main page (HOME_HOST) runs it too.
+const isOwner = (h) => (process.env.HOME_HOST && String(h.slug || '').toLowerCase() === String(process.env.HOME_HOST).trim().toLowerCase()) ||
+  (process.env.SITE_OWNER_EMAIL ? String(h.email).toLowerCase() === String(process.env.SITE_OWNER_EMAIL).trim().toLowerCase() : h.id === 1);
 const videoShape = (x) => ({ status: x.video_status || null, url: x.video ? '/uploads/' + x.video : null, poster: x.video_poster ? '/uploads/' + x.video_poster : null,
   thumb: x.video_poster ? require('./views').small(x.video_poster, 480) : null, hevc: x.video_hevc ? '/uploads/' + x.video_hevc : null, error: x.video_error || null });
 
@@ -136,7 +138,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
   const pageUrl = (h) => (h.domain_on && h.custom_domain ? `${SCHEME()}://${h.custom_domain}` : `${SCHEME()}://${SITE_DOMAIN()}/${h.slug}`);
   function hostShape(h) {
     return { name: h.name, slug: h.slug, email: h.email, tagline: h.tagline || '', city: h.city || '', accent: h.accent || '', logo: h.logo || '',
-      instagram: h.instagram || '', tiktok: h.tiktok || '', youtube: h.youtube || '', rules: h.rules || '', closeMinutes: h.close_minutes,
+      instagram: h.instagram || '', tiktok: h.tiktok || '', youtube: h.youtube || '', rules: h.rules || '', closeMinutes: h.close_minutes, foodOrdersOn: !!h.food_orders_on, stopMinutes: h.stop_minutes || 30,
       timezone: h.timezone || '', mapTiles: geo.tiles(), mapCredit: geo.credit(), customDomain: h.custom_domain || '', domainOn: !!h.domain_on, pageUrl: pageUrl(h), siteName: SITE(), foodOn: K.on(), mailOn: mail.configured(),
       video: videoShape(h), videoReady: V.ffmpegOk(), owner: isOwner(h), alertsOn: !!h.alerts_on, namesOn: true, siteDomain: SITE_DOMAIN() };
   }
@@ -675,7 +677,42 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     if (!r2.ok) return { error: r2.data.error || 'The food side didn’t answer.', status: r2.status || 502 };
     await run('UPDATE kit_logos SET truck_slug = ? WHERE id = ?', [r2.data.profile.slug, k.id]);
     if (k.instagram) K.updateProfile(hostKey(h), r2.data.profile.slug, { instagram: k.instagram }).catch(() => {});
+    syncLogo(h, await get('SELECT * FROM kit_logos WHERE id = ?', [k.id])).catch(() => {});
     return { slug: r2.data.profile.slug };
+  }
+  /** A Food vendor's logo goes to their profile on the food side (their link, night screen and menu page show it),
+      once per picture: logo_synced remembers which file is there. */
+  async function syncLogo(h, k) {
+    if (!k || !k.truck_slug || !k.file || k.logo_synced === k.file || !K.on()) return;
+    let buf; try { buf = await fs.promises.readFile(path.join(UPLOAD_DIR, path.basename(k.file))); } catch (e) { return; }
+    const type = /\.png$/i.test(k.file) ? 'image/png' : /\.webp$/i.test(k.file) ? 'image/webp' : 'image/jpeg';
+    const r2 = await K.profileLogo(hostKey(h), k.truck_slug, buf, type);
+    if (r2.ok) await run('UPDATE kit_logos SET logo_synced = ? WHERE id = ?', [k.file, k.id]);
+  }
+  /**
+   * One entry per vendor. A Food vendor with a truck on the food side but no logo, and a logo in the kit with the same
+   * name and no truck, are the same vendor: the logo moves onto the truck's entry and the extra entry goes (its meet
+   * picks move over too). Then any logo the food side doesn't have yet is sent.
+   */
+  const norm = (x) => String(x || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  async function mergeInto(target, from) {
+    await run('UPDATE kit_logos SET file = ?, instagram = COALESCE(instagram, ?) WHERE id = ?', [from.file, from.instagram || null, target.id]);
+    for (const x of await all('SELECT * FROM meet_kit_vendors WHERE kit_id = ?', [from.id])) {
+      await run('INSERT OR IGNORE INTO meet_kit_vendors (meet_id, kit_id, created_at) VALUES (?, ?, ?)', [x.meet_id, target.id, x.created_at]);
+    }
+    await run('DELETE FROM meet_kit_vendors WHERE kit_id = ?', [from.id]);
+    await run('DELETE FROM kit_logos WHERE id = ?', [from.id]);
+    if (target.file && target.file !== from.file) unlinkUpload(target.file);
+  }
+  async function tidyVendors(h) {
+    const rows = await all("SELECT * FROM kit_logos WHERE host_id = ? AND kind = 'vendor'", [h.id]);
+    for (const t of rows.filter((x) => x.truck_slug && !x.file)) {
+      const twin = rows.find((x) => x.id !== t.id && x.file && !x.truck_slug && norm(x.name) && norm(x.name) === norm(t.name));
+      if (twin) { await mergeInto(t, twin); twin.merged = true; }
+    }
+    for (const k of await all("SELECT * FROM kit_logos WHERE host_id = ? AND truck_slug IS NOT NULL AND file != '' AND (logo_synced IS NULL OR logo_synced != file)", [h.id])) {
+      await syncLogo(h, k).catch(() => {});
+    }
   }
   // What the reader's answer means in the lists: food → Food vendors, club → Clubs, vendor → Vendors (non-food).
   const KIND_OF = { food: 'vendor', club: 'group', vendor: 'sponsor' };
@@ -722,6 +759,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
   });
   const ownKit = (req, id) => get('SELECT * FROM kit_logos WHERE id = ? AND host_id = ?', [parseInt(id, 10) || 0, req.me.id]);
   r.get('/kit', signedIn, async (req, res) => {
+    await tidyVendors(req.me).catch((e) => console.error('tidy vendors:', e.message));
     const rows = await all('SELECT * FROM kit_logos WHERE host_id = ? ORDER BY kind, name COLLATE NOCASE', [req.me.id]);
     res.set('Cache-Control', 'no-store').json({ logos: rows.map(kitShape) });
   });
@@ -759,6 +797,15 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     const kind = KINDS.includes(b.kind) ? b.kind : k.kind;
     const ig = b.instagram === undefined ? k.instagram : (U.handle(b.instagram) || null);
     const note = b.note === undefined ? k.note : (U.clean(b.note, 80) || null);
+    // "Use this logo": another logo in the lists is the same vendor; it becomes this one's logo and the extra goes.
+    if (b.logoFrom !== undefined) {
+      const from = await get('SELECT * FROM kit_logos WHERE id = ? AND host_id = ?', [parseInt(b.logoFrom, 10) || 0, req.me.id]);
+      if (!from || from.id === k.id || !from.file) return res.status(404).json({ error: 'That logo is gone.' });
+      if (from.truck_slug && k.truck_slug && from.truck_slug !== k.truck_slug) return res.status(409).json({ error: 'That logo belongs to another truck.' });
+      await mergeInto(k, from);
+      if (!k.truck_slug && from.truck_slug) await run('UPDATE kit_logos SET truck_slug = ? WHERE id = ?', [from.truck_slug, k.id]);
+      syncLogo(req.me, await get('SELECT * FROM kit_logos WHERE id = ?', [k.id])).catch(() => {});
+    }
     await run('UPDATE kit_logos SET name = ?, kind = ?, instagram = ?, note = ? WHERE id = ?', [nm, kind, ig, note, k.id]);
     // The truck's profile on the food side keeps the same name and Instagram.
     if (k.truck_slug && (nm !== k.name || ig !== k.instagram)) K.updateProfile(hostKey(req.me), k.truck_slug, { name: nm, instagram: ig || '' }).catch(() => {});
@@ -774,6 +821,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     if (trimmed) { fs.promises.unlink(path.join(UPLOAD_DIR, name)).catch(() => {}); name = trimmed; }
     await run('UPDATE kit_logos SET file = ? WHERE id = ?', [name, k.id]);
     if (k.file) fs.promises.unlink(path.join(UPLOAD_DIR, k.file)).catch(() => {});
+    syncLogo(req.me, await get('SELECT * FROM kit_logos WHERE id = ?', [k.id])).catch(() => {}); // and onto their profile on the food side
     res.json({ logo: kitShape(await get('SELECT * FROM kit_logos WHERE id = ?', [k.id])) });
   });
   r.delete('/kit/:id', signedIn, async (req, res) => {
@@ -1113,7 +1161,12 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     if (domain && (await get('SELECT 1 AS x FROM hosts WHERE custom_domain = ? AND id != ?', [domain, h.id]))) return res.status(409).json({ error: 'Another page already uses that domain.' });
     const domainOn = domain && domain === h.custom_domain ? h.domain_on : 0; // a new domain waits for setup
     const pick = (k, f) => (b[k] === undefined ? h[f] : b[k]);
-    const closeChanged = close !== h.close_minutes;
+    // Food orders paid at the truck (the switch) and when orders stop before the end.
+    const foodOn = b.foodOrdersOn === undefined ? h.food_orders_on : (b.foodOrdersOn ? 1 : 0);
+    const stop = b.stopMinutes === undefined ? h.stop_minutes : parseInt(b.stopMinutes, 10);
+    if (!(stop >= 5 && stop <= 240)) return res.status(400).json({ error: 'Pick when orders stop (5 to 240 minutes before the end).' });
+    if (foodOn !== h.food_orders_on || stop !== h.stop_minutes) await run('UPDATE hosts SET food_orders_on = ?, stop_minutes = ? WHERE id = ?', [foodOn, stop, h.id]);
+    const closeChanged = close !== h.close_minutes || foodOn !== h.food_orders_on || stop !== h.stop_minutes;
     const alertsOn = b.alertsOn === undefined ? h.alerts_on : (b.alertsOn ? 1 : 0);
     if (alertsOn !== h.alerts_on) await run('UPDATE hosts SET alerts_on = ? WHERE id = ?', [alertsOn, h.id]);
     await run(`UPDATE hosts SET name = ?, tagline = ?, city = ?, accent = ?, instagram = ?, tiktok = ?, youtube = ?, rules = ?, close_minutes = ?, custom_domain = ?, domain_on = ?, updated_at = ? WHERE id = ?`,

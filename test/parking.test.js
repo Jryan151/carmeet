@@ -134,7 +134,7 @@ test('a venue: added in Settings, picked on a meet, shown under The spot; only t
   assert.equal(r.json.meet.venueId, v);
   r = await request(ctx, 'GET', SITE, '/fuel-friday');
   assert.match(r.text, /class="venue"/);
-  assert.match(r.text, /LV Smoke Shop<\/div><div class="small dim">Your neighborhood smoke shop/);
+  assert.match(r.text, /class="v-title">5112 W Peoria Ave, Glendale, AZ<\/div><div class="small dim">Tap for directions/, 'the card is just the address');
   assert.match(r.text, /instagram\.com\/lvsmokeshop/);
   assert.match(r.text, /<meta name="description" content="[^"]*at LV Smoke Shop, The lot/);
   // Another host's venue can't be picked; a club isn't a venue.

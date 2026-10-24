@@ -141,6 +141,11 @@ async function ensureSchema() {
   await addColumn('hosts', 'alerts_on', 'INTEGER NOT NULL DEFAULT 0');
   // Addresses already looked up, so the map search doesn't ask the geocoder twice for the same one.
   await exec('CREATE TABLE IF NOT EXISTS geocache (q TEXT PRIMARY KEY, json TEXT NOT NULL, at INTEGER NOT NULL)');
+  // The host's switch for food orders paid at the truck (off until the trucks agree), how many minutes before the end
+  // orders stop, and which logo file a Food vendor's profile on the food side already has.
+  await addColumn('hosts', 'food_orders_on', 'INTEGER NOT NULL DEFAULT 0');
+  await addColumn('hosts', 'stop_minutes', 'INTEGER NOT NULL DEFAULT 30');
+  await addColumn('kit_logos', 'logo_synced', 'TEXT');
   // The host portal's own background video (one row per host, id = the host's id).
   await exec('CREATE TABLE IF NOT EXISTS host_portal (id INTEGER PRIMARY KEY)');
   // A saved location's parking layout (a Venue): picking it for a meet starts the meet's map from it.

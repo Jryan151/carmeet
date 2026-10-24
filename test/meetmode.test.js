@@ -61,7 +61,7 @@ test('the site opens on the host: round logo, no header, every truck linked to i
   assert.ok(!/Run a meet|Page by/.test(r.text));
   assert.ok(r.text.includes(`href="/meet/${ref}/birria-bros/"`), 'card truck → its menu in meet mode');
   assert.ok(r.text.includes(`href="/meet/${ref}/lemon-stand/"`), 'every truck gets a menu link');
-  assert.match(r.text, new RegExp(`<a class="mini menu" href="/meet/${ref}/night-birria/" aria-label="Night Birria: pre-order"`), 'a night-kit truck: its round logo opens its temporary menu');
+  assert.match(r.text, new RegExp(`<a class="mini menu" href="/meet/${ref}/night-birria/" aria-label="Night Birria: order"`), 'a night-kit truck: its round logo opens its temporary menu');
   assert.ok(!/online ?kitchen|127\.0\.0\.1/i.test(r.text));
 });
 
@@ -133,7 +133,7 @@ test('the page: logo and buttons on top, when and where under The spot, kit vend
   r = await request(ctx, 'PUT', SITE, `/api/host/meets/${mid}/kit-vendors/${kid}`, { cookie: C, body: { truck: 'night-birria' } });
   assert.equal(r.status, 200, r.text);
   r = await request(ctx, 'GET', SITE, '/');
-  assert.match(r.text, new RegExp(`<a class="mini menu" href="/meet/${ref}/night-birria/" aria-label="Night Birria: pre-order" title="Night Birria"><img src="/uploads/`));
+  assert.match(r.text, new RegExp(`<a class="mini menu" href="/meet/${ref}/night-birria/" aria-label="Night Birria: order" title="Night Birria"><img src="/uploads/`));
   assert.equal((r.text.match(/night-birria\//g) || []).length, 1, 'once');
   await request(ctx, 'PUT', SITE, `/api/host/meets/${mid}/kit-vendors/${kid}`, { cookie: C, body: { truck: null } });
   assert.ok(!/<section id="clubs"/.test(r.text), 'no Clubs section without clubs');
@@ -172,7 +172,7 @@ test('demo mode: the host sees their page filled in; nobody else does', async ()
   r = await request(ctx, 'GET', SITE, '/tasty-tuesday?demo=1', { cookie: C });
   assert.equal(r.status, 200);
   assert.match(r.text, /class="demo-bar"/);
-  assert.match(r.text, /aria-label="Birria Bros, open now: pre-order"/, 'sample trucks');
+  assert.match(r.text, /aria-label="Birria Bros, open now: order"/, 'sample trucks');
   assert.match(r.text, /aria-label="Viral Society"/, 'every club in the kit');
   assert.equal(r.headers['cache-control'], 'no-store');
   assert.ok(!/\/meet\/demo\//.test(r.text), 'sample trucks link nowhere real');
@@ -212,7 +212,7 @@ test('Food vendors and Clubs in Settings; a vendor gets its own link (a profile 
   r = await request(ctx, 'POST', SITE, `/api/host/meets/${mid}/send-link`, { cookie: C, body: { slug } });
   assert.equal(r.json.signIn, true, 'already in: a one-time sign-in link');
   r = await request(ctx, 'GET', SITE, '/');
-  assert.match(r.text, new RegExp(`<a class="mini menu" href="/meet/${ref}/${slug}/" aria-label="Taco Fresh, open now: pre-order"[^>]*><img src="/food-photo/${slug}/uploads/7-0123456789abcdef.png"[^>]*><span class="live"`), 'its own logo, through this site');
+  assert.match(r.text, new RegExp(`<a class="mini menu" href="/meet/${ref}/${slug}/" aria-label="Taco Fresh, open now: order"[^>]*><img src="/food-photo/${slug}/uploads/7-0123456789abcdef.png"[^>]*><span class="live"`), 'its own logo, through this site');
   assert.match(r.text, /href="https:\/\/instagram\.com\/slowtrafficaz" rel="noopener" target="_blank" aria-label="Slow Traffic: Instagram"/);
   // Removing it from the list takes it off the pages.
   await request(ctx, 'DELETE', SITE, `/api/host/kit/${club.id}`, { cookie: C });
