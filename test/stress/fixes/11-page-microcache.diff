@@ -1,0 +1,53 @@
+diff --git a/server.js b/server.js
+index 94a7517..7c16037 100644
+--- a/server.js
++++ b/server.js
+@@ -155,6 +155,48 @@ app.use(async (req, res, next) => {
+   next();
+ });
+ 
++/* ---------- public pages, kept for a few seconds ----------
++   At 7 PM hundreds of phones ask for the same meet page within seconds. Each page is the same for everyone (nothing
++   signed-in on it), so one render serves them all for PAGE_CACHE_MS (default 5 s), and phones asking while it is being
++   made wait for that one render instead of starting their own. Only while the site is busy (PAGE_CACHE_BUSY requests
++   at once, default 8): at quiet times every page is fresh, as before. Any write empties it. Anyone with a portal
++   session, and every page that isn't public (portal, orders, editors, API, files), always gets a fresh one. */
++const PAGE_MS = () => (process.env.PAGE_CACHE_MS === undefined ? 5000 : Number(process.env.PAGE_CACHE_MS));
++const pageCache = new Map(); // key → { at, status, headers, body }
++const pageWaits = new Map(); // key → [res] waiting on the render in progress
++let inFlight = 0;
++app.use((req, res, next) => {
++  inFlight++; let done = false; const off = () => { if (!done) { done = true; inFlight--; } };
++  res.on('finish', off); res.on('close', off);
++  if (req.method !== 'GET' && req.method !== 'HEAD') pageCache.clear(); // something changed: pages are made fresh
++  next();
++});
++const PRIVATE_RE = /^\/(api|host|o|meet|hooks|caddy|static|uploads|food-photo|alerts|sw\.js|health)(\/|$)|\/edit\/?$/;
++app.use((req, res, next) => {
++  if (!PAGE_MS() || inFlight < (Number(process.env.PAGE_CACHE_BUSY) || 8) || req.method !== 'GET' || PRIVATE_RE.test(req.path) || /mh_session=/.test(String(req.headers.cookie || '')) || req.query.demo) return next();
++  const gz = /\bgzip\b/.test(String(req.get('accept-encoding') || ''));
++  const key = `${req.hostname}|${req.originalUrl}|${gz ? 'gz' : ''}`;
++  const hit = pageCache.get(key);
++  const reply = (r, h) => { r.status(h.status).set(h.headers); r.end(h.body); };
++  if (hit && Date.now() - hit.at < PAGE_MS()) return reply(res, hit);
++  if (pageWaits.has(key)) return pageWaits.get(key).push(res);
++  pageWaits.set(key, []);
++  const chunks = []; const write = res.write.bind(res); const end = res.end.bind(res);
++  res.write = (c, ...a) => { if (c) chunks.push(Buffer.from(c)); return write(c, ...a); };
++  res.end = (c, ...a) => {
++    if (c && typeof c !== 'function') chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c));
++    const out = end(c, ...a);
++    const waiting = pageWaits.get(key) || []; pageWaits.delete(key);
++    const h = { at: Date.now(), status: res.statusCode, headers: {}, body: Buffer.concat(chunks) };
++    for (const k of ['content-type', 'content-encoding', 'vary', 'cache-control', 'x-robots-tag', 'location']) if (res.get(k)) h.headers[k] = res.get(k);
++    if (res.statusCode === 200 && /text\/html/.test(h.headers['content-type'] || '')) { if (pageCache.size > 500) pageCache.clear(); pageCache.set(key, h); }
++    for (const r of waiting) reply(r, h);
++    return out;
++  };
++  res.on('close', () => { if (!res.writableEnded && pageWaits.get(key)) { for (const r of pageWaits.get(key)) r.status(503).end(); pageWaits.delete(key); } });
++  next();
++});
++
+ /* ---------- files ---------- */
+ /* The site's scripts and styles, squeezed (brotli or gzip, made once per file and kept in memory: the portal's
+    scripts go from about 250 KB to about 60). A link with ?v= names this start's version, so the phone keeps the file

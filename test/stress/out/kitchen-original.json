@@ -1,0 +1,1005 @@
+{
+  "500": {
+    "rows": [
+      {
+        "label": "portal: post a meet (sync)",
+        "ms": 28.567512,
+        "status": 201,
+        "note": "{\"synced\":false,\"syncError\":\"boom\"}"
+      },
+      {
+        "label": "page: meet, warm truck list",
+        "ms": 30,
+        "status": 200,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "page: meet, cold (never loaded)",
+        "ms": 26,
+        "status": 200,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "page: host home",
+        "ms": 37,
+        "status": 200,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "page: meet name address",
+        "ms": 36,
+        "status": 200,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "page: vendor profile /v/",
+        "ms": 12,
+        "status": 200,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "page: food page (menu)",
+        "ms": 3,
+        "status": 404,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "api: menu /api/meets/:id/food/:truck",
+        "ms": 19,
+        "status": 500,
+        "note": "{\"error\":\"boom\"}"
+      },
+      {
+        "label": "api: order status /api/orders/:t",
+        "ms": 20,
+        "status": 200,
+        "note": "{\"token\":\"aaaaaaaaaaaaaaaaaaaaaaaa\",\"ticket\":null,\"status\":\"Paid\",\"payment\":\"paid\",\"total\":14,\"name\":null,\"vendor\":\"Birria Bros\",\"pickupAt\":null,\"pickupLabel\":\""
+      },
+      {
+        "label": "portal: dashboard",
+        "ms": 26,
+        "status": 200,
+        "note": "{\"host\":{\"name\":\"Tasty Tuesday hang\",\"slug\":\"tasty-tuesday\",\"email\":\"owner@tasty.test\",\"tagline\":\"\",\"city\":\"Phoenix\",\"accent\":\"\",\"logo\":\"\",\"instagram\":\"tastytue"
+      },
+      {
+        "label": "portal: trucks panel",
+        "ms": 22,
+        "status": 200,
+        "note": "{\"trucks\":[],\"known\":[{\"slug\":\"birria-bros\",\"name\":\"Birria Bros\",\"emoji\":\"🌮\"},{\"slug\":\"desert-lemonade\",\"name\":\"Desert Lemonade\",\"emoji\":\"🍋\"},{\"slug\":\"night-w"
+      },
+      {
+        "label": "portal: vendors tab",
+        "ms": 56,
+        "status": 200,
+        "note": "{\"next\":{\"id\":3,\"title\":\"Sunday Cruise\",\"day\":\"2026-10-25\",\"label\":\"Sun, Oct 25, 7 PM–10 PM\"},\"meets\":[{\"id\":3,\"title\":\"Sunday Cruise\",\"day\":\"2026-10-25\",\"label"
+      },
+      {
+        "label": "portal: send-link (new vendor)",
+        "ms": 25,
+        "status": 502,
+        "note": "{\"error\":\"boom\"}"
+      },
+      {
+        "label": "portal: invite link",
+        "ms": 26,
+        "status": 502,
+        "note": "{\"error\":\"boom\"}"
+      },
+      {
+        "label": "portal: edit a meet (sync)",
+        "ms": 25,
+        "status": 200,
+        "note": "{\"meet\":{\"id\":3,\"ref\":\"mb56c68207c7907fcd552\",\"title\":\"Sunday Cruise\",\"day\":\"2026-10-25\",\"start\":\"19:00\",\"end\":\"22:00\",\"place\":\"75th Ave & Dunlap\",\"address\":\"35"
+      },
+      {
+        "label": "portal: settings name change (re-syncs every upcoming meet)",
+        "ms": 311,
+        "status": 200,
+        "note": "{\"host\":{\"name\":\"Tasty Tuesday 500\",\"slug\":\"tasty-tuesday\",\"email\":\"owner@tasty.test\",\"tagline\":\"\",\"city\":\"Phoenix\",\"accent\":\"\",\"logo\":\"\",\"instagram\":\"tastytues"
+      },
+      {
+        "label": "portal: kit list (sends unsent logos)",
+        "ms": 57,
+        "status": 200,
+        "note": "{\"logos\":[{\"id\":91,\"kind\":\"group\",\"name\":\"Club 11\",\"url\":\"/uploads/logo-fa7fe2fa90605708-k.png\",\"thumb\":\"/uploads/logo-fa7fe2fa90605708-k.s256.webp\",\"instagram\""
+      },
+      {
+        "label": "portal: read logos",
+        "ms": 21,
+        "status": 500,
+        "note": "{\"error\":\"boom\"}"
+      },
+      {
+        "label": "portal: history",
+        "ms": 22,
+        "status": 200,
+        "note": "{\"meets\":[{\"id\":2,\"ref\":\"m1a2d9e1562cd8bd8dfd9\",\"title\":\"Fuel Friday\",\"day\":\"2026-10-23\",\"start\":\"19:00\",\"end\":\"22:00\",\"place\":\"Westgate north lot\",\"address\":\"3"
+      },
+      {
+        "label": "portal: delete a vendor (drops its invites)",
+        "ms": 285,
+        "status": 200,
+        "note": "{\"ok\":true} | after: kit row gone, kit_gone=1, still invited on the food side in 15/15 meets"
+      },
+      {
+        "label": "after recovery: meet page",
+        "ms": 35,
+        "status": 200,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "after recovery: cold meet page",
+        "ms": 32,
+        "status": 200,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      }
+    ],
+    "alive": true,
+    "uncaught": 0,
+    "unhandled": 0,
+    "appErrors": 0
+  },
+  "hang": {
+    "rows": [
+      {
+        "label": "portal: post a meet (sync)",
+        "ms": 10014.007303,
+        "status": 201,
+        "note": "{\"synced\":false,\"syncError\":\"The food side isn’t answering right now. Try again in a minute.\"}"
+      },
+      {
+        "label": "page: meet, warm truck list",
+        "ms": 23,
+        "status": 200,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "page: meet, cold (never loaded)",
+        "ms": 807,
+        "status": 200,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "page: host home",
+        "ms": 27,
+        "status": 200,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "page: meet name address",
+        "ms": 28,
+        "status": 200,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "page: vendor profile /v/",
+        "ms": 14,
+        "status": 200,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "page: food page (menu)",
+        "ms": 7,
+        "status": 200,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "api: menu /api/meets/:id/food/:truck",
+        "ms": 10004,
+        "status": 502,
+        "note": "{\"error\":\"The food side isn’t answering right now. Try again in a minute.\"}"
+      },
+      {
+        "label": "api: order status /api/orders/:t",
+        "ms": 10007,
+        "status": 200,
+        "note": "{\"token\":\"aaaaaaaaaaaaaaaaaaaaaaaa\",\"ticket\":null,\"status\":\"Paid\",\"payment\":\"paid\",\"total\":14,\"name\":null,\"vendor\":\"Birria Bros\",\"pickupAt\":null,\"pickupLabel\":\""
+      },
+      {
+        "label": "portal: dashboard",
+        "ms": 10012,
+        "status": 200,
+        "note": "{\"host\":{\"name\":\"Tasty Tuesday\",\"slug\":\"tasty-tuesday\",\"email\":\"owner@tasty.test\",\"tagline\":\"\",\"city\":\"Phoenix\",\"accent\":\"\",\"logo\":\"\",\"instagram\":\"tastytuesday\""
+      },
+      {
+        "label": "portal: trucks panel",
+        "ms": 10007,
+        "status": 200,
+        "note": "{\"trucks\":[{\"inviteId\":5,\"status\":\"in\",\"slug\":\"birria-bros\",\"name\":\"Birria Bros\",\"emoji\":\"🌮\",\"cardReady\":true,\"payAtTruck\":false,\"paused\":false,\"openNow\":false"
+      },
+      {
+        "label": "portal: vendors tab",
+        "ms": 10024,
+        "status": 200,
+        "note": "{\"next\":{\"id\":3,\"title\":\"Sunday Cruise\",\"day\":\"2026-10-25\",\"label\":\"Sun, Oct 25, 7 PM–10 PM\"},\"meets\":[{\"id\":3,\"title\":\"Sunday Cruise\",\"day\":\"2026-10-25\",\"label"
+      },
+      {
+        "label": "portal: send-link (new vendor)",
+        "ms": 10006,
+        "status": 502,
+        "note": "{\"error\":\"The food side isn’t answering right now. Try again in a minute.\"}"
+      },
+      {
+        "label": "portal: invite link",
+        "ms": 10008,
+        "status": 502,
+        "note": "{\"error\":\"The food side isn’t answering right now. Try again in a minute.\"}"
+      },
+      {
+        "label": "portal: edit a meet (sync)",
+        "ms": 10012,
+        "status": 200,
+        "note": "{\"meet\":{\"id\":2,\"ref\":\"m1a2d9e1562cd8bd8dfd9\",\"title\":\"Fuel Friday\",\"day\":\"2026-10-23\",\"start\":\"19:00\",\"end\":\"22:00\",\"place\":\"Westgate north lot\",\"address\":\"350"
+      },
+      {
+        "label": "portal: settings name change (re-syncs every upcoming meet)",
+        "ms": 160058,
+        "status": 200,
+        "note": "{\"host\":{\"name\":\"Tasty Tuesday hang\",\"slug\":\"tasty-tuesday\",\"email\":\"owner@tasty.test\",\"tagline\":\"\",\"city\":\"Phoenix\",\"accent\":\"\",\"logo\":\"\",\"instagram\":\"tastytue"
+      },
+      {
+        "label": "portal: kit list (sends unsent logos)",
+        "ms": 60014,
+        "status": 200,
+        "note": "{\"logos\":[{\"id\":91,\"kind\":\"group\",\"name\":\"Club 11\",\"url\":\"/uploads/logo-fa7fe2fa90605708-k.png\",\"thumb\":\"/uploads/logo-fa7fe2fa90605708-k.s256.webp\",\"instagram\""
+      },
+      {
+        "label": "portal: read logos",
+        "ms": 30026,
+        "status": 200,
+        "note": "{\"read\":[{\"id\":31,\"name\":\"Unforsaken\",\"kind\":\"group\"},{\"id\":34,\"name\":\"México en un Vaso\",\"kind\":\"vendor\"}]}"
+      },
+      {
+        "label": "portal: history",
+        "ms": 815,
+        "status": 200,
+        "note": "{\"meets\":[{\"id\":2,\"ref\":\"m1a2d9e1562cd8bd8dfd9\",\"title\":\"Fuel Friday\",\"day\":\"2026-10-23\",\"start\":\"19:00\",\"end\":\"22:00\",\"place\":\"Westgate north lot\",\"address\":\"3"
+      },
+      {
+        "label": "portal: delete a vendor (drops its invites)",
+        "ms": 150034,
+        "status": 200,
+        "note": "{\"ok\":true} | after: kit row gone, kit_gone=1, still invited on the food side in 15/15 meets"
+      },
+      {
+        "label": "after recovery: meet page",
+        "ms": 16,
+        "status": 200,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "after recovery: cold meet page",
+        "ms": 32,
+        "status": 200,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      }
+    ],
+    "alive": true,
+    "uncaught": 0,
+    "unhandled": 0,
+    "appErrors": 0
+  },
+  "garbage": {
+    "rows": [
+      {
+        "label": "portal: post a meet (sync)",
+        "ms": 28.288215,
+        "status": 201,
+        "note": "{\"synced\":true,\"syncError\":\"\"}"
+      },
+      {
+        "label": "page: meet, warm truck list",
+        "ms": 27,
+        "status": 200,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "page: meet, cold (never loaded)",
+        "ms": 28,
+        "status": 200,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "page: host home",
+        "ms": 36,
+        "status": 200,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "page: meet name address",
+        "ms": 47,
+        "status": 200,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "page: vendor profile /v/",
+        "ms": 18,
+        "status": 200,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "page: food page (menu)",
+        "ms": 2,
+        "status": 404,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "api: menu /api/meets/:id/food/:truck",
+        "ms": 18,
+        "status": 200,
+        "note": "{\"menu\":[],\"timezone\":\"America/Phoenix\"}"
+      },
+      {
+        "label": "api: order status /api/orders/:t",
+        "ms": 25,
+        "status": 200,
+        "note": "{\"token\":\"aaaaaaaaaaaaaaaaaaaaaaaa\",\"ticket\":null,\"status\":null,\"payment\":null,\"total\":null,\"name\":null,\"vendor\":\"Birria Bros\",\"pickupAt\":null,\"pickupLabel\":\"\","
+      },
+      {
+        "label": "portal: dashboard",
+        "ms": 33,
+        "status": 200,
+        "note": "{\"host\":{\"name\":\"Tasty Tuesday 500\",\"slug\":\"tasty-tuesday\",\"email\":\"owner@tasty.test\",\"tagline\":\"\",\"city\":\"Phoenix\",\"accent\":\"\",\"logo\":\"\",\"instagram\":\"tastytues"
+      },
+      {
+        "label": "portal: trucks panel",
+        "ms": 24,
+        "status": 200,
+        "note": "{\"trucks\":[],\"known\":[{\"slug\":\"birria-bros\",\"name\":\"Birria Bros\",\"emoji\":\"🌮\"},{\"slug\":\"desert-lemonade\",\"name\":\"Desert Lemonade\",\"emoji\":\"🍋\"},{\"slug\":\"night-w"
+      },
+      {
+        "label": "portal: vendors tab",
+        "ms": 51,
+        "status": 200,
+        "note": "{\"next\":{\"id\":3,\"title\":\"Sunday Cruise\",\"day\":\"2026-10-25\",\"label\":\"Sun, Oct 25, 7 PM–10 PM\"},\"meets\":[{\"id\":3,\"title\":\"Sunday Cruise\",\"day\":\"2026-10-25\",\"label"
+      },
+      {
+        "label": "portal: send-link (new vendor)",
+        "ms": 47,
+        "status": 500,
+        "note": "{\"error\":\"Something went wrong on our side. Try again.\"}"
+      },
+      {
+        "label": "portal: invite link",
+        "ms": 22,
+        "status": 201,
+        "note": "{\"text\":\"Hey! We'd love to have you at Tasty Tuesday: Lot at 35th Ave & Dunlap, Tue, Nov 3 7 PM–10 PM. People can pre-order from you ahead of time and pay at yo"
+      },
+      {
+        "label": "portal: edit a meet (sync)",
+        "ms": 28,
+        "status": 200,
+        "note": "{\"meet\":{\"id\":9,\"ref\":\"ma53c955158054c182c51\",\"title\":\"Tasty Tuesday\",\"day\":\"2026-11-03\",\"start\":\"19:00\",\"end\":\"22:00\",\"place\":\"Lot at 35th Ave & Dunlap\",\"addre"
+      },
+      {
+        "label": "portal: settings name change (re-syncs every upcoming meet)",
+        "ms": 345,
+        "status": 200,
+        "note": "{\"host\":{\"name\":\"Tasty Tuesday garbage\",\"slug\":\"tasty-tuesday\",\"email\":\"owner@tasty.test\",\"tagline\":\"\",\"city\":\"Phoenix\",\"accent\":\"\",\"logo\":\"\",\"instagram\":\"tasty"
+      },
+      {
+        "label": "portal: kit list (sends unsent logos)",
+        "ms": 67,
+        "status": 200,
+        "note": "{\"logos\":[{\"id\":91,\"kind\":\"group\",\"name\":\"Club 11\",\"url\":\"/uploads/logo-fa7fe2fa90605708-k.png\",\"thumb\":\"/uploads/logo-fa7fe2fa90605708-k.s256.webp\",\"instagram\""
+      },
+      {
+        "label": "portal: read logos",
+        "ms": 21,
+        "status": 200,
+        "note": "{\"read\":[{\"id\":31,\"name\":\"\",\"kind\":null},{\"id\":34,\"name\":\"\",\"kind\":null}]}"
+      },
+      {
+        "label": "portal: history",
+        "ms": 28,
+        "status": 200,
+        "note": "{\"meets\":[{\"id\":2,\"ref\":\"m1a2d9e1562cd8bd8dfd9\",\"title\":\"Fuel Friday\",\"day\":\"2026-10-23\",\"start\":\"19:00\",\"end\":\"22:00\",\"place\":\"Westgate north lot\",\"address\":\"3"
+      },
+      {
+        "label": "portal: delete a vendor (drops its invites)",
+        "ms": 321,
+        "status": 200,
+        "note": "{\"ok\":true} | after: kit row gone, kit_gone=1, still invited on the food side in 15/15 meets"
+      },
+      {
+        "label": "after recovery: meet page",
+        "ms": 31,
+        "status": 200,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "after recovery: cold meet page",
+        "ms": 24,
+        "status": 200,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      }
+    ],
+    "alive": true,
+    "uncaught": 0,
+    "unhandled": 0,
+    "appErrors": 1
+  },
+  "wrongshape": {
+    "rows": [
+      {
+        "label": "portal: post a meet (sync)",
+        "ms": 25.80215,
+        "status": 201,
+        "note": "{\"synced\":true,\"syncError\":\"\"}"
+      },
+      {
+        "label": "page: meet, warm truck list",
+        "ms": 21,
+        "status": 500,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "page: meet, cold (never loaded)",
+        "ms": 20,
+        "status": 500,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "page: host home",
+        "ms": 26,
+        "status": 500,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "page: meet name address",
+        "ms": 23,
+        "status": 500,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "page: vendor profile /v/",
+        "ms": 26,
+        "status": 500,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "page: food page (menu)",
+        "ms": 4,
+        "status": 500,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "api: menu /api/meets/:id/food/:truck",
+        "ms": 19,
+        "status": 200,
+        "note": "{\"menu\":[],\"timezone\":\"America/Phoenix\"}"
+      },
+      {
+        "label": "api: order status /api/orders/:t",
+        "ms": 21,
+        "status": 200,
+        "note": "{\"token\":\"aaaaaaaaaaaaaaaaaaaaaaaa\",\"ticket\":null,\"status\":null,\"payment\":null,\"total\":null,\"name\":null,\"vendor\":\"Birria Bros\",\"pickupAt\":null,\"pickupLabel\":\"\","
+      },
+      {
+        "label": "portal: dashboard",
+        "ms": 25,
+        "status": 500,
+        "note": "{\"error\":\"Something went wrong on our side. Try again.\"}"
+      },
+      {
+        "label": "portal: trucks panel",
+        "ms": 20,
+        "status": 500,
+        "note": "{\"error\":\"Something went wrong on our side. Try again.\"}"
+      },
+      {
+        "label": "portal: vendors tab",
+        "ms": 40,
+        "status": 200,
+        "note": "{\"next\":{\"id\":3,\"title\":\"Sunday Cruise\",\"day\":\"2026-10-25\",\"label\":\"Sun, Oct 25, 7 PM–10 PM\"},\"meets\":[{\"id\":3,\"title\":\"Sunday Cruise\",\"day\":\"2026-10-25\",\"label"
+      },
+      {
+        "label": "portal: send-link (new vendor)",
+        "ms": 26,
+        "status": 500,
+        "note": "{\"error\":\"Something went wrong on our side. Try again.\"}"
+      },
+      {
+        "label": "portal: invite link",
+        "ms": 21,
+        "status": 201,
+        "note": "{\"text\":\"Hey! We'd love to have you at Fuel Friday: Westgate north lot, Fri, Oct 30 7 PM–10 PM. People can pre-order from you ahead of time and pay at your truc"
+      },
+      {
+        "label": "portal: edit a meet (sync)",
+        "ms": 30,
+        "status": 200,
+        "note": "{\"meet\":{\"id\":10,\"ref\":\"md4c2d01f9b2eac1d640f\",\"title\":\"Fuel Friday\",\"day\":\"2026-10-30\",\"start\":\"19:00\",\"end\":\"22:00\",\"place\":\"Westgate north lot\",\"address\":\"35"
+      },
+      {
+        "label": "portal: settings name change (re-syncs every upcoming meet)",
+        "ms": 347,
+        "status": 200,
+        "note": "{\"host\":{\"name\":\"Tasty Tuesday wrongshape\",\"slug\":\"tasty-tuesday\",\"email\":\"owner@tasty.test\",\"tagline\":\"\",\"city\":\"Phoenix\",\"accent\":\"\",\"logo\":\"\",\"instagram\":\"ta"
+      },
+      {
+        "label": "portal: kit list (sends unsent logos)",
+        "ms": 4,
+        "status": 200,
+        "note": "{\"logos\":[{\"id\":91,\"kind\":\"group\",\"name\":\"Club 11\",\"url\":\"/uploads/logo-fa7fe2fa90605708-k.png\",\"thumb\":\"/uploads/logo-fa7fe2fa90605708-k.s256.webp\",\"instagram\""
+      },
+      {
+        "label": "portal: read logos",
+        "ms": 25,
+        "status": 200,
+        "note": "{\"read\":[{\"id\":31,\"name\":\"\",\"kind\":null},{\"id\":34,\"name\":\"\",\"kind\":null}]}"
+      },
+      {
+        "label": "portal: history",
+        "ms": 24,
+        "status": 500,
+        "note": "{\"error\":\"Something went wrong on our side. Try again.\"}"
+      },
+      {
+        "label": "portal: delete a vendor (drops its invites)",
+        "ms": 327,
+        "status": 200,
+        "note": "{\"ok\":true} | after: kit row gone, kit_gone=1, still invited on the food side in 15/15 meets"
+      },
+      {
+        "label": "after recovery: meet page",
+        "ms": 31,
+        "status": 200,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "after recovery: cold meet page",
+        "ms": 33,
+        "status": 200,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      }
+    ],
+    "alive": true,
+    "uncaught": 0,
+    "unhandled": 0,
+    "appErrors": 10
+  },
+  "nullvendor": {
+    "rows": [
+      {
+        "label": "portal: post a meet (sync)",
+        "ms": 26.342302,
+        "status": 201,
+        "note": "{\"synced\":true,\"syncError\":\"\"}"
+      },
+      {
+        "label": "page: meet, warm truck list",
+        "ms": 34,
+        "status": 200,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "page: meet, cold (never loaded)",
+        "ms": 24,
+        "status": 200,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "page: host home",
+        "ms": 38,
+        "status": 200,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "page: meet name address",
+        "ms": 22,
+        "status": 200,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "page: vendor profile /v/",
+        "ms": 33,
+        "status": 200,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "page: food page (menu)",
+        "ms": 11,
+        "status": 200,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "api: menu /api/meets/:id/food/:truck",
+        "ms": 20,
+        "status": 200,
+        "note": "{\"name\":\"Birria Bros\",\"emoji\":\"\",\"cardReady\":true,\"tips\":{\"on\":true,\"pcts\":[15,20]},\"allergyOn\":false,\"window\":{\"opensAt\":0,\"closesAt\":1792905769168,\"open\":true"
+      },
+      {
+        "label": "api: order status /api/orders/:t",
+        "ms": 21,
+        "status": 200,
+        "note": "{\"token\":\"aaaaaaaaaaaaaaaaaaaaaaaa\",\"ticket\":101,\"status\":\"Paid\",\"payment\":\"paid\",\"total\":14,\"name\":null,\"vendor\":\"Birria Bros\",\"pickupAt\":null,\"pickupLabel\":\"\""
+      },
+      {
+        "label": "portal: dashboard",
+        "ms": 31,
+        "status": 200,
+        "note": "{\"host\":{\"name\":\"Tasty Tuesday wrongshape\",\"slug\":\"tasty-tuesday\",\"email\":\"owner@tasty.test\",\"tagline\":\"\",\"city\":\"Phoenix\",\"accent\":\"\",\"logo\":\"\",\"instagram\":\"ta"
+      },
+      {
+        "label": "portal: trucks panel",
+        "ms": 26,
+        "status": 200,
+        "note": "{\"trucks\":[{\"inviteId\":41,\"status\":\"in\",\"slug\":\"birria-bros\",\"name\":\"Birria Bros\",\"emoji\":\"🌮\",\"cardReady\":true,\"payAtTruck\":false,\"paused\":false,\"openNow\":fals"
+      },
+      {
+        "label": "portal: vendors tab",
+        "ms": 43,
+        "status": 200,
+        "note": "{\"next\":{\"id\":3,\"title\":\"Sunday Cruise\",\"day\":\"2026-10-25\",\"label\":\"Sun, Oct 25, 7 PM–10 PM\"},\"meets\":[{\"id\":3,\"title\":\"Sunday Cruise\",\"day\":\"2026-10-25\",\"label"
+      },
+      {
+        "label": "portal: send-link (new vendor)",
+        "ms": 42,
+        "status": 201,
+        "note": "{\"url\":\"https://kitchen.test/meet-invite?c=ABCD-1221\",\"text\":\"Hey Truck 34! You're on for Sunday Cruise: 75th Ave & Dunlap, Sun, Nov 1 7 PM–10 PM. People can pr"
+      },
+      {
+        "label": "portal: invite link",
+        "ms": 23,
+        "status": 201,
+        "note": "{\"url\":\"https://kitchen.test/meet-invite?c=ABCD-1222\",\"code\":\"ABCD-1222\",\"text\":\"Hey! We'd love to have you at Sunday Cruise: 75th Ave & Dunlap, Sun, Nov 1 7 PM"
+      },
+      {
+        "label": "portal: edit a meet (sync)",
+        "ms": 27,
+        "status": 200,
+        "note": "{\"meet\":{\"id\":11,\"ref\":\"mc932a3ad73c12211e092\",\"title\":\"Sunday Cruise\",\"day\":\"2026-11-01\",\"start\":\"19:00\",\"end\":\"22:00\",\"place\":\"75th Ave & Dunlap\",\"address\":\"3"
+      },
+      {
+        "label": "portal: settings name change (re-syncs every upcoming meet)",
+        "ms": 384,
+        "status": 200,
+        "note": "{\"host\":{\"name\":\"Tasty Tuesday nullvendor\",\"slug\":\"tasty-tuesday\",\"email\":\"owner@tasty.test\",\"tagline\":\"\",\"city\":\"Phoenix\",\"accent\":\"\",\"logo\":\"\",\"instagram\":\"ta"
+      },
+      {
+        "label": "portal: kit list (sends unsent logos)",
+        "ms": 5,
+        "status": 200,
+        "note": "{\"logos\":[{\"id\":91,\"kind\":\"group\",\"name\":\"Club 11\",\"url\":\"/uploads/logo-fa7fe2fa90605708-k.png\",\"thumb\":\"/uploads/logo-fa7fe2fa90605708-k.s256.webp\",\"instagram\""
+      },
+      {
+        "label": "portal: read logos",
+        "ms": 18,
+        "status": 200,
+        "note": "{\"read\":[{\"id\":34,\"name\":\"Unforsaken\",\"kind\":\"group\"}]}"
+      },
+      {
+        "label": "portal: history",
+        "ms": 26,
+        "status": 200,
+        "note": "{\"meets\":[{\"id\":2,\"ref\":\"m1a2d9e1562cd8bd8dfd9\",\"title\":\"Fuel Friday\",\"day\":\"2026-10-23\",\"start\":\"19:00\",\"end\":\"22:00\",\"place\":\"Westgate north lot\",\"address\":\"3"
+      },
+      {
+        "label": "portal: delete a vendor (drops its invites)",
+        "ms": 637,
+        "status": 200,
+        "note": "{\"ok\":true} | after: kit row gone, kit_gone=1, still invited on the food side in 1/15 meets"
+      },
+      {
+        "label": "after recovery: meet page",
+        "ms": 30,
+        "status": 200,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "after recovery: cold meet page",
+        "ms": 23,
+        "status": 200,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      }
+    ],
+    "alive": true,
+    "uncaught": 0,
+    "unhandled": 0,
+    "appErrors": 0
+  },
+  "reset": {
+    "rows": [
+      {
+        "label": "portal: post a meet (sync)",
+        "ms": 11.108598,
+        "status": 201,
+        "note": "{\"synced\":false,\"syncError\":\"The food side isn’t answering right now. Try again in a minute.\"}"
+      },
+      {
+        "label": "page: meet, warm truck list",
+        "ms": 15,
+        "status": 200,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "page: meet, cold (never loaded)",
+        "ms": 18,
+        "status": 200,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "page: host home",
+        "ms": 22,
+        "status": 200,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "page: meet name address",
+        "ms": 21,
+        "status": 200,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "page: vendor profile /v/",
+        "ms": 26,
+        "status": 200,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "page: food page (menu)",
+        "ms": 2,
+        "status": 404,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "api: menu /api/meets/:id/food/:truck",
+        "ms": 2,
+        "status": 502,
+        "note": "{\"error\":\"The food side isn’t answering right now. Try again in a minute.\"}"
+      },
+      {
+        "label": "api: order status /api/orders/:t",
+        "ms": 6,
+        "status": 200,
+        "note": "{\"token\":\"aaaaaaaaaaaaaaaaaaaaaaaa\",\"ticket\":101,\"status\":\"Paid\",\"payment\":\"paid\",\"total\":14,\"name\":null,\"vendor\":\"Birria Bros\",\"pickupAt\":null,\"pickupLabel\":\"\""
+      },
+      {
+        "label": "portal: dashboard",
+        "ms": 8,
+        "status": 200,
+        "note": "{\"host\":{\"name\":\"Tasty Tuesday nullvendor\",\"slug\":\"tasty-tuesday\",\"email\":\"owner@tasty.test\",\"tagline\":\"\",\"city\":\"Phoenix\",\"accent\":\"\",\"logo\":\"\",\"instagram\":\"ta"
+      },
+      {
+        "label": "portal: trucks panel",
+        "ms": 4,
+        "status": 200,
+        "note": "{\"trucks\":[],\"known\":[{\"slug\":\"birria-bros\",\"name\":\"Birria Bros\",\"emoji\":\"🌮\"},{\"slug\":\"desert-lemonade\",\"name\":\"Desert Lemonade\",\"emoji\":\"🍋\"},{\"slug\":\"night-w"
+      },
+      {
+        "label": "portal: vendors tab",
+        "ms": 21,
+        "status": 200,
+        "note": "{\"next\":{\"id\":3,\"title\":\"Sunday Cruise\",\"day\":\"2026-10-25\",\"label\":\"Sun, Oct 25, 7 PM–10 PM\"},\"meets\":[{\"id\":3,\"title\":\"Sunday Cruise\",\"day\":\"2026-10-25\",\"label"
+      },
+      {
+        "label": "portal: send-link (new vendor)",
+        "ms": 5,
+        "status": 502,
+        "note": "{\"error\":\"The food side isn’t answering right now. Try again in a minute.\"}"
+      },
+      {
+        "label": "portal: invite link",
+        "ms": 3,
+        "status": 502,
+        "note": "{\"error\":\"The food side isn’t answering right now. Try again in a minute.\"}"
+      },
+      {
+        "label": "portal: edit a meet (sync)",
+        "ms": 7,
+        "status": 200,
+        "note": "{\"meet\":{\"id\":17,\"ref\":\"mce4ee4380ed32a8e3b54\",\"title\":\"Tasty Tuesday\",\"day\":\"2026-11-10\",\"start\":\"19:00\",\"end\":\"22:00\",\"place\":\"Lot at 35th Ave & Dunlap\",\"addr"
+      },
+      {
+        "label": "portal: settings name change (re-syncs every upcoming meet)",
+        "ms": 54,
+        "status": 200,
+        "note": "{\"host\":{\"name\":\"Tasty Tuesday reset\",\"slug\":\"tasty-tuesday\",\"email\":\"owner@tasty.test\",\"tagline\":\"\",\"city\":\"Phoenix\",\"accent\":\"\",\"logo\":\"\",\"instagram\":\"tastytu"
+      },
+      {
+        "label": "portal: kit list (sends unsent logos)",
+        "ms": 5,
+        "status": 200,
+        "note": "{\"logos\":[{\"id\":91,\"kind\":\"group\",\"name\":\"Club 11\",\"url\":\"/uploads/logo-fa7fe2fa90605708-k.png\",\"thumb\":\"/uploads/logo-fa7fe2fa90605708-k.s256.webp\",\"instagram\""
+      },
+      {
+        "label": "portal: read logos",
+        "ms": 4,
+        "status": 502,
+        "note": "{\"error\":\"The food side isn’t answering right now. Try again in a minute.\"}"
+      },
+      {
+        "label": "portal: history",
+        "ms": 6,
+        "status": 200,
+        "note": "{\"meets\":[{\"id\":2,\"ref\":\"m1a2d9e1562cd8bd8dfd9\",\"title\":\"Fuel Friday\",\"day\":\"2026-10-23\",\"start\":\"19:00\",\"end\":\"22:00\",\"place\":\"Westgate north lot\",\"address\":\"3"
+      },
+      {
+        "label": "portal: delete a vendor (drops its invites)",
+        "ms": 62,
+        "status": 200,
+        "note": "{\"ok\":true} | after: kit row gone, kit_gone=1, still invited on the food side in 15/15 meets"
+      },
+      {
+        "label": "after recovery: meet page",
+        "ms": 32,
+        "status": 200,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "after recovery: cold meet page",
+        "ms": 26,
+        "status": 200,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      }
+    ],
+    "alive": true,
+    "uncaught": 0,
+    "unhandled": 0,
+    "appErrors": 0
+  },
+  "refused": {
+    "rows": [
+      {
+        "label": "portal: post a meet (sync)",
+        "ms": 12.98901,
+        "status": 201,
+        "note": "{\"synced\":false,\"syncError\":\"The food side isn’t answering right now. Try again in a minute.\"}"
+      },
+      {
+        "label": "page: meet, warm truck list",
+        "ms": 20,
+        "status": 200,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "page: meet, cold (never loaded)",
+        "ms": 18,
+        "status": 200,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "page: host home",
+        "ms": 24,
+        "status": 200,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "page: meet name address",
+        "ms": 25,
+        "status": 200,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "page: vendor profile /v/",
+        "ms": 15,
+        "status": 200,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "page: food page (menu)",
+        "ms": 3,
+        "status": 404,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "api: menu /api/meets/:id/food/:truck",
+        "ms": 4,
+        "status": 502,
+        "note": "{\"error\":\"The food side isn’t answering right now. Try again in a minute.\"}"
+      },
+      {
+        "label": "api: order status /api/orders/:t",
+        "ms": 5,
+        "status": 200,
+        "note": "{\"token\":\"aaaaaaaaaaaaaaaaaaaaaaaa\",\"ticket\":101,\"status\":\"Paid\",\"payment\":\"paid\",\"total\":14,\"name\":null,\"vendor\":\"Birria Bros\",\"pickupAt\":null,\"pickupLabel\":\"\""
+      },
+      {
+        "label": "portal: dashboard",
+        "ms": 17,
+        "status": 200,
+        "note": "{\"host\":{\"name\":\"Tasty Tuesday reset\",\"slug\":\"tasty-tuesday\",\"email\":\"owner@tasty.test\",\"tagline\":\"\",\"city\":\"Phoenix\",\"accent\":\"\",\"logo\":\"\",\"instagram\":\"tastytu"
+      },
+      {
+        "label": "portal: trucks panel",
+        "ms": 8,
+        "status": 200,
+        "note": "{\"trucks\":[],\"known\":[{\"slug\":\"birria-bros\",\"name\":\"Birria Bros\",\"emoji\":\"🌮\"},{\"slug\":\"desert-lemonade\",\"name\":\"Desert Lemonade\",\"emoji\":\"🍋\"},{\"slug\":\"night-w"
+      },
+      {
+        "label": "portal: vendors tab",
+        "ms": 23,
+        "status": 200,
+        "note": "{\"next\":{\"id\":3,\"title\":\"Sunday Cruise\",\"day\":\"2026-10-25\",\"label\":\"Sun, Oct 25, 7 PM–10 PM\"},\"meets\":[{\"id\":3,\"title\":\"Sunday Cruise\",\"day\":\"2026-10-25\",\"label"
+      },
+      {
+        "label": "portal: send-link (new vendor)",
+        "ms": 5,
+        "status": 502,
+        "note": "{\"error\":\"The food side isn’t answering right now. Try again in a minute.\"}"
+      },
+      {
+        "label": "portal: invite link",
+        "ms": 3,
+        "status": 502,
+        "note": "{\"error\":\"The food side isn’t answering right now. Try again in a minute.\"}"
+      },
+      {
+        "label": "portal: edit a meet (sync)",
+        "ms": 7,
+        "status": 200,
+        "note": "{\"meet\":{\"id\":18,\"ref\":\"m9696da6b053d709e69c5\",\"title\":\"Fuel Friday\",\"day\":\"2026-11-06\",\"start\":\"19:00\",\"end\":\"22:00\",\"place\":\"Westgate north lot\",\"address\":\"35"
+      },
+      {
+        "label": "portal: settings name change (re-syncs every upcoming meet)",
+        "ms": 45,
+        "status": 200,
+        "note": "{\"host\":{\"name\":\"Tasty Tuesday refused\",\"slug\":\"tasty-tuesday\",\"email\":\"owner@tasty.test\",\"tagline\":\"\",\"city\":\"Phoenix\",\"accent\":\"\",\"logo\":\"\",\"instagram\":\"tasty"
+      },
+      {
+        "label": "portal: kit list (sends unsent logos)",
+        "ms": 6,
+        "status": 200,
+        "note": "{\"logos\":[{\"id\":91,\"kind\":\"group\",\"name\":\"Club 11\",\"url\":\"/uploads/logo-fa7fe2fa90605708-k.png\",\"thumb\":\"/uploads/logo-fa7fe2fa90605708-k.s256.webp\",\"instagram\""
+      },
+      {
+        "label": "portal: read logos",
+        "ms": 5,
+        "status": 502,
+        "note": "{\"error\":\"The food side isn’t answering right now. Try again in a minute.\"}"
+      },
+      {
+        "label": "portal: history",
+        "ms": 8,
+        "status": 200,
+        "note": "{\"meets\":[{\"id\":2,\"ref\":\"m1a2d9e1562cd8bd8dfd9\",\"title\":\"Fuel Friday\",\"day\":\"2026-10-23\",\"start\":\"19:00\",\"end\":\"22:00\",\"place\":\"Westgate north lot\",\"address\":\"3"
+      },
+      {
+        "label": "portal: delete a vendor (drops its invites)",
+        "ms": 38,
+        "status": 200,
+        "note": "{\"ok\":true} | after: kit row gone, kit_gone=1, still invited on the food side in 15/15 meets"
+      },
+      {
+        "label": "after recovery: meet page",
+        "ms": 28,
+        "status": 200,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      },
+      {
+        "label": "after recovery: cold meet page",
+        "ms": 25,
+        "status": 200,
+        "note": "<!doctype html> <html lang=\"en\"> <head> <meta charset=\"utf-8\"> <meta name=\"viewport\" content=\"width=device-width, initia"
+      }
+    ],
+    "alive": true,
+    "uncaught": 0,
+    "unhandled": 0,
+    "appErrors": 0
+  },
+  "lastLog": [
+    "◇ injected env (0) from .env",
+    "slow: GET meets.test/api/meets/2/food/birria-bros 10003 ms (load 0.5 1.4 1.7)",
+    "slow: GET meets.test/api/orders/aaaaaaaaaaaaaaaaaaaaaaaa 10005 ms (load 0.5 1.4 1.7)",
+    "slow: GET meets.test/dashboard 10011 ms (load 0.4 1.3 1.6)",
+    "slow: GET meets.test/meets/2/trucks 10006 ms (load 0.3 1.3 1.6)",
+    "slow: GET meets.test/vendors 10022 ms (load 0.3 1.2 1.6)",
+    "slow: PUT meets.test/meets/2 10010 ms (load 0.2 1.1 1.6)",
+    "slow: PUT meets.test/settings 160054 ms (load 0.5 0.8 1.4)",
+    "slow: GET meets.test/kit 60012 ms (load 0.6 0.8 1.3)",
+    "slow: DELETE meets.test/kit/13 150032 ms (load 0.6 0.8 1.3)",
+    "Error: TypeError: Cannot read properties of undefined (reading 'slug')\n    at ensureProfile (/home/claude/carmeet/host.js:678:84)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async linkFor (/home/claude/carmeet/host.js:370:16)\n    at async /home/claude/carmeet/host.js:356:17",
+    "Error: TypeError: list.filter is not a function or its return value is not iterable\n    at loadTrucks_ (/home/claude/carmeet/server.js:224:26)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async Promise.all (index 0)\n    at async renderMeet (/home/claude/carmeet/server.js:260:63)",
+    "Error: TypeError: list.filter is not a function or its return value is not iterable\n    at loadTrucks_ (/home/claude/carmeet/server.js:224:26)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async Promise.all (index 0)\n    at async renderMeet (/home/claude/carmeet/server.js:260:63)",
+    "Error: TypeError: list.filter is not a function or its return value is not iterable\n    at loadTrucks_ (/home/claude/carmeet/server.js:224:26)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async Promise.all (index 0)\n    at async renderMeet (/home/claude/carmeet/server.js:260:63)",
+    "Error: TypeError: trucks.map is not a function\n    at renderMeet (/home/claude/carmeet/server.js:266:136)",
+    "Error: TypeError: list.filter is not a function or its return value is not iterable\n    at loadTrucks_ (/home/claude/carmeet/server.js:224:26)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async Promise.all (index 0)\n    at async vendorAt (/home/claude/carmeet/server.js:530:30)\n    at async Promise.all (index 0)\n    at async vendorProfile (/home/claude/c",
+    "Error: TypeError: trucks.find is not a function\n    at foodPage (/home/claude/carmeet/server.js:335:20)",
+    "Error: TypeError: list.filter is not a function or its return value is not iterable\n    at loadTrucks_ (/home/claude/carmeet/server.js:224:26)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async /home/claude/carmeet/host.js:183:22",
+    "Error: TypeError: list.filter is not a function or its return value is not iterable\n    at loadTrucks_ (/home/claude/carmeet/server.js:224:26)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async /home/claude/carmeet/host.js:325:19",
+    "Error: TypeError: Cannot read properties of undefined (reading 'slug')\n    at ensureProfile (/home/claude/carmeet/host.js:678:84)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async linkFor (/home/claude/carmeet/host.js:370:16)\n    at async /home/claude/carmeet/host.js:356:17",
+    "Error: TypeError: list.filter is not a function or its return value is not iterable\n    at loadTrucks_ (/home/claude/carmeet/server.js:224:26)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async /home/claude/carmeet/host.js:512:63"
+  ]
+}

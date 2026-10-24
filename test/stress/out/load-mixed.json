@@ -1,0 +1,1276 @@
+{
+  "at": "2026-10-24T04:51:24.475Z",
+  "seconds": 45,
+  "steps": [
+    {
+      "clients": 10,
+      "rps": 37.2,
+      "requests": 1673,
+      "errors5xxOr0": 0,
+      "errorRate": 0,
+      "worstPageP95": 683.9,
+      "sum": {
+        "lagP99Max": 238.7,
+        "lagMax": 238.7,
+        "lagMeanAvg": 38.2,
+        "rssMaxMB": 484,
+        "heapMaxMB": 36,
+        "fdsMax": 42,
+        "handlesMax": 20,
+        "eluAvg": 1,
+        "cpuAvg": 1.05,
+        "cpuKidsAvg": 0.57,
+        "ffmpegMax": 3,
+        "sqliteBusy": 0,
+        "appErrors": 0,
+        "probeMisses": 0
+      },
+      "cats": {
+        "page /meets": {
+          "n": 93,
+          "errors": 0,
+          "codes": {
+            "200": 93
+          },
+          "p50": 165.4,
+          "p95": 289.9,
+          "p99": 368.5,
+          "max": 368.5,
+          "errSamples": []
+        },
+        "page /<host>": {
+          "n": 234,
+          "errors": 0,
+          "codes": {
+            "200": 234
+          },
+          "p50": 214.4,
+          "p95": 350.2,
+          "p99": 449.7,
+          "max": 524.6,
+          "errSamples": []
+        },
+        "api /members": {
+          "n": 48,
+          "errors": 0,
+          "codes": {
+            "200": 48
+          },
+          "p50": 280.9,
+          "p95": 391,
+          "p99": 482.9,
+          "max": 482.9,
+          "errSamples": []
+        },
+        "api /meets": {
+          "n": 46,
+          "errors": 0,
+          "codes": {
+            "200": 46
+          },
+          "p50": 202.1,
+          "p95": 355.5,
+          "p99": 390.5,
+          "max": 390.5,
+          "errSamples": []
+        },
+        "page /<meet-name>": {
+          "n": 222,
+          "errors": 0,
+          "codes": {
+            "200": 222
+          },
+          "p50": 326.8,
+          "p95": 551.4,
+          "p99": 624.8,
+          "max": 679.2,
+          "errSamples": []
+        },
+        "page /": {
+          "n": 127,
+          "errors": 0,
+          "codes": {
+            "200": 127
+          },
+          "p50": 158.7,
+          "p95": 318.5,
+          "p99": 355.9,
+          "max": 393.9,
+          "errSamples": []
+        },
+        "page /members": {
+          "n": 87,
+          "errors": 0,
+          "codes": {
+            "200": 87
+          },
+          "p50": 84,
+          "p95": 251.3,
+          "p99": 292.5,
+          "max": 292.5,
+          "errSamples": []
+        },
+        "write meet edit": {
+          "n": 13,
+          "errors": 0,
+          "codes": {
+            "200": 13
+          },
+          "p50": 532.7,
+          "p95": 897.7,
+          "p99": 897.7,
+          "max": 897.7,
+          "errSamples": []
+        },
+        "api /requests": {
+          "n": 35,
+          "errors": 0,
+          "codes": {
+            "200": 35
+          },
+          "p50": 161.5,
+          "p95": 394.1,
+          "p99": 461.5,
+          "max": 461.5,
+          "errSamples": []
+        },
+        "page /<meet-name>/<date>": {
+          "n": 210,
+          "errors": 0,
+          "codes": {
+            "200": 210
+          },
+          "p50": 347,
+          "p95": 683.9,
+          "p99": 869.5,
+          "max": 986.7,
+          "errSamples": []
+        },
+        "page /vendors": {
+          "n": 42,
+          "errors": 0,
+          "codes": {
+            "200": 42
+          },
+          "p50": 131.6,
+          "p95": 242.9,
+          "p99": 274.1,
+          "max": 274.1,
+          "errSamples": []
+        },
+        "page /@handle": {
+          "n": 232,
+          "errors": 0,
+          "codes": {
+            "200": 232
+          },
+          "p50": 245.3,
+          "p95": 407.8,
+          "p99": 460.9,
+          "max": 598.1,
+          "errSamples": []
+        },
+        "api /vendors": {
+          "n": 28,
+          "errors": 0,
+          "codes": {
+            "200": 28
+          },
+          "p50": 928.7,
+          "p95": 1176.4,
+          "p99": 1181.7,
+          "max": 1181.7,
+          "errSamples": []
+        },
+        "page /v/<vendor>": {
+          "n": 87,
+          "errors": 0,
+          "codes": {
+            "200": 87
+          },
+          "p50": 347.6,
+          "p95": 504.1,
+          "p99": 766.2,
+          "max": 766.2,
+          "errSamples": []
+        },
+        "api /me": {
+          "n": 59,
+          "errors": 0,
+          "codes": {
+            "200": 59
+          },
+          "p50": 137.9,
+          "p95": 292.7,
+          "p99": 387.8,
+          "max": 387.8,
+          "errSamples": []
+        },
+        "write photo (member key)": {
+          "n": 15,
+          "errors": 0,
+          "codes": {
+            "201": 15
+          },
+          "p50": 320,
+          "p95": 614.4,
+          "p99": 614.4,
+          "max": 614.4,
+          "errSamples": []
+        },
+        "write vendor-request": {
+          "n": 17,
+          "errors": 0,
+          "codes": {
+            "200": 17
+          },
+          "p50": 181.7,
+          "p95": 383.4,
+          "p99": 383.4,
+          "max": 383.4,
+          "errSamples": []
+        },
+        "write alert signup": {
+          "n": 20,
+          "errors": 0,
+          "codes": {
+            "200": 20
+          },
+          "p50": 210.3,
+          "p95": 364.2,
+          "p99": 364.2,
+          "max": 364.2,
+          "errSamples": []
+        },
+        "api /kit": {
+          "n": 50,
+          "errors": 0,
+          "codes": {
+            "200": 50
+          },
+          "p50": 323.2,
+          "p95": 480.5,
+          "p99": 554.4,
+          "max": 554.4,
+          "errSamples": []
+        },
+        "write photo (host session)": {
+          "n": 8,
+          "errors": 0,
+          "codes": {
+            "201": 8
+          },
+          "p50": 443.8,
+          "p95": 562.5,
+          "p99": 562.5,
+          "max": 562.5,
+          "errSamples": []
+        }
+      },
+      "sqliteBusyDelta": 0
+    },
+    {
+      "clients": 50,
+      "rps": 41.5,
+      "requests": 1867,
+      "errors5xxOr0": 0,
+      "errorRate": 0,
+      "worstPageP95": 2345.9,
+      "sum": {
+        "lagP99Max": 429.1,
+        "lagMax": 429.1,
+        "lagMeanAvg": 132.6,
+        "rssMaxMB": 493,
+        "heapMaxMB": 33,
+        "fdsMax": 83,
+        "handlesMax": 59,
+        "eluAvg": 0.98,
+        "cpuAvg": 1.34,
+        "cpuKidsAvg": 0.54,
+        "ffmpegMax": 2,
+        "sqliteBusy": 0,
+        "appErrors": 0,
+        "probeMisses": 0
+      },
+      "cats": {
+        "page /v/<vendor>": {
+          "n": 119,
+          "errors": 0,
+          "codes": {
+            "200": 119
+          },
+          "p50": 1633.8,
+          "p95": 2345.9,
+          "p99": 2625.1,
+          "max": 3110,
+          "errSamples": []
+        },
+        "page /<host>": {
+          "n": 234,
+          "errors": 0,
+          "codes": {
+            "200": 234
+          },
+          "p50": 1009.8,
+          "p95": 1370.5,
+          "p99": 1793.2,
+          "max": 4210.9,
+          "errSamples": []
+        },
+        "write alert signup": {
+          "n": 22,
+          "errors": 0,
+          "codes": {
+            "200": 22
+          },
+          "p50": 902.6,
+          "p95": 1233.3,
+          "p99": 1308.3,
+          "max": 1308.3,
+          "errSamples": []
+        },
+        "page /": {
+          "n": 147,
+          "errors": 0,
+          "codes": {
+            "200": 147
+          },
+          "p50": 736.2,
+          "p95": 1048.2,
+          "p99": 1486.7,
+          "max": 2894.5,
+          "errSamples": []
+        },
+        "page /@handle": {
+          "n": 240,
+          "errors": 0,
+          "codes": {
+            "200": 240
+          },
+          "p50": 1209.6,
+          "p95": 1626.9,
+          "p99": 1929.3,
+          "max": 3133.7,
+          "errSamples": []
+        },
+        "write vendor-request": {
+          "n": 37,
+          "errors": 0,
+          "codes": {
+            "200": 37
+          },
+          "p50": 945,
+          "p95": 1290.7,
+          "p99": 2411.4,
+          "max": 2411.4,
+          "errSamples": []
+        },
+        "page /<meet-name>": {
+          "n": 247,
+          "errors": 0,
+          "codes": {
+            "200": 247
+          },
+          "p50": 1461.9,
+          "p95": 2014.7,
+          "p99": 4118.1,
+          "max": 4799.3,
+          "errSamples": []
+        },
+        "page /vendors": {
+          "n": 47,
+          "errors": 0,
+          "codes": {
+            "200": 47
+          },
+          "p50": 546.8,
+          "p95": 733.6,
+          "p99": 744.9,
+          "max": 744.9,
+          "errSamples": []
+        },
+        "page /meets": {
+          "n": 100,
+          "errors": 0,
+          "codes": {
+            "200": 100
+          },
+          "p50": 561.7,
+          "p95": 804.6,
+          "p99": 2291.1,
+          "max": 2291.1,
+          "errSamples": []
+        },
+        "page /members": {
+          "n": 100,
+          "errors": 0,
+          "codes": {
+            "200": 100
+          },
+          "p50": 461.2,
+          "p95": 725,
+          "p99": 2163.3,
+          "max": 2163.3,
+          "errSamples": []
+        },
+        "api /meets": {
+          "n": 54,
+          "errors": 0,
+          "codes": {
+            "200": 54
+          },
+          "p50": 1046.8,
+          "p95": 1312.4,
+          "p99": 1369.2,
+          "max": 1369.2,
+          "errSamples": []
+        },
+        "api /requests": {
+          "n": 36,
+          "errors": 0,
+          "codes": {
+            "200": 36
+          },
+          "p50": 959.4,
+          "p95": 1569.8,
+          "p99": 1823,
+          "max": 1823,
+          "errSamples": []
+        },
+        "api /members": {
+          "n": 67,
+          "errors": 0,
+          "codes": {
+            "200": 67
+          },
+          "p50": 1264.1,
+          "p95": 1727.3,
+          "p99": 1794.9,
+          "max": 1794.9,
+          "errSamples": []
+        },
+        "page /<meet-name>/<date>": {
+          "n": 247,
+          "errors": 0,
+          "codes": {
+            "200": 247
+          },
+          "p50": 1519.1,
+          "p95": 2033.5,
+          "p99": 2391,
+          "max": 4804.2,
+          "errSamples": []
+        },
+        "api /kit": {
+          "n": 60,
+          "errors": 0,
+          "codes": {
+            "200": 60
+          },
+          "p50": 1468.3,
+          "p95": 2051.4,
+          "p99": 4187.5,
+          "max": 4187.5,
+          "errSamples": []
+        },
+        "api /me": {
+          "n": 46,
+          "errors": 0,
+          "codes": {
+            "200": 46
+          },
+          "p50": 746.1,
+          "p95": 954.8,
+          "p99": 975.8,
+          "max": 975.8,
+          "errSamples": []
+        },
+        "write photo (member key)": {
+          "n": 18,
+          "errors": 0,
+          "codes": {
+            "201": 18
+          },
+          "p50": 1737.7,
+          "p95": 2205.5,
+          "p99": 2205.5,
+          "max": 2205.5,
+          "errSamples": []
+        },
+        "write meet edit": {
+          "n": 12,
+          "errors": 0,
+          "codes": {
+            "200": 12
+          },
+          "p50": 2347.9,
+          "p95": 3036.4,
+          "p99": 3036.4,
+          "max": 3036.4,
+          "errSamples": []
+        },
+        "write photo (host session)": {
+          "n": 7,
+          "errors": 0,
+          "codes": {
+            "201": 7
+          },
+          "p50": 2302.3,
+          "p95": 2932.5,
+          "p99": 2932.5,
+          "max": 2932.5,
+          "errSamples": []
+        },
+        "api /vendors": {
+          "n": 27,
+          "errors": 0,
+          "codes": {
+            "200": 27
+          },
+          "p50": 3903.3,
+          "p95": 4631.9,
+          "p99": 4684,
+          "max": 4684,
+          "errSamples": []
+        }
+      },
+      "sqliteBusyDelta": 0
+    },
+    {
+      "clients": 150,
+      "rps": 42.5,
+      "requests": 1914,
+      "errors5xxOr0": 11,
+      "errorRate": 0.57,
+      "worstPageP95": 16668,
+      "sum": {
+        "lagP99Max": 714.6,
+        "lagMax": 714.6,
+        "lagMeanAvg": 303.2,
+        "rssMaxMB": 497,
+        "heapMaxMB": 34,
+        "fdsMax": 184,
+        "handlesMax": 161,
+        "eluAvg": 0.97,
+        "cpuAvg": 1.71,
+        "cpuKidsAvg": 0.45,
+        "ffmpegMax": 2,
+        "sqliteBusy": 0,
+        "appErrors": 0,
+        "probeMisses": 0
+      },
+      "cats": {
+        "page /@handle": {
+          "n": 253,
+          "errors": 1,
+          "codes": {
+            "0": 1,
+            "200": 252
+          },
+          "p50": 3268.1,
+          "p95": 4006.1,
+          "p99": 21452.3,
+          "max": 30000.2,
+          "errSamples": [
+            "TIMEOUT"
+          ]
+        },
+        "page /<host>": {
+          "n": 234,
+          "errors": 1,
+          "codes": {
+            "0": 1,
+            "200": 233
+          },
+          "p50": 2514.9,
+          "p95": 4309.4,
+          "p99": 25918.9,
+          "max": 30001,
+          "errSamples": [
+            "TIMEOUT"
+          ]
+        },
+        "write alert signup": {
+          "n": 34,
+          "errors": 1,
+          "codes": {
+            "0": 1,
+            "200": 33
+          },
+          "p50": 2322.5,
+          "p95": 26246.8,
+          "p99": 30001.1,
+          "max": 30001.1,
+          "errSamples": [
+            "TIMEOUT"
+          ]
+        },
+        "api /me": {
+          "n": 55,
+          "errors": 0,
+          "codes": {
+            "200": 55
+          },
+          "p50": 1871.1,
+          "p95": 7936.3,
+          "p99": 23547.8,
+          "max": 23547.8,
+          "errSamples": []
+        },
+        "api /kit": {
+          "n": 67,
+          "errors": 0,
+          "codes": {
+            "200": 67
+          },
+          "p50": 3922.8,
+          "p95": 6379.9,
+          "p99": 26443.3,
+          "max": 26443.3,
+          "errSamples": []
+        },
+        "page /meets": {
+          "n": 97,
+          "errors": 0,
+          "codes": {
+            "200": 97
+          },
+          "p50": 1215.9,
+          "p95": 1686.7,
+          "p99": 25647.3,
+          "max": 25647.3,
+          "errSamples": []
+        },
+        "page /<meet-name>": {
+          "n": 260,
+          "errors": 3,
+          "codes": {
+            "0": 3,
+            "200": 257
+          },
+          "p50": 3995.5,
+          "p95": 16668,
+          "p99": 30000.8,
+          "max": 30001.8,
+          "errSamples": [
+            "TIMEOUT",
+            "TIMEOUT",
+            "TIMEOUT"
+          ]
+        },
+        "page /<meet-name>/<date>": {
+          "n": 245,
+          "errors": 1,
+          "codes": {
+            "0": 1,
+            "200": 244
+          },
+          "p50": 3992.9,
+          "p95": 4894.6,
+          "p99": 19551.9,
+          "max": 30002.9,
+          "errSamples": [
+            "TIMEOUT"
+          ]
+        },
+        "page /members": {
+          "n": 105,
+          "errors": 1,
+          "codes": {
+            "0": 1,
+            "200": 104
+          },
+          "p50": 1257.5,
+          "p95": 7616.1,
+          "p99": 29095.5,
+          "max": 30002.3,
+          "errSamples": [
+            "TIMEOUT"
+          ]
+        },
+        "page /vendors": {
+          "n": 53,
+          "errors": 0,
+          "codes": {
+            "200": 53
+          },
+          "p50": 1280.1,
+          "p95": 6830.6,
+          "p99": 23185.1,
+          "max": 23185.1,
+          "errSamples": []
+        },
+        "page /v/<vendor>": {
+          "n": 123,
+          "errors": 0,
+          "codes": {
+            "200": 123
+          },
+          "p50": 4295.9,
+          "p95": 5436.4,
+          "p99": 11549.4,
+          "max": 13463.2,
+          "errSamples": []
+        },
+        "page /": {
+          "n": 147,
+          "errors": 0,
+          "codes": {
+            "200": 147
+          },
+          "p50": 1892.6,
+          "p95": 4754.7,
+          "p99": 27225,
+          "max": 29393.4,
+          "errSamples": []
+        },
+        "api /members": {
+          "n": 52,
+          "errors": 0,
+          "codes": {
+            "200": 52
+          },
+          "p50": 3379.9,
+          "p95": 17591.5,
+          "p99": 29402.6,
+          "max": 29402.6,
+          "errSamples": []
+        },
+        "write vendor-request": {
+          "n": 17,
+          "errors": 0,
+          "codes": {
+            "200": 17
+          },
+          "p50": 2670,
+          "p95": 5365.5,
+          "p99": 5365.5,
+          "max": 5365.5,
+          "errSamples": []
+        },
+        "api /meets": {
+          "n": 54,
+          "errors": 1,
+          "codes": {
+            "0": 1,
+            "200": 53
+          },
+          "p50": 2682.8,
+          "p95": 12069.1,
+          "p99": 30006.1,
+          "max": 30006.1,
+          "errSamples": [
+            "TIMEOUT"
+          ]
+        },
+        "api /vendors": {
+          "n": 46,
+          "errors": 1,
+          "codes": {
+            "0": 1,
+            "200": 45
+          },
+          "p50": 10245.8,
+          "p95": 12166.1,
+          "p99": 30001.9,
+          "max": 30001.9,
+          "errSamples": [
+            "TIMEOUT"
+          ]
+        },
+        "api /requests": {
+          "n": 34,
+          "errors": 1,
+          "codes": {
+            "0": 1,
+            "200": 33
+          },
+          "p50": 2611.9,
+          "p95": 27521,
+          "p99": 30004.1,
+          "max": 30004.1,
+          "errSamples": [
+            "TIMEOUT"
+          ]
+        },
+        "write photo (member key)": {
+          "n": 17,
+          "errors": 0,
+          "codes": {
+            "201": 17
+          },
+          "p50": 4198,
+          "p95": 25265.8,
+          "p99": 25265.8,
+          "max": 25265.8,
+          "errSamples": []
+        },
+        "write photo (host session)": {
+          "n": 10,
+          "errors": 0,
+          "codes": {
+            "201": 10
+          },
+          "p50": 5732.3,
+          "p95": 6698.5,
+          "p99": 6698.5,
+          "max": 6698.5,
+          "errSamples": []
+        },
+        "write meet edit": {
+          "n": 11,
+          "errors": 0,
+          "codes": {
+            "200": 11
+          },
+          "p50": 6278,
+          "p95": 6837.7,
+          "p99": 6837.7,
+          "max": 6837.7,
+          "errSamples": []
+        }
+      },
+      "sqliteBusyDelta": 0
+    },
+    {
+      "clients": 300,
+      "rps": 48.4,
+      "requests": 2176,
+      "errors5xxOr0": 163,
+      "errorRate": 7.49,
+      "worstPageP95": 30002.3,
+      "sum": {
+        "lagP99Max": 763.9,
+        "lagMax": 763.9,
+        "lagMeanAvg": 249.2,
+        "rssMaxMB": 507,
+        "heapMaxMB": 36,
+        "fdsMax": 190,
+        "handlesMax": 164,
+        "eluAvg": 0.98,
+        "cpuAvg": 1.66,
+        "cpuKidsAvg": 0.35,
+        "ffmpegMax": 3,
+        "sqliteBusy": 0,
+        "appErrors": 0,
+        "probeMisses": 0
+      },
+      "cats": {
+        "page /<host>": {
+          "n": 280,
+          "errors": 21,
+          "codes": {
+            "0": 21,
+            "200": 259
+          },
+          "p50": 2849.9,
+          "p95": 30000.7,
+          "p99": 30001.5,
+          "max": 30002.2,
+          "errSamples": [
+            "TIMEOUT",
+            "TIMEOUT",
+            "TIMEOUT",
+            "TIMEOUT",
+            "TIMEOUT"
+          ]
+        },
+        "page /<meet-name>": {
+          "n": 309,
+          "errors": 21,
+          "codes": {
+            "0": 21,
+            "200": 288
+          },
+          "p50": 4224.1,
+          "p95": 30000.6,
+          "p99": 30001.8,
+          "max": 30003.8,
+          "errSamples": [
+            "TIMEOUT",
+            "TIMEOUT",
+            "TIMEOUT",
+            "TIMEOUT",
+            "TIMEOUT"
+          ]
+        },
+        "page /v/<vendor>": {
+          "n": 138,
+          "errors": 14,
+          "codes": {
+            "0": 14,
+            "200": 124
+          },
+          "p50": 4554,
+          "p95": 30000.9,
+          "p99": 30002,
+          "max": 30003.8,
+          "errSamples": [
+            "TIMEOUT",
+            "TIMEOUT",
+            "TIMEOUT",
+            "TIMEOUT",
+            "TIMEOUT"
+          ]
+        },
+        "page /meets": {
+          "n": 129,
+          "errors": 10,
+          "codes": {
+            "0": 10,
+            "200": 119
+          },
+          "p50": 1352.2,
+          "p95": 30000.5,
+          "p99": 30002,
+          "max": 30002.9,
+          "errSamples": [
+            "TIMEOUT",
+            "TIMEOUT",
+            "TIMEOUT",
+            "TIMEOUT",
+            "TIMEOUT"
+          ]
+        },
+        "page /": {
+          "n": 168,
+          "errors": 9,
+          "codes": {
+            "0": 9,
+            "200": 159
+          },
+          "p50": 2110.8,
+          "p95": 30000.6,
+          "p99": 30002.6,
+          "max": 30009.6,
+          "errSamples": [
+            "TIMEOUT",
+            "TIMEOUT",
+            "TIMEOUT",
+            "TIMEOUT",
+            "TIMEOUT"
+          ]
+        },
+        "page /@handle": {
+          "n": 308,
+          "errors": 23,
+          "codes": {
+            "0": 23,
+            "200": 285
+          },
+          "p50": 3445.3,
+          "p95": 30000.8,
+          "p99": 30006.3,
+          "max": 30008.9,
+          "errSamples": [
+            "TIMEOUT",
+            "TIMEOUT",
+            "TIMEOUT",
+            "TIMEOUT",
+            "TIMEOUT"
+          ]
+        },
+        "page /<meet-name>/<date>": {
+          "n": 271,
+          "errors": 21,
+          "codes": {
+            "0": 21,
+            "200": 250
+          },
+          "p50": 4251.4,
+          "p95": 30000.7,
+          "p99": 30003.8,
+          "max": 30008.3,
+          "errSamples": [
+            "TIMEOUT",
+            "TIMEOUT",
+            "TIMEOUT",
+            "TIMEOUT",
+            "TIMEOUT"
+          ]
+        },
+        "page /members": {
+          "n": 109,
+          "errors": 8,
+          "codes": {
+            "0": 8,
+            "200": 101
+          },
+          "p50": 1282.7,
+          "p95": 30000.8,
+          "p99": 30002.2,
+          "max": 30003,
+          "errSamples": [
+            "TIMEOUT",
+            "TIMEOUT",
+            "TIMEOUT",
+            "TIMEOUT",
+            "TIMEOUT"
+          ]
+        },
+        "page /vendors": {
+          "n": 51,
+          "errors": 5,
+          "codes": {
+            "0": 5,
+            "200": 46
+          },
+          "p50": 1418,
+          "p95": 30002.3,
+          "p99": 30006.2,
+          "max": 30006.2,
+          "errSamples": [
+            "TIMEOUT",
+            "TIMEOUT",
+            "TIMEOUT",
+            "TIMEOUT",
+            "TIMEOUT"
+          ]
+        },
+        "api /me": {
+          "n": 59,
+          "errors": 5,
+          "codes": {
+            "0": 5,
+            "200": 54
+          },
+          "p50": 2121.8,
+          "p95": 30001.2,
+          "p99": 30001.6,
+          "max": 30001.6,
+          "errSamples": [
+            "TIMEOUT",
+            "TIMEOUT",
+            "TIMEOUT",
+            "TIMEOUT",
+            "TIMEOUT"
+          ]
+        },
+        "api /kit": {
+          "n": 60,
+          "errors": 0,
+          "codes": {
+            "200": 60
+          },
+          "p50": 4201.1,
+          "p95": 23699,
+          "p99": 29312.4,
+          "max": 29312.4,
+          "errSamples": []
+        },
+        "write photo (member key)": {
+          "n": 26,
+          "errors": 3,
+          "codes": {
+            "0": 3,
+            "201": 23
+          },
+          "p50": 4042.7,
+          "p95": 30001.8,
+          "p99": 30004.5,
+          "max": 30004.5,
+          "errSamples": [
+            "TIMEOUT",
+            "TIMEOUT",
+            "TIMEOUT"
+          ]
+        },
+        "api /members": {
+          "n": 50,
+          "errors": 2,
+          "codes": {
+            "0": 2,
+            "200": 48
+          },
+          "p50": 3619.1,
+          "p95": 23751.9,
+          "p99": 30001.8,
+          "max": 30001.8,
+          "errSamples": [
+            "TIMEOUT",
+            "TIMEOUT"
+          ]
+        },
+        "write vendor-request": {
+          "n": 25,
+          "errors": 2,
+          "codes": {
+            "0": 2,
+            "200": 23
+          },
+          "p50": 2770.8,
+          "p95": 30000,
+          "p99": 30001.7,
+          "max": 30001.7,
+          "errSamples": [
+            "TIMEOUT",
+            "TIMEOUT"
+          ]
+        },
+        "api /requests": {
+          "n": 42,
+          "errors": 4,
+          "codes": {
+            "0": 4,
+            "200": 38
+          },
+          "p50": 2775.4,
+          "p95": 30001.2,
+          "p99": 30003.1,
+          "max": 30003.1,
+          "errSamples": [
+            "TIMEOUT",
+            "TIMEOUT",
+            "TIMEOUT",
+            "TIMEOUT"
+          ]
+        },
+        "api /meets": {
+          "n": 58,
+          "errors": 5,
+          "codes": {
+            "0": 5,
+            "200": 53
+          },
+          "p50": 2714.1,
+          "p95": 30001.4,
+          "p99": 30001.8,
+          "max": 30001.8,
+          "errSamples": [
+            "TIMEOUT",
+            "TIMEOUT",
+            "TIMEOUT",
+            "TIMEOUT",
+            "TIMEOUT"
+          ]
+        },
+        "write alert signup": {
+          "n": 35,
+          "errors": 3,
+          "codes": {
+            "0": 3,
+            "200": 32
+          },
+          "p50": 2803.6,
+          "p95": 30001.3,
+          "p99": 30001.8,
+          "max": 30001.8,
+          "errSamples": [
+            "TIMEOUT",
+            "TIMEOUT",
+            "TIMEOUT"
+          ]
+        },
+        "write meet edit": {
+          "n": 15,
+          "errors": 0,
+          "codes": {
+            "200": 15
+          },
+          "p50": 6036.1,
+          "p95": 23025.5,
+          "p99": 23025.5,
+          "max": 23025.5,
+          "errSamples": []
+        },
+        "write photo (host session)": {
+          "n": 9,
+          "errors": 1,
+          "codes": {
+            "0": 1,
+            "201": 8
+          },
+          "p50": 6320.5,
+          "p95": 30002.4,
+          "p99": 30002.4,
+          "max": 30002.4,
+          "errSamples": [
+            "TIMEOUT"
+          ]
+        },
+        "api /vendors": {
+          "n": 34,
+          "errors": 6,
+          "codes": {
+            "0": 6,
+            "200": 28
+          },
+          "p50": 11938,
+          "p95": 30001.1,
+          "p99": 30001.8,
+          "max": 30001.8,
+          "errSamples": [
+            "TIMEOUT",
+            "TIMEOUT",
+            "TIMEOUT",
+            "TIMEOUT",
+            "TIMEOUT"
+          ]
+        }
+      },
+      "sqliteBusyDelta": 0
+    }
+  ],
+  "appLog": [
+    "slow: GET meets.test/kit 3261 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/kit 3263 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/@driver-72 2382 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/@driver-232 2392 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/@driver-210 2403 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/requests 1762 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/monarchy-late/2026-11-12 3868 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/v/truck-30 3900 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/kit 3009 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/glendale-gathering/2026-11-07 3024 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/glendale-gathering/2026-11-07 3038 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/fuel-friday 3047 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/@driver-232 2419 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/@driver-49 2421 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/@driver-287 2423 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/@driver-10 2424 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/az-monarchy 1746 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/meets 1779 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/@driver-173 2505 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/@driver-115 2516 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/v/truck-17 3647 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/glendale-gathering/2026-10-31 2784 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/midnight-tempe/2026-10-28 2798 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/sunday-cruise 2817 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/midnight-tempe/2026-11-18 2834 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/fuel-friday 2852 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/@driver-249 2207 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/@driver-49 2217 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/members 2228 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/@driver-28 2243 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/@driver-131 2254 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/@driver-108 2255 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/@driver-3 2259 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/@driver-48 2260 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/vendors 10949 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/vendors 11245 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/v/truck-13 3416 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/@driver-131 2084 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/monarchy-late 2838 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/sunday-cruise/2026-11-01 2856 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/vendors 11095 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/monarchy-late 2512 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/sunday-cruise/2026-11-08 2528 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/glendale-gathering/2026-10-31 2543 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/monarchy-late 2559 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/kit 2574 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/midnight-tempe/2026-11-25 2600 ms (load 1.6 1.5 0.9)",
+    "slow: PUT meets.test/meets/30 5125 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/midnight-tempe/2026-11-11 2345 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/fuel-friday 2349 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/kit 2355 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/glendale-gathering 2372 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/vendors 10469 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/v/truck-14 2724 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/vendors 9555 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/v/truck-20 2464 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/v/truck-30 2465 ms (load 1.6 1.5 0.9)",
+    "slow: PUT meets.test/meets/26 4378 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/vendors 3617 ms (load 1.6 1.5 0.9)",
+    "slow: GET meets.test/vendors 3325 ms (load 1.6 1.5 0.9)"
+  ]
+}

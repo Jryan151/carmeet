@@ -1,0 +1,31 @@
+{
+  "fired": [
+    "preorders @ portal:next",
+    "plates @ portal:next",
+    "inviteId @ portal:next",
+    "preorders @ portal:meets",
+    "plates @ portal:meets",
+    "inviteId @ portal:meets",
+    "preorders @ portal:meet-detail",
+    "plates @ portal:meet-detail",
+    "inviteId @ portal:meet-detail",
+    "preorders @ portal:kit",
+    "plates @ portal:kit",
+    "inviteId @ portal:kit",
+    "preorders @ portal:updates",
+    "plates @ portal:updates",
+    "inviteId @ portal:updates",
+    "preorders @ portal:vendors",
+    "plates @ portal:vendors",
+    "inviteId @ portal:vendors",
+    "preorders @ portal:members",
+    "plates @ portal:members",
+    "inviteId @ portal:members",
+    "preorders @ portal:history",
+    "plates @ portal:history",
+    "inviteId @ portal:history",
+    "preorders @ portal:settings",
+    "plates @ portal:settings",
+    "inviteId @ portal:settings"
+  ]
+}

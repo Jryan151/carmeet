@@ -1,0 +1,121 @@
+diff --git a/host.js b/host.js
+index c5e0ba4..5c2d6b1 100644
+--- a/host.js
++++ b/host.js
+@@ -149,10 +149,13 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
+       over: t.endsAt < Date.now(), people: m.turnout_people, cars: m.turnout_cars, video: videoShape(m), flyer: m.flyer ? '/uploads/' + m.flyer : null, lot: LotMap.clean(m.lot), venueId: m.venue_id || null, logo: m.logo ? '/uploads/' + m.logo : null, synced: !!m.synced_at && !m.sync_error, syncError: m.sync_error || '', url: N.meetUrl(h, m),
+       pageName: m.page_name || '', nameUrl: N.onName(h, m) ? N.nameUrl(h, m) : null, namesOn: true, siteDomain: SITE_DOMAIN() };
+   }
++  // The kept truck list is marked old (asked for again on the next view), never thrown away: if the food side is down
++  // at that moment, the page still has the last list to show.
++  const staleTrucks = (ref) => { const c = truckCache.get(ref); if (c) c.stale = true; };
+   async function sync(h, m) {
+     const s = await K.syncMeet(h, m, N.meetUrl(h, m));
+     await run('UPDATE meets SET synced_at = ?, sync_error = ? WHERE id = ?', [s.ok ? Date.now() : null, s.ok ? null : (s.data.error || 'not sent'), m.id]);
+-    truckCache.delete(m.ref);
++    staleTrucks(m.ref);
+     return s;
+   }
+   // The look of the trucks' menus follows the host's page (logo, video, colors): re-send upcoming meets when it changes.
+@@ -339,7 +342,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
+     if (!m.synced_at) { const s = await sync(req.me, m); if (!s.ok) return res.status(502).json({ error: s.data.error || 'The food side didn’t answer.' }); }
+     const r2 = await K.inviteLink(m.ref);
+     if (!r2.ok) return res.status(r2.status || 502).json({ error: r2.data.error || 'Couldn’t make a link.' });
+-    truckCache.delete(m.ref);
++    staleTrucks(m.ref);
+     const tz = tzOf(req.me); const t = U.meetTimes(m, tz);
+     const text = `Hey! We'd love to have you at ${m.title || req.me.name + "'s meet"}: ${m.place}, ${U.dayShort(t.startsAt, tz)} ${U.time12(t.startsAt, tz)}–${U.time12(t.endsAt, tz)}. People can pre-order from you ahead of time and pay at your truck. Open this to set up (no account needed): ${r2.data.url}`;
+     res.status(201).json({ url: r2.data.url, code: r2.data.code, text });
+@@ -372,7 +375,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
+     await run('DELETE FROM kit_gone WHERE host_id = ? AND truck_slug = ?', [h.id, pf.slug]);
+     const r2 = await K.inviteLink(m.ref, pf.slug);
+     if (!r2.ok) return { status: r2.status || 502, body: { error: r2.data.error || 'Couldn’t make a link.' } };
+-    truckCache.delete(m.ref);
++    staleTrucks(m.ref);
+     const text = r2.data.signIn
+       ? `Here's a new link for ${k.name}'s pre-order screen (it works once, on the phone that opens it): ${r2.data.url}`
+       : `Hey ${k.name}! You're on for ${m.title || h.name + "'s meet"}: ${when}. People can pre-order from you ahead of time and pay at your truck. Open this to set up (no account needed): ${r2.data.url}`;
+@@ -386,7 +389,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
+     if (!m.synced_at) await sync(req.me, m);
+     const r2 = await K.addKnown(m.ref, slug);
+     if (!r2.ok) return res.status(r2.status || 502).json({ error: r2.data.error || 'Couldn’t invite them.' });
+-    truckCache.delete(m.ref);
++    staleTrucks(m.ref);
+     res.status(201).json({ ok: true });
+   });
+   r.delete('/meets/:id/trucks/:inviteId', signedIn, async (req, res) => {
+@@ -394,7 +397,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
+     if (!m) return res.status(404).json({ error: 'That meet is gone.' });
+     const r2 = await K.dropInvite(m.ref, req.params.inviteId);
+     if (!r2.ok) return res.status(r2.status || 502).json({ error: r2.data.error || 'Couldn’t remove it.' });
+-    truckCache.delete(m.ref);
++    staleTrucks(m.ref);
+     res.json({ ok: true });
+   });
+   r.get('/requests', signedIn, async (req, res) => {
+@@ -846,7 +849,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
+       for (const m of meets) {
+         const list = await trucksFor(m, { fresh: true }).catch(() => []);
+         for (const v of list.filter((x) => x.slug === k.truck_slug && ['in', 'invited'].includes(x.status))) await K.dropInvite(m.ref, v.inviteId).catch(() => {});
+-        truckCache.delete(m.ref);
++        staleTrucks(m.ref);
+       }
+     }
+     res.json({ ok: true });
+diff --git a/kitchen.js b/kitchen.js
+index 80d4d53..f111225 100644
+--- a/kitchen.js
++++ b/kitchen.js
+@@ -22,7 +22,9 @@ async function call(method, p, body, ms) {
+     });
+     let data = null;
+     try { data = await r.json(); } catch (e) { data = null; }
+-    return { ok: r.ok, status: r.status, data: data || { error: 'The food side didn’t answer properly.' } };
++    // A 2xx whose body isn't a JSON object is a failure, not "ok with nothing in it".
++    const good = !!data && typeof data === 'object' && !Array.isArray(data);
++    return { ok: r.ok && good, status: r.ok && !good ? 502 : r.status, data: good ? data : { error: 'The food side didn’t answer properly.' } };
+   } catch (e) {
+     return { ok: false, status: 0, data: { error: 'The food side isn’t answering right now. Try again in a minute.' } };
+   } finally { clearTimeout(t); }
+diff --git a/server.js b/server.js
+index d3c61aa..8950ef9 100644
+--- a/server.js
++++ b/server.js
+@@ -210,10 +210,11 @@ const truckCache = new Map(); // meet ref → { at, list }: the public page asks
+ const truckLoads = new Map(); // meet ref → the request on its way
+ async function trucksFor(m, { fresh } = {}) {
+   const c = truckCache.get(m.ref);
+-  if (!fresh && c && Date.now() - c.at < 60000) return c.list;
++  const age = c ? (c.stale ? 60001 : Date.now() - c.at) : Infinity; // a meet just changed: its list is asked for again
++  if (!fresh && age < 60000) return c.list;
+   if (fresh) return loadTrucks(m);
+   const p = truckLoads.get(m.ref) || loadTrucks(m);
+-  if (c && Date.now() - c.at < 60 * 60000) return c.list;
++  if (age < 60 * 60000) return c.list;
+   return Promise.race([p, new Promise((ok) => setTimeout(() => ok(c ? c.list : []), 800))]);
+ }
+ function loadTrucks(m) {
+@@ -224,9 +225,11 @@ function loadTrucks(m) {
+ async function loadTrucks_(m) {
+   const c = truckCache.get(m.ref);
+   const r = await K.meetVendors(m.ref);
+-  const list = r.ok ? (r.data.vendors || []) : (c ? c.list : []);
+-  truckCache.set(m.ref, { at: Date.now(), list });
+-  if (r.ok) {
++  // Only a real list replaces the one kept: anything else (an error, a body of the wrong shape) keeps the last good one.
++  const got = r.ok && Array.isArray(r.data.vendors) ? r.data.vendors.filter((v) => v && typeof v === 'object' && !Array.isArray(v)) : null;
++  const list = got || (c ? c.list : []);
++  truckCache.set(m.ref, { at: got ? Date.now() : (c ? c.at : Date.now()), list });
++  if (got) {
+     // A truck that came in on a plain invite (it typed its name) joins the host's Food vendors, tied to its profile.
+     // Only trucks still in the meet, and never one the host deleted.
+     for (const v of list.filter((x) => x.hostProfile && x.slug && x.name && ['in', 'invited'].includes(x.status))) {
+@@ -421,7 +424,7 @@ async function orderView(o) {
+ }
+ async function refreshOrder(o, how) {
+   const r = how === 'confirm' ? await K.confirmOrder(o.token) : how === 'cancel' ? await K.cancelOrder(o.token) : await K.orderStatus(o.token);
+-  if (r.ok) {
++  if (r.ok && typeof r.data.status === 'string' && typeof r.data.payment === 'string') {
+     await run('UPDATE orders SET status = ?, payment = ?, ticket = ?, total = ?, updated_at = ? WHERE id = ?', [r.data.status, r.data.payment, r.data.ticket, r.data.total, Date.now(), o.id]);
+     o = await get('SELECT * FROM orders WHERE id = ?', [o.id]);
+     await orderMail(o);

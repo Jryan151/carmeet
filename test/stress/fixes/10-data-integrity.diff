@@ -1,0 +1,196 @@
+diff --git a/db.js b/db.js
+index 7268574..8fdc896 100644
+--- a/db.js
++++ b/db.js
+@@ -155,6 +155,8 @@ async function ensureSchema() {
+   await exec('CREATE INDEX IF NOT EXISTS idx_meets_page_name ON meets (page_name)');
+   // A Food vendor the host deleted: its truck isn't put back in the lists from an old invite on the food side.
+   await exec('CREATE TABLE IF NOT EXISTS kit_gone (host_id INTEGER NOT NULL, truck_slug TEXT NOT NULL, PRIMARY KEY (host_id, truck_slug))');
++  // A meet name's old addresses (renamed in the meet's form): a shared link still lands on the new one.
++  await exec('CREATE TABLE IF NOT EXISTS meet_old_names (name TEXT PRIMARY KEY, host_id INTEGER NOT NULL, page_name TEXT NOT NULL, created_at INTEGER NOT NULL)');
+   // Club members' own pages (/@handle): the host starts one, the member finishes it from their link.
+   await exec(`CREATE TABLE IF NOT EXISTS members (
+     id INTEGER PRIMARY KEY AUTOINCREMENT, host_id INTEGER NOT NULL, club_id INTEGER, handle TEXT UNIQUE NOT NULL, name TEXT NOT NULL,
+diff --git a/host.js b/host.js
+index 4911b6f..24aaa5b 100644
+--- a/host.js
++++ b/host.js
+@@ -221,10 +221,12 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
+     const rows = await all('SELECT id, title FROM meets WHERE host_id = ? AND day = ? AND id != ?', [h.id, day, notId || 0]);
+     return rows.some((x) => name(x.title) === name(title));
+   }
+-  function readMeet(b, h) {
++  function readMeet(b, h, old) {
+     const day = String(b.day || ''); const start = String(b.start || ''); const end = String(b.end || '');
+     if (!U.validDate(day)) return { error: 'Pick a date.' };
+-    if (day < U.dayKey(Date.now(), tzOf(h))) return { error: 'That date already passed.' };
++    // A meet still going (one that runs past midnight, edited at 12:30 AM) keeps its date.
++    const live = old && old.day === day && U.meetTimes(old, tzOf(h)).endsAt > Date.now();
++    if (day < U.dayKey(Date.now(), tzOf(h)) && !live) return { error: 'That date already passed.' };
+     if (!U.TIME_RE.test(start) || !U.TIME_RE.test(end) || start === end) return { error: 'Set a start and end time.' };
+     const place = U.clean(b.place, 80);
+     if (!place) return { error: 'Where is it?' };
+@@ -259,7 +261,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
+     const h = req.me;
+     const old = await own(req, req.params.id);
+     if (!old) return res.status(404).json({ error: 'That meet is gone.' });
+-    const m = readMeet(req.body || {}, h);
++    const m = readMeet(req.body || {}, h, old);
+     if (m.error) return res.status(400).json({ error: m.error });
+     if (m.pageName && String(m.pageName).toLowerCase() !== old.page_name) {
+       const nm = await N.ensure(h, Object.assign({}, old), m.pageName);
+@@ -285,6 +287,8 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
+     const today = U.dayKey(Date.now(), tzOf(h));
+     while (day < today) day = U.addDays(day, 7);
+     if (await sameMeetThatDay(h, day, src.title || '')) return res.status(409).json({ error: `You already have this meet on ${day}.` });
++    const upcoming = await get('SELECT COUNT(*) AS n FROM meets WHERE host_id = ? AND day >= ?', [h.id, today]);
++    if (upcoming.n >= 30) return res.status(400).json({ error: 'You have 30 meets coming up. That’s the limit for now.' });
+     const now = Date.now();
+     // Same spot, same parking map, same header logo (its own copy, so changing one week never touches another).
+     let logo = null;
+@@ -1380,7 +1384,10 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
+     if (n.n >= MAX_MEMBER_PHOTOS) return res.status(400).json({ error: `${MAX_MEMBER_PHOTOS} photos at most. Remove one first.` });
+     const name = Buffer.isBuffer(req.body) ? await saveImage(req.body) : null;
+     if (!name) return res.status(400).json({ error: 'Use a JPEG or PNG photo.' });
+-    await run('INSERT INTO member_photos (member_id, file, caption, created_at) VALUES (?, ?, ?, ?)', [m.id, name, U.clean(req.query.caption, 120) || null, Date.now()]);
++    // Counted and added in one statement: photos arriving together can't pass the limit.
++    const added = await run('INSERT INTO member_photos (member_id, file, caption, created_at) SELECT ?, ?, ?, ? WHERE (SELECT COUNT(*) FROM member_photos WHERE member_id = ?) < ?',
++      [m.id, name, U.clean(req.query.caption, 120) || null, Date.now(), m.id, MAX_MEMBER_PHOTOS]);
++    if (!added.changes) { unlinkUpload(name); return res.status(400).json({ error: `${MAX_MEMBER_PHOTOS} photos at most. Remove one first.` }); }
+     Vw.small(name, 1080); // the feed's size, queued with the other picture copies (one ffmpeg at a time)
+     res.status(201).json({ member: await memberShape(m) });
+   });
+diff --git a/names.js b/names.js
+index 7587a0d..eef5317 100644
+--- a/names.js
++++ b/names.js
+@@ -32,6 +32,7 @@ const hostUrl = (h) => (h.domain_on && h.custom_domain ? `${scheme()}://${h.cust
+ async function free(hostId, s) {
+   if (!U.pageSlugOk(s)) return false;
+   if (await get('SELECT 1 AS x FROM meets WHERE page_name = ? AND host_id != ?', [s, hostId])) return false;
++  if (await get('SELECT 1 AS x FROM meet_old_names WHERE name = ? AND host_id != ?', [s, hostId])) return false;
+   if (await get('SELECT 1 AS x FROM hosts WHERE slug = ? AND id != ?', [s, hostId])) return false; // another host's page
+   if (await get('SELECT 1 AS x FROM kit_logos WHERE page_slug = ?', [s])) return false;
+   if (await get('SELECT 1 AS x FROM kit_old_slugs WHERE slug = ?', [s])) return false;
+@@ -45,28 +46,47 @@ async function firstFree(hostId, base) {
+   return null;
+ }
+ 
++/* The name is set only if, at that same moment, no other host has it (nor a vendor page or an old address of theirs)
++   and no other meet of this host has it that day: one statement, so two saves at once can't both get it. */
++const TAKEN = `EXISTS (SELECT 1 FROM meets x WHERE x.page_name = ?1 AND (x.host_id != ?2 OR (x.day = ?3 AND x.id != ?4)))
++  OR EXISTS (SELECT 1 FROM hosts WHERE slug = ?1 AND id != ?2) OR EXISTS (SELECT 1 FROM kit_logos WHERE page_slug = ?1)
++  OR EXISTS (SELECT 1 FROM kit_old_slugs WHERE slug = ?1) OR EXISTS (SELECT 1 FROM meet_old_names WHERE name = ?1 AND host_id != ?2)`;
++async function claim(h, m, s) {
++  const r = await run(`UPDATE meets SET page_name = ?1 WHERE id = ?4 AND NOT (${TAKEN})`, { 1: s, 2: h.id, 3: m.day, 4: m.id });
++  return r.changes > 0;
++}
+ /** After a meet is saved: the name asked for (checked), else the one it has, else the one another week of the same
+-    meet uses, else one made from its title. Returns { name } or { error }. */
++    meet uses, else one made from its title. Returns { name } or { error }. A new name for a meet that had one moves
++    its other weeks too, and the old address keeps working (meet_old_names). */
+ async function ensure(h, m, wanted) {
+   if (wanted !== undefined && wanted !== null && wanted !== '') {
+     const s = String(wanted).trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^[a-z0-9.-]*\.[a-z]{2,}\//, '').replace(/^\/+|\/+$/g, '');
+     if (s === m.page_name) return { name: s };
+     if (!U.pageSlugOk(s)) return { error: 'Use letters, numbers and dashes for the page address (3 to 40).' };
+-    if (!(await free(h.id, s))) return { error: `${domain()}/${s} is taken. Try another.` };
+-    await run('UPDATE meets SET page_name = ? WHERE id = ?', [s, m.id]);
++    if (!(await free(h.id, s)) || !(await claim(h, m, s))) return { error: `${domain()}/${s} is taken. Try another.` };
++    const old = m.page_name;
++    if (old && old !== s && !homeNames(h).has(old)) {
++      // Every week of it moves (not just this one), and the old address is kept, pointing at the new one.
++      await run('UPDATE meets SET page_name = ? WHERE host_id = ? AND page_name = ?', [s, h.id, old]);
++      await run('INSERT OR REPLACE INTO meet_old_names (name, host_id, page_name, created_at) VALUES (?, ?, ?, ?)', [old, h.id, s, Date.now()]);
++      await run('UPDATE meet_old_names SET page_name = ? WHERE host_id = ? AND page_name = ?', [s, h.id, old]);
++      await run('DELETE FROM meet_old_names WHERE name = ?', [s]);
++    }
+     m.page_name = s;
+     return { name: s };
+   }
+   if (m.page_name) return { name: m.page_name };
+   const title = (m.title || '').trim() || h.name;
+   const same = await get("SELECT page_name FROM meets WHERE host_id = ? AND page_name IS NOT NULL AND lower(trim(COALESCE(NULLIF(title, ''), ?))) = lower(?) ORDER BY day DESC LIMIT 1", [h.id, h.name, title]);
+-  const s = same ? same.page_name : await firstFree(h.id, U.pageSlugFrom(title));
++  let s = same ? same.page_name : await firstFree(h.id, U.pageSlugFrom(title));
+   if (!s) return { name: null };
+-  await run('UPDATE meets SET page_name = ? WHERE id = ?', [s, m.id]);
++  if (!(await claim(h, m, s))) { s = await firstFree(h.id, U.pageSlugFrom(title) + '-' + m.day.slice(5)); if (!s || !(await claim(h, m, s))) return { name: null }; }
+   m.page_name = s;
+   return { name: s };
+ }
+ 
++/** Where an old meet-name address points now ({ host_id, page_name }), or null. */
++const movedName = (s) => (U.SLUG_RE.test(String(s || '')) ? get('SELECT host_id, page_name FROM meet_old_names WHERE name = ?', [s]) : Promise.resolve(null));
+ /** The host whose meet name an address is ("fuel-friday" → the host running Fuel Friday), or null. */
+ async function hostOfName(sub) {
+   if (!U.SLUG_RE.test(String(sub || ''))) return null;
+@@ -74,4 +94,4 @@ async function hostOfName(sub) {
+   return row ? get('SELECT * FROM hosts WHERE id = ?', [row.host_id]) : null;
+ }
+ 
+-module.exports = { homeNames, onName, meetUrl, nameUrl, hostUrl, free, ensure, hostOfName };
++module.exports = { homeNames, onName, meetUrl, nameUrl, hostUrl, free, ensure, hostOfName, movedName };
+diff --git a/server.js b/server.js
+index 4bcea3c..94a7517 100644
+--- a/server.js
++++ b/server.js
+@@ -648,9 +648,10 @@ async function siteOwner() {
+   return get('SELECT * FROM hosts ORDER BY id LIMIT 1');
+ }
+ /** Every meet still to come, on every host, each with its page address. */
+-async function allUpcoming() {
++async function allUpcoming({ canceled } = {}) {
++  // With canceled: also the ones called off (shown as canceled where people look for the night's meets).
+   const rows = await all(`SELECT m.*, h.slug, h.name AS host_name, h.timezone, h.logo AS host_logo, h.domain_on, h.custom_domain FROM meets m JOIN hosts h ON h.id = m.host_id
+-    WHERE m.status = 'on' AND m.day >= ? ORDER BY m.day, m.start_time LIMIT 80`, [U.addDays(U.dayKey(Date.now(), TZ()), -1)]);
++    WHERE m.status IN ('on'${canceled ? ", 'canceled'" : ''}) AND m.day >= ? ORDER BY m.day, m.start_time LIMIT 80`, [U.addDays(U.dayKey(Date.now(), TZ()), -1)]);
+   return rows.filter((r) => U.meetTimes(r, r.timezone || TZ()).endsAt > Date.now())
+     .map((r) => Object.assign(r, { url: N.meetUrl({ id: r.host_id, slug: r.slug, name: r.host_name, domain_on: r.domain_on, custom_domain: r.custom_domain }, r) }));
+ }
+@@ -667,7 +668,7 @@ async function siteFace(site, owner, meets) {
+ }
+ app.get('/meets', async (req, res, next) => {
+   if (req.own) return next();
+-  const [site, meets, owner] = await Promise.all([siteRow(), allUpcoming(), siteOwner()]);
++  const [site, meets, owner] = await Promise.all([siteRow(), allUpcoming({ canceled: true }), siteOwner()]);
+   res.set('Cache-Control', 'no-cache').type('html').send(V.meetsPage(await siteFace(site, owner, meets), { meets, instagram: owner && owner.instagram }));
+ });
+ app.get('/members', async (req, res, next) => {
+@@ -746,9 +747,9 @@ app.get('/:a', async (req, res, next) => {
+   const a = String(req.params.a).toLowerCase();
+   const host = await get('SELECT * FROM hosts WHERE slug = ?', [a]);
+   if (!host) {
+-    // A meet name (<site>/fuel-friday): its next week.
++    // A meet name (<site>/fuel-friday): its next week. A renamed one's old address forwards.
+     const nh = await N.hostOfName(a);
+-    if (!nh) return notFound(req, res, null);
++    if (!nh) { const mv = await N.movedName(a); return mv ? res.redirect(301, '/' + mv.page_name + (req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '')) : notFound(req, res, null); }
+     req.meetName = a;
+     return hostHome(req, res, nh);
+   }
+@@ -761,9 +762,9 @@ app.get('/:a/:b', async (req, res, next) => {
+   const a = String(req.params.a).toLowerCase();
+   const host = await get('SELECT * FROM hosts WHERE slug = ?', [a]);
+   if (!host) {
+-    // A week of a meet name (<site>/fuel-friday/<date>).
++    // A week of a meet name (<site>/fuel-friday/<date>). A renamed one's old address forwards.
+     const nh = await N.hostOfName(a);
+-    if (!nh) return notFound(req, res, null);
++    if (!nh) { const mv = await N.movedName(a); return mv && U.validDate(req.params.b) ? res.redirect(301, `/${mv.page_name}/${req.params.b}`) : notFound(req, res, null); }
+     req.meetName = a;
+     const m = await meetOn(nh, req.params.b, a);
+     return m ? renderMeet(req, res, nh, m, false) : notFound(req, res, nh);
+diff --git a/views.js b/views.js
+index cc45273..0c62fd2 100644
+--- a/views.js
++++ b/views.js
+@@ -601,7 +601,7 @@ function meetCard(r, tz) {
+   const t = U.meetTimes(r, r.timezone || tz);
+   const pic = r.flyer ? small(r.flyer, 480) : r.logo && /^\/uploads\//.test(r.logo) ? small(r.logo, 256) : r.host_logo && /^\/uploads\//.test(r.host_logo) ? small(r.host_logo, 256) : null;
+   return `<a class="mcard" href="${esc(r.url)}"><div class="mcard-pic${r.flyer ? '' : ' logo'}">${pic ? `<img src="${esc(pic)}" alt="" loading="lazy" decoding="async">` : '<span aria-hidden="true">🏁</span>'}</div>
+-  <div class="mcard-info"><b>${esc(meetName(r))}</b><span class="mcard-when">${esc(U.dayShort(t.startsAt, r.timezone || tz))} · ${esc(U.time12(t.startsAt, r.timezone || tz))}</span><span class="dim">${esc(r.place)}</span>${t.startsAt <= Date.now() ? '<span class="live-tag">Happening now</span>' : ''}</div></a>`;
++  <div class="mcard-info"><b>${esc(meetName(r))}</b><span class="mcard-when">${esc(U.dayShort(t.startsAt, r.timezone || tz))} · ${esc(U.time12(t.startsAt, r.timezone || tz))}</span><span class="dim">${esc(r.place)}</span>${r.status === 'canceled' ? '<span class="live-tag">Canceled</span>' : t.startsAt <= Date.now() ? '<span class="live-tag">Happening now</span>' : ''}</div></a>`;
+ }
+ function landing(site, ctx) {
+   const tz = process.env.TIMEZONE || 'America/Phoenix';

@@ -1,0 +1,22 @@
+diff --git a/util.js b/util.js
+index 7cc6099..63ef0ee 100644
+--- a/util.js
++++ b/util.js
+@@ -48,10 +48,17 @@ function validDate(s) {
+   return t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d;
+ }
+ /** A meet's start and end instants. An end at or before the start runs past midnight. */
++// The same meet's times are asked for many times per page (lists of 80 meets): worked out once per day/time/zone.
++const timesSeen = new Map();
+ function meetTimes(m, tz) {
++  const key = `${tz}|${m.day}|${m.start_time}|${m.end_time}`;
++  const hit = timesSeen.get(key);
++  if (hit) return { startsAt: hit.startsAt, endsAt: hit.endsAt };
+   const at = (k, hm) => { const [y, mo, d] = k.split('-').map(Number); const [h, mi] = hm.split(':').map(Number); return zonedTime(y, mo, d, h, mi, tz); };
+   const startsAt = at(m.day, m.start_time);
+   const endsAt = m.end_time > m.start_time ? at(m.day, m.end_time) : at(addDays(m.day, 1), m.end_time);
++  if (timesSeen.size >= 5000) timesSeen.clear();
++  timesSeen.set(key, { startsAt, endsAt });
+   return { startsAt, endsAt };
+ }
+ const fmt = (ms, tz, opts) => formatter(zone(tz), JSON.stringify(opts), opts).format(new Date(ms));

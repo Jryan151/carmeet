@@ -1,0 +1,76 @@
+baseline: 50 clients, pages only, 40 s
+  rps 36.4 worst page p95 2747.1
+with heavy work: 150 s
+  uploads answered: host background (4K 60 fps, 96 MB): 202 in 151077 ms; meet background (395 MB): 202 in 152012 ms; member feed clip (1080p 30 s): 202 in 117661 ms; member feed clip (upright .mov): 202 in 63921 ms; vendor clip (1080p 30 s): 202 in 118180 ms
+  member pages with missing copies: [ 135, 134, 129 ] ms (slowest 3)
+  heavy rps 35.6 worst page p95 2702.4
+    page /<host>                 p50 1196.3 p95 1660.9 p99 1910.1 max 3600.8 {"200":885}
+    page /@handle                p50 1467.7 p95 1973.5 p99 2218 max 5414.6 {"200":888}
+    page /meets                  p50 621.6 p95 932.4 p99 1240.2 max 4013.9 {"200":336}
+    page /<meet-name>/<date>     p50 1807.8 p95 2441.6 p99 2698.7 max 4875.8 {"200":863}
+    page /<meet-name>            p50 1804.8 p95 2417.2 p99 2708.1 max 5733 {"200":905}
+    page /members                p50 561.8 p95 904.7 p99 1117.2 max 3036 {"200":348}
+    page /                       p50 887.1 p95 1246 p99 1421.5 max 3160.3 {"200":511}
+    page /vendors                p50 627.6 p95 859.8 p99 1186.3 max 3447.1 {"200":187}
+    page /v/<vendor>             p50 2018.4 p95 2702.4 p99 2873.8 max 2932.3 {"200":418}
+  queue {"maxEncodesAtOnce":2,"samplesWith2PlusEncodes":73,"samples":418,"maxFfmpegAtOnce":2,"niceSeen":[19,0],"overlapExamples":[{"t":118170,"ff":[{"pid":29411,"nice":19,"secs":27,"kind":"hevc"},{"pid":29905,"nice":19,"secs":0,"kind":"h264"}]},{"t":118686,"ff":[{"pid":29411,"nice":19,"secs":28,"kind":"hevc"},{"pid":29905,"nice":19,"secs":0,"kind":"h264"}]},{"t":119209,"ff":[{"pid":29411,"nice":19,"secs":29,"kind":"hevc"},{"pid":29905,"nice":19,"secs":1,"kind":"h264"}]}]}
+  uploads [
+ {
+  "name": "host background (4K 60 fps, 96 MB)",
+  "status": 202,
+  "answeredMs": 151077,
+  "body": "{\"video\":{\"status\":\"processing\"}}",
+  "final": "ready",
+  "doneAtS": 197.3
+ },
+ {
+  "name": "meet background (395 MB)",
+  "status": 202,
+  "answeredMs": 152012,
+  "body": "{\"video\":{\"status\":\"processing\"}}",
+  "final": "ready",
+  "doneAtS": 215.9
+ },
+ {
+  "name": "member feed clip (1080p 30 s)",
+  "status": 202,
+  "answeredMs": 117661,
+  "body": "{\"member\":{\"id\":1,\"handle\":\"driver-1\",\"name\":\"\",\"car\":\"2019 Civic Type R\",\"mods\":\"Stage 2 tune\\nCoilovers\\nWide body\",\"i",
+  "final": "ready",
+  "doneAtS": 154.2
+ },
+ {
+  "name": "member feed clip (upright .mov)",
+  "status": 202,
+  "answeredMs": 63921,
+  "body": "{\"member\":{\"id\":16,\"handle\":\"driver-16\",\"name\":\"Driver 16\",\"car\":\"GR86\",\"mods\":\"Stage 2 tune\\nCoilovers\\nWide body\",\"ins",
+  "final": "ready",
+  "doneAtS": 152.1
+ },
+ {
+  "name": "vendor clip (1080p 30 s)",
+  "status": 202,
+  "answeredMs": 118180,
+  "body": "{\"video\":{\"status\":\"processing\"}}",
+  "final": "ready",
+  "doneAtS": 172.6
+ }
+]
+  pictures { count: 200, allCopiesMadeS: 152.1 }
+restart mid-encode
+  statuses before [
+  'processing',
+  'processing',
+  'processing',
+  'processing',
+  'processing'
+] after [ 'failed', 'failed', 'failed', 'failed', 'failed' ]
+  ffmpeg before [ 'hevc:30630', 'h264:30658' ] after restart [ 'hevc:30630', 'h264:30658' ] a minute later []
+  tmp before 5 after 5 a minute later [
+  { f: 'in-11bca9e15d435249', mb: 395 },
+  { f: 'in-6b76f29393adc1db', mb: 43.4 },
+  { f: 'in-77463bb62cf20e64', mb: 43.4 },
+  { f: 'in-9f8c64336fd15744', mb: 96 },
+  { f: 'in-ffb82671066d7ba2', mb: 24 }
+]
+  host video error shown: The server restarted while this video was processing. Upload it again.

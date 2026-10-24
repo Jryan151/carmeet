@@ -1,0 +1,58 @@
+{
+  "minutes": 4,
+  "darkFirstS": 60,
+  "proxy": {
+    "conns": 34,
+    "dropped": 0,
+    "bytesDown": 3939540
+  },
+  "phones": [
+    {
+      "phone": "with service worker",
+      "freezes": 1,
+      "longestFreezeS": 240,
+      "frozenTotalS": 240,
+      "loads": 17,
+      "last": {
+        "at": 240,
+        "t": 0,
+        "rs": 0,
+        "paused": false,
+        "err": 0,
+        "net": 2,
+        "src": "bg-6c93a9c837cd98b4928b.mp4",
+        "loads": 17
+      },
+      "firstFreezes": [
+        {
+          "fromS": 1,
+          "forS": 240,
+          "stillFrozenAtEnd": true
+        }
+      ]
+    },
+    {
+      "phone": "without service worker",
+      "freezes": 1,
+      "longestFreezeS": 60,
+      "frozenTotalS": 60,
+      "loads": 8,
+      "last": {
+        "at": 240,
+        "t": 2.812389,
+        "rs": 4,
+        "paused": false,
+        "err": 0,
+        "net": 1,
+        "src": "bg-6c93a9c837cd98b4928b.mp4",
+        "loads": 8
+      },
+      "firstFreezes": [
+        {
+          "fromS": 1,
+          "forS": 60
+        }
+      ]
+    }
+  ]
+}

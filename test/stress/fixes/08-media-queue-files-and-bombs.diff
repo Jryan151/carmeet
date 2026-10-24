@@ -1,0 +1,314 @@
+diff --git a/host.js b/host.js
+index d942b01..5680904 100644
+--- a/host.js
++++ b/host.js
+@@ -551,7 +551,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
+   r.delete('/recaps/:id', signedIn, async (req, res) => {
+     const x = await get('SELECT * FROM recaps WHERE id = ? AND host_id = ?', [parseInt(req.params.id, 10) || 0, req.me.id]);
+     if (!x) return res.status(404).json({ error: 'That recap is gone.' });
+-    for (const p of await all('SELECT file FROM recap_photos WHERE recap_id = ?', [x.id])) fs.promises.unlink(path.join(UPLOAD_DIR, p.file)).catch(() => {});
++    for (const p of await all('SELECT file FROM recap_photos WHERE recap_id = ?', [x.id])) unlinkUpload(p.file);
+     await run('DELETE FROM recap_photos WHERE recap_id = ?', [x.id]);
+     await run('DELETE FROM recaps WHERE id = ?', [x.id]);
+     res.json({ ok: true });
+@@ -563,6 +563,8 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
+     const isJpeg = buf.length > 4 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
+     const isPng = buf.length > 8 && buf.slice(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+     if (!isJpeg && !isPng) return null;
++    const dim = isJpeg ? jpegSize(buf) : buf.length > 24 ? { w: buf.readUInt32BE(16), h: buf.readUInt32BE(20) } : null;
++    if (!dim || !dim.w || !dim.h || dim.w * dim.h > MAX_PIXELS) return null; // a phone photo is 12 to 50 megapixels
+     const out = isJpeg ? stripJpeg(buf) : stripPng(buf);
+     if (!out) return null;
+     const name = D.token(12) + (isJpeg ? '.jpg' : '.png');
+@@ -585,14 +587,14 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
+     if (!m) return res.status(404).json({ error: 'That meet is gone.' });
+     const name = Buffer.isBuffer(req.body) ? await saveImage(req.body) : null;
+     if (!name) return res.status(400).json({ error: 'Use the flyer as a JPEG or PNG (a screenshot works).' });
+-    if (m.flyer) fs.promises.unlink(path.join(UPLOAD_DIR, path.basename(m.flyer))).catch(() => {});
++    if (m.flyer) unlinkUpload(m.flyer);
+     await run('UPDATE meets SET flyer = ?, updated_at = ? WHERE id = ?', [name, Date.now(), m.id]);
+     res.json({ meet: meetShape(await get('SELECT * FROM meets WHERE id = ?', [m.id]), req.me) });
+   });
+   r.delete('/meets/:id/flyer', signedIn, async (req, res) => {
+     const m = await own(req, req.params.id);
+     if (!m) return res.status(404).json({ error: 'That meet is gone.' });
+-    if (m.flyer) fs.promises.unlink(path.join(UPLOAD_DIR, path.basename(m.flyer))).catch(() => {});
++    if (m.flyer) unlinkUpload(m.flyer);
+     await run('UPDATE meets SET flyer = NULL, updated_at = ? WHERE id = ?', [Date.now(), m.id]);
+     res.json({ meet: meetShape(await get('SELECT * FROM meets WHERE id = ?', [m.id]), req.me) });
+   });
+@@ -785,7 +787,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
+     let name = Buffer.isBuffer(req.body) ? await saveImage(req.body) : null;
+     if (!name) return res.status(400).json({ error: 'Use a JPEG or PNG logo.' });
+     const trimmed = await V.trimLogo(path.join(UPLOAD_DIR, name), UPLOAD_DIR);
+-    if (trimmed) { fs.promises.unlink(path.join(UPLOAD_DIR, name)).catch(() => {}); name = trimmed; }
++    if (trimmed) { unlinkUpload(name); name = trimmed; }
+     const ins = await run('INSERT INTO kit_logos (host_id, kind, name, file, created_at) VALUES (?, ?, ?, ?, ?)', [req.me.id, kind, nm, name, Date.now()]);
+     res.status(201).json({ logo: kitShape(await get('SELECT * FROM kit_logos WHERE id = ?', [ins.lastID])) });
+   });
+@@ -831,16 +833,16 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
+     let name = Buffer.isBuffer(req.body) ? await saveImage(req.body) : null;
+     if (!name) return res.status(400).json({ error: 'Use a JPEG or PNG logo.' });
+     const trimmed = await V.trimLogo(path.join(UPLOAD_DIR, name), UPLOAD_DIR);
+-    if (trimmed) { fs.promises.unlink(path.join(UPLOAD_DIR, name)).catch(() => {}); name = trimmed; }
++    if (trimmed) { unlinkUpload(name); name = trimmed; }
+     await run('UPDATE kit_logos SET file = ? WHERE id = ?', [name, k.id]);
+-    if (k.file) fs.promises.unlink(path.join(UPLOAD_DIR, k.file)).catch(() => {});
++    if (k.file) unlinkUpload(k.file);
+     syncLogo(req.me, await get('SELECT * FROM kit_logos WHERE id = ?', [k.id])).catch(() => {}); // and onto their profile on the food side
+     res.json({ logo: kitShape(await get('SELECT * FROM kit_logos WHERE id = ?', [k.id])) });
+   });
+   r.delete('/kit/:id', signedIn, async (req, res) => {
+     const k = await get('SELECT * FROM kit_logos WHERE id = ? AND host_id = ?', [parseInt(req.params.id, 10) || 0, req.me.id]);
+     if (!k) return res.status(404).json({ error: 'That logo is gone.' });
+-    if (k.file) fs.promises.unlink(path.join(UPLOAD_DIR, k.file)).catch(() => {});
++    if (k.file) unlinkUpload(k.file);
+     // Its profile goes with it: pictures, clip, spots, meet history, old addresses.
+     for (const x of await all('SELECT file FROM kit_media WHERE kit_id = ?', [k.id])) unlinkUpload(x.file);
+     unlinkUpload(k.video); unlinkUpload(k.video_poster); unlinkUpload(k.video_hevc);
+@@ -986,7 +988,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
+     if (!name) return res.status(400).json({ error: 'Use a JPEG or PNG image.' });
+     if (kind === 'logo') {
+       const trimmed = await V.trimLogo(path.join(UPLOAD_DIR, name), UPLOAD_DIR);
+-      if (trimmed) { fs.promises.unlink(path.join(UPLOAD_DIR, name)).catch(() => {}); name = trimmed; }
++      if (trimmed) { unlinkUpload(name); name = trimmed; }
+     }
+     await run('INSERT INTO kit_media (kit_id, host_id, kind, file, label, created_at) VALUES (?, ?, ?, ?, ?, ?)', [k.id, req.me.id, kind, name, U.clean(req.query.label, 40) || null, Date.now()]);
+     res.status(201).json({ profile: await profileShape(k) });
+@@ -1058,8 +1060,8 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
+     let name = Buffer.isBuffer(req.body) ? await saveImage(req.body) : null;
+     if (!name) return res.status(400).json({ error: 'Use a JPEG or PNG image.' });
+     const trimmed = await V.trimLogo(path.join(UPLOAD_DIR, name), UPLOAD_DIR);
+-    if (trimmed) { fs.promises.unlink(path.join(UPLOAD_DIR, name)).catch(() => {}); name = trimmed; }
+-    if (m.logo) fs.promises.unlink(path.join(UPLOAD_DIR, path.basename(m.logo))).catch(() => {});
++    if (trimmed) { unlinkUpload(name); name = trimmed; }
++    if (m.logo) unlinkUpload(m.logo);
+     await run('UPDATE meets SET logo = ?, updated_at = ? WHERE id = ?', [name, Date.now(), m.id]);
+     const row = await get('SELECT * FROM meets WHERE id = ?', [m.id]);
+     sync(req.me, row).catch(() => {}); // the trucks' menus for this meet wear it too
+@@ -1068,7 +1070,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
+   r.delete('/meets/:id/logo', signedIn, async (req, res) => {
+     const m = await own(req, req.params.id);
+     if (!m) return res.status(404).json({ error: 'That meet is gone.' });
+-    if (m.logo) fs.promises.unlink(path.join(UPLOAD_DIR, path.basename(m.logo))).catch(() => {});
++    if (m.logo) unlinkUpload(m.logo);
+     await run('UPDATE meets SET logo = NULL, updated_at = ? WHERE id = ?', [Date.now(), m.id]);
+     const row = await get('SELECT * FROM meets WHERE id = ?', [m.id]);
+     sync(req.me, row).catch(() => {});
+@@ -1079,29 +1081,46 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
+     if (!name) return res.status(400).json({ error: 'Use a JPEG or PNG image.' });
+     // Trimmed to the logo itself (no black margin around it); the untrimmed copy is dropped.
+     const trimmed = await V.trimLogo(path.join(UPLOAD_DIR, name), UPLOAD_DIR);
+-    if (trimmed) { fs.promises.unlink(path.join(UPLOAD_DIR, name)).catch(() => {}); name = trimmed; }
+-    if (req.me.logo && req.me.logo.startsWith('/uploads/')) fs.promises.unlink(path.join(UPLOAD_DIR, path.basename(req.me.logo))).catch(() => {});
++    if (trimmed) { unlinkUpload(name); name = trimmed; }
++    if (req.me.logo && req.me.logo.startsWith('/uploads/')) unlinkUpload(req.me.logo);
+     await run('UPDATE hosts SET logo = ?, updated_at = ? WHERE id = ?', ['/uploads/' + name, Date.now(), req.me.id]);
+     refreshLook(req.me.id);
+     res.json({ host: hostShape(await get('SELECT * FROM hosts WHERE id = ?', [req.me.id])) });
+   });
+ 
+   /* ---------- background video: the host's default, or one for a single meet ---------- */
+-  let videoQueue = Promise.resolve(); // one at a time, so a big upload never starves the site of CPU
+-  // The smaller HEVC copies wait behind every new clip: a clip shows as soon as its H.264 loop is made, and its HEVC copy
+-  // (about four times the work) follows when the queue is free. Kept only if the row still plays that same clip.
+-  let hevcQueue = Promise.resolve();
++  /* Video work, one encode at a time for real: a new clip's H.264 loop goes first (it shows as soon as it's made), the
++     HEVC copies after, never two at once (the HEVC copy used to start next to the next clip's H.264). */
++  const jobs = { main: [], hevc: [] };
++  let working = false;
++  async function pump() {
++    if (working) return;
++    working = true;
++    try { for (let fn; (fn = jobs.main.shift() || jobs.hevc.shift());) { try { await fn(); } catch (e) { console.error('video:', e.message); } } } finally { working = false; }
++  }
++  const enqueue = (kind, fn) => { jobs[kind].push(fn); pump(); };
+   function hevcLater(table, id, video, fileCol, hevcCol) {
+-    hevcQueue = hevcQueue.then(() => videoQueue).then(async () => {
++    enqueue('hevc', async () => {
++      const still = await get(`SELECT 1 AS x FROM ${table} WHERE id = ? AND ${fileCol} = ?`, [id, video]);
++      if (!still) return; // replaced or removed while it waited
+       const hv = await V.hevcOf(video, UPLOAD_DIR);
+       if (!hv) return;
+       const r2 = await run(`UPDATE ${table} SET ${hevcCol} = ? WHERE id = ? AND ${fileCol} = ?`, [hv, id, video]);
+       if (!r2.changes) unlinkUpload(hv); // replaced or removed meanwhile
+-    }).catch((e) => console.error('hevc:', e.message));
++    });
+   }
+   const tmpDir = path.join(UPLOAD_DIR, 'tmp');
+   fs.mkdirSync(tmpDir, { recursive: true });
+-  const unlinkUpload = (f) => { if (f) fs.promises.unlink(path.join(UPLOAD_DIR, path.basename(f))).catch(() => {}); };
++  /** An upload removed, with its phone-size copies (<name>.s<size>.webp) and what the pages remembered about it. */
++  const COPY_SIZES = [24, 256, 480, 512, 720, 1080, 1280];
++  const unlinkUpload = (f) => {
++    if (!f) return;
++    const name = path.basename(String(f));
++    fs.promises.unlink(path.join(UPLOAD_DIR, name)).catch(() => {});
++    const base = name.replace(/\.[A-Za-z0-9]+$/, '');
++    for (const n of COPY_SIZES) fs.promises.unlink(path.join(UPLOAD_DIR, `${base}.s${n}.webp`)).catch(() => {});
++    Vw.forget(name);
++  };
+   async function takeVideo(req, res, table, id) {
+     if (!V.ffmpegOk()) return res.status(503).json({ error: 'Video processing isn’t installed on the server yet (ffmpeg).' });
+     const row = await get(`SELECT * FROM ${table} WHERE id = ?`, [id]);
+@@ -1110,7 +1129,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
+     try { up = await V.receive(req, tmpDir); } catch (e) { return res.status(400).json({ error: e.message }); }
+     await run(`UPDATE ${table} SET video_status = 'processing', video_error = NULL WHERE id = ?`, [id]);
+     res.status(202).json({ video: { status: 'processing' } });
+-    videoQueue = videoQueue.then(async () => {
++    enqueue('main', async () => {
+       try {
+         const out = await V.process(up.file, UPLOAD_DIR);
+         const old = await get(`SELECT video, video_poster, video_hevc FROM ${table} WHERE id = ?`, [id]);
+@@ -1155,7 +1174,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
+     let name = Buffer.isBuffer(req.body) ? await saveImage(req.body) : null;
+     if (!name) return res.status(400).json({ error: 'Use a JPEG or PNG image.' });
+     const trimmed = await V.trimLogo(path.join(UPLOAD_DIR, name), UPLOAD_DIR);
+-    if (trimmed) { fs.promises.unlink(path.join(UPLOAD_DIR, name)).catch(() => {}); name = trimmed; }
++    if (trimmed) { unlinkUpload(name); name = trimmed; }
+     const old = await get('SELECT logo FROM site WHERE id = 1');
+     if (old && old.logo) unlinkUpload(old.logo);
+     await run('UPDATE site SET logo = ?, updated_at = ? WHERE id = 1', [name, Date.now()]);
+@@ -1359,7 +1378,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
+     const name = Buffer.isBuffer(req.body) ? await saveImage(req.body) : null;
+     if (!name) return res.status(400).json({ error: 'Use a JPEG or PNG photo.' });
+     await run('INSERT INTO member_photos (member_id, file, caption, created_at) VALUES (?, ?, ?, ?)', [m.id, name, U.clean(req.query.caption, 120) || null, Date.now()]);
+-    V.small(path.join(UPLOAD_DIR, name), UPLOAD_DIR, 1080).catch(() => {}); // the feed's size, ready before anyone looks
++    Vw.small(name, 1080); // the feed's size, queued with the other picture copies (one ffmpeg at a time)
+     res.status(201).json({ member: await memberShape(m) });
+   });
+   r.put('/members/:id/photos/:pid', memberOnly, async (req, res) => {
+@@ -1384,7 +1403,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
+     try { up = await V.receive(req, tmpDir); } catch (e) { return res.status(400).json({ error: e.message }); }
+     const ins = await run("INSERT INTO member_photos (member_id, kind, file, status, caption, created_at) VALUES (?, 'video', '', 'processing', ?, ?)", [m.id, U.clean(req.query.caption, 120) || null, Date.now()]);
+     res.status(202).json({ member: await memberShape(m) });
+-    videoQueue = videoQueue.then(async () => {
++    enqueue('main', async () => {
+       try {
+         const out = await V.process(up.file, UPLOAD_DIR);
+         const still = await get('SELECT id FROM member_photos WHERE id = ?', [ins.lastID]);
+@@ -1403,7 +1422,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
+     let name = Buffer.isBuffer(req.body) ? await saveImage(req.body) : null;
+     if (!name) return res.status(400).json({ error: 'Use a JPEG or PNG logo.' });
+     const trimmed = await V.trimLogo(path.join(UPLOAD_DIR, name), UPLOAD_DIR);
+-    if (trimmed) { fs.promises.unlink(path.join(UPLOAD_DIR, name)).catch(() => {}); name = trimmed; }
++    if (trimmed) { unlinkUpload(name); name = trimmed; }
+     unlinkUpload(m.header_file);
+     await run("UPDATE members SET header_file = ?, header = 'logo', updated_at = ? WHERE id = ?", [name, Date.now(), m.id]);
+     res.json({ member: await memberShape(await get('SELECT * FROM members WHERE id = ?', [m.id])) });
+@@ -1414,6 +1433,19 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
+   return r;
+ };
+ 
++/* Its width and height, from the first frame header (SOF0–SOF15, not DHT/JPG/DAC), or null. */
++const MAX_PIXELS = 50e6;
++function jpegSize(buf) {
++  let i = 2;
++  while (i + 9 < buf.length) {
++    if (buf[i] !== 0xff) return null;
++    const m = buf[i + 1];
++    if (m >= 0xc0 && m <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(m)) return { h: buf.readUInt16BE(i + 5), w: buf.readUInt16BE(i + 7) };
++    if ((m >= 0xd0 && m <= 0xd7) || m === 0x01) { i += 2; continue; }
++    i += 2 + buf.readUInt16BE(i + 2);
++  }
++  return null;
++}
+ /* A JPEG without its APP1 (Exif, XMP: camera, time and GPS) and APP13 (IPTC) blocks. Everything else is kept as is. */
+ function stripJpeg(buf) {
+   const out = [buf.slice(0, 2)];
+diff --git a/server.js b/server.js
+index 64b2245..b59a4dd 100644
+--- a/server.js
++++ b/server.js
+@@ -805,6 +805,8 @@ async function tidyAtStart() {
+       ['The server restarted while this video was processing. Upload it again.']).catch(() => {});
+   }
+   await D.run("UPDATE member_photos SET status = 'failed' WHERE status = 'processing'").catch(() => {});
++  // Their uploads (up to 400 MB each) are of no use now: the host is asked to upload again.
++  try { for (const f of fs.readdirSync(path.join(UPLOAD_DIR, 'tmp'), { withFileTypes: true })) if (f.isFile() && /^in-[a-f0-9]+$/.test(f.name)) fs.promises.unlink(path.join(UPLOAD_DIR, 'tmp', f.name)).catch(() => {}); } catch (e) { /* no tmp folder yet */ }
+   if (!Vid.ffmpegOk()) return;
+   const redo = async (file) => {
+     const f = path.basename(String(file || ''));
+diff --git a/video.js b/video.js
+index dc0d6ab..3baac92 100644
+--- a/video.js
++++ b/video.js
+@@ -43,9 +43,16 @@ function receive(req, dir) {
+ /* Video work never crowds out the pages: ffmpeg runs at the lowest priority and leaves a core free (the server also
+    runs the food side). An encode takes a little longer; the site stays quick while it does. VIDEO_THREADS overrides. */
+ const THREADS = () => String(Math.max(1, parseInt(process.env.VIDEO_THREADS, 10) || (require('os').cpus().length - 1) || 1));
++/* Every ffmpeg running, so a restart (pm2 sends SIGTERM) stops them too: otherwise they keep encoding for minutes after,
++   writing files nothing will use. */
++const kids = new Set();
++const stopKids = () => { for (const p of kids) { try { p.kill('SIGKILL'); } catch (e) { /* gone */ } } };
++process.once('exit', stopKids);
++for (const sig of ['SIGTERM', 'SIGINT']) process.once(sig, () => { stopKids(); process.exit(0); });
+ function run(args, ms) {
+   return new Promise((ok, no) => {
+     const p = spawn(process.env.FFMPEG || 'ffmpeg', args, { stdio: ['ignore', 'ignore', 'pipe'] });
++    kids.add(p); p.on('close', () => kids.delete(p));
+     try { if (p.pid) require('os').setPriority(p.pid, 19); } catch (e) { /* not allowed here: it still runs */ }
+     let err = '';
+     p.stderr.on('data', (d) => { err = (err + d).slice(-2000); });
+@@ -104,6 +111,8 @@ const S = 400;
+ function pixels(input) {
+   return new Promise((ok) => {
+     const p = spawn(process.env.FFMPEG || 'ffmpeg', ['-hide_banner', '-i', input, '-frames:v', '1', '-vf', `scale=${S}:${S},format=rgba`, '-f', 'rawvideo', '-'], { stdio: ['ignore', 'pipe', 'pipe'] });
++    kids.add(p); p.on('close', () => kids.delete(p));
++    try { if (p.pid) require('os').setPriority(p.pid, 19); } catch (e) { /* still runs */ }
+     const out = []; let err = '';
+     p.stdout.on('data', (d) => out.push(d));
+     p.stderr.on('data', (d) => { err = (err + d).slice(-8000); });
+diff --git a/views.js b/views.js
+index f29d38b..cc45273 100644
+--- a/views.js
++++ b/views.js
+@@ -19,6 +19,7 @@ function small(file, size) {
+   const hit = smallSeen.get(s);
+   if (hit === true || (hit && Date.now() - hit < 60000)) return '/uploads/' + (hit === true ? s : f);
+   const there = fs.existsSync(path.join(UPLOADS(), s));
++  if (smallSeen.size > 20000) smallSeen.clear(); // a cache, not a record: it fills again from the disk
+   smallSeen.set(s, there ? true : Date.now());
+   if (!there) makeSmall(f, size);
+   return '/uploads/' + (there ? s : f);
+@@ -41,7 +42,7 @@ function blurOf(file) {
+   const f = path.basename(String(file));
+   if (tinyCache.has(f) && tinyCache.get(f)) return tinyCache.get(f);
+   const s = f.replace(/\.[A-Za-z0-9]+$/, '') + '.s24.webp';
+-  try { const b = fs.readFileSync(path.join(UPLOADS(), s)); const u = 'data:image/webp;base64,' + b.toString('base64'); tinyCache.set(f, u); return u; } catch (e) { makeSmall(f, 24); return ''; }
++  try { const b = fs.readFileSync(path.join(UPLOADS(), s)); const u = 'data:image/webp;base64,' + b.toString('base64'); if (tinyCache.size > 2000) tinyCache.clear(); tinyCache.set(f, u); return u; } catch (e) { makeSmall(f, 24); return ''; }
+ }
+ const sizeCache = new Map();
+ function sizeOf(file, size) {
+@@ -50,9 +51,17 @@ function sizeOf(file, size) {
+   if (sizeCache.has(s)) return sizeCache.get(s);
+   let d = null;
+   try { const fd = fs.openSync(path.join(UPLOADS(), s), 'r'); const b = Buffer.alloc(32); fs.readSync(fd, b, 0, 32, 0); fs.closeSync(fd); d = webpSize(b); } catch (e) { return null; }
++  if (sizeCache.size > 20000) sizeCache.clear();
+   sizeCache.set(s, d);
+   return d;
+ }
++/** An upload deleted: nothing about it stays remembered. */
++function forget(file) {
++  const f = path.basename(String(file || ''));
++  const base = f.replace(/\.[A-Za-z0-9]+$/, '');
++  tinyCache.delete(f);
++  for (const n of [24, 256, 480, 512, 720, 1080, 1280]) { smallSeen.delete(`${base}.s${n}.webp`); sizeCache.delete(`${base}.s${n}.webp`); making.delete(f + n); }
++}
+ /* A missing copy is made in the background the first time a page wants it (one at a time, so the server
+    never spends more than one ffmpeg on this); the next visit gets it. */
+ const making = new Set(); const queue = [];
+@@ -70,6 +79,7 @@ async function drain() {
+       if (fs.existsSync(src)) {
+         const name = await require('./video').small(src, UPLOADS(), size);
+         if (name) smallSeen.set(name, true);
++        making.delete(f + size); // done (or failed): a later page may ask again
+       }
+     }
+   } finally { busy = false; }
+@@ -660,4 +670,4 @@ function vendorsPage(site, ctx) {
+   return layout({ title: `Vendors · ${SITE()}`, description: `Ask for a vendor spot at a car meet on ${SITE()}.`, body, scripts: ['site.js'] });
+ }
+ 
+-module.exports = { landing, meetsPage, membersPage, vendorsPage, small, ver, inlineCss, layout, meetPage, vendorPage, memberPage, memberEdit, hostEmpty, foodPage, orderPage, message, home, privacy };
++module.exports = { forget, landing, meetsPage, membersPage, vendorsPage, small, ver, inlineCss, layout, meetPage, vendorPage, memberPage, memberEdit, hostEmpty, foodPage, orderPage, message, home, privacy };

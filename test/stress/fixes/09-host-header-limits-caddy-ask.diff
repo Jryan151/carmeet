@@ -1,0 +1,133 @@
+diff --git a/host.js b/host.js
+index 5680904..4911b6f 100644
+--- a/host.js
++++ b/host.js
+@@ -88,10 +88,13 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
+   r.get('/sign-in-options', (req, res) => res.set('Cache-Control', 'no-store').json({ password: !!demoHost() }));
+   r.post('/password', async (req, res) => {
+     if (!demoHost()) return res.status(404).json({ error: 'Sign in with your email.' });
+-    if (limited('pw:' + (req.ip || ''), 10, 15 * 60000)) return res.status(429).json({ error: 'Too many tries. Wait a few minutes.' });
++    // Per network (an IPv6 address counts by its /64, which one phone or one attacker gets whole) and for everyone:
++    // 30 wrong tries in 15 minutes across all addresses close it for the rest of those 15 minutes.
++    const ip = String(req.ip || ''); const net = ip.includes(':') && !ip.startsWith('::ffff:') ? ip.split(':').slice(0, 4).join(':') : ip;
++    if (limited('pw:' + net, 10, 15 * 60000) || (hits.get('pw:all') && hits.get('pw:all').n >= 30 && hits.get('pw:all').reset > Date.now())) return res.status(429).json({ error: 'Too many tries. Wait a few minutes.' });
+     const given = D.sha('pw:' + String((req.body || {}).password || ''));
+     const want = D.sha('pw:' + process.env.DEMO_PASSWORD);
+-    if (!crypto.timingSafeEqual(Buffer.from(given), Buffer.from(want))) return res.status(400).json({ error: 'That password isn’t right.' });
++    if (!crypto.timingSafeEqual(Buffer.from(given), Buffer.from(want))) { limited('pw:all', 1e9, 15 * 60000); return res.status(400).json({ error: 'That password isn’t right.' }); }
+     const host = await get('SELECT * FROM hosts WHERE slug = ? OR lower(email) = ?', [demoHost(), demoHost()]);
+     if (!host) return res.status(404).json({ error: 'That workspace isn’t set up yet.' });
+     const t = D.token(24);
+diff --git a/server.js b/server.js
+index b59a4dd..4bcea3c 100644
+--- a/server.js
++++ b/server.js
+@@ -37,6 +37,15 @@ app.use((req, res, next) => {
+ app.use('/meet', require('./meetproxy').middleware(SCHEME));
+ const MEET_MODE = () => process.env.MEET_MODE === '1';
+ 
++/** The address this request is for, as one this site really answers to: the site, www, a vendor's subdomain, or a
++    host's own domain that's turned on. Anything else (a forged Host header) gets the site's own name. */
++async function publicOrigin(req) {
++  const h = String(req.hostname || '').toLowerCase();
++  const ok = h === SITE_DOMAIN || h === 'www.' + SITE_DOMAIN || !!U.subOf(h) ||
++    (h && !!(await get('SELECT 1 AS x FROM hosts WHERE custom_domain = ? AND domain_on = 1', [h.replace(/^www\./, '')])));
++  return `${SCHEME}://${ok ? req.get('host') : SITE_DOMAIN}`;
++}
++
+ /* ---------- rate limits (per network) ---------- */
+ function limit(windowMs, max, name) {
+   const hits = new Map();
+@@ -50,9 +59,9 @@ function limit(windowMs, max, name) {
+     next();
+   };
+ }
+-const limitForm = limit(10 * 60 * 1000, 12, 'form');
+-const limitOrder = limit(10 * 60 * 1000, 30, 'order');
+-const limitRead = limit(60 * 1000, 120, 'read');
++const limitForm = limit(10 * 60 * 1000, 60, 'form'); // a meet's crowd on one network signs up together
++const limitOrder = limit(10 * 60 * 1000, 150, 'order');
++const limitRead = limit(60 * 1000, 900, 'read'); // menu photos: one menu is 20+ of them, for every phone on the network
+ 
+ /* ---------- the food side's notices (raw body: the signature covers the exact bytes) ---------- */
+ app.post('/hooks/kitchen', express.raw({ type: 'application/json', limit: '20kb' }), async (req, res) => {
+@@ -79,7 +88,7 @@ app.use(express.json({ limit: '50kb' }));
+ // Only from Caddy on this server. Yes for the site itself, a host's own domain, and a vendor profile's subdomain.
+ app.get('/caddy/ask', async (req, res) => {
+   const ip = String(req.socket.remoteAddress || '');
+-  if (!/^(127\.|::1$|::ffff:127\.)/.test(ip)) return res.status(404).end();
++  if (!/^(127\.|::1$|::ffff:127\.)/.test(ip) || req.get('x-forwarded-for')) return res.status(404).end();
+   const d = String(req.query.domain || '').toLowerCase().replace(/\.$/, '');
+   if (!/^[a-z0-9.-]{1,253}$/.test(d)) return res.status(404).end();
+   if (d === SITE_DOMAIN || d === 'www.' + SITE_DOMAIN) return res.status(200).end();
+@@ -280,7 +289,7 @@ async function renderMeet(req, res, host, m, isHome) {
+   const venue = m.venue_id ? await get("SELECT name, file, instagram, note FROM kit_logos WHERE id = ? AND host_id = ? AND kind = 'venue'", [m.venue_id, host.id]) : null;
+   // The other weeks listed: on a meet name's address, only that meet's; on the host's page, their own.
+   const ups = req.meetName ? upcoming.filter((x) => x.page_name === req.meetName) : upcoming.filter((x) => !N.onName(host, x) || x.page_name === m.page_name || N.homeNames(host).has(x.page_name));
+-  res.set('Cache-Control', 'no-cache').type('html').send(V.meetPage(host, m, { tz: tzOf(host), base: baseOf(req, host), trucks: trucks.map(truckFace), kitVendors, kitAll, last, recap, upcoming: ups, isHome, venue, badge: badgeOf(host, req), meetMode: MEET_MODE(), headerVid: req.isMain ? await mainHeader() : null, origin: `${SCHEME}://${req.get('host')}` }));
++  res.set('Cache-Control', 'no-cache').type('html').send(V.meetPage(host, m, { tz: tzOf(host), base: baseOf(req, host), trucks: trucks.map(truckFace), kitVendors, kitAll, last, recap, upcoming: ups, isHome, venue, badge: badgeOf(host, req), meetMode: MEET_MODE(), headerVid: req.isMain ? await mainHeader() : null, origin: await publicOrigin(req) }));
+ }
+ const notFound = (req, res, host) => res.status(404).type('html').send(V.message(host || null, { title: 'Nothing here', text: 'The link may be old, or the address may have a typo.', href: host ? baseOf(req, host) || '/' : '/', cta: host ? 'See the next meet' : 'Go to the main page' }));
+ 
+@@ -311,7 +320,7 @@ async function renderDemo(req, res, host) {
+   const [last, recap] = await Promise.all([lastTurnout(host), latestRecap(host)]);
+   res.set({ 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex' }).type('html').send(V.meetPage(host, Object.assign({}, m, { status: 'on' }), {
+     tz, base: baseOf(req, host), trucks: DEMO_TRUCKS, kitVendors: kit.map((k) => Object.assign({ truck_slug: null }, k)), kitAll: [], last, recap, upcoming: up,
+-    isHome: true, badge: badgeOf(host, req), meetMode: MEET_MODE(), origin: `${SCHEME}://${req.get('host')}`, demo: true }));
++    isHome: true, badge: badgeOf(host, req), meetMode: MEET_MODE(), origin: await publicOrigin(req), demo: true }));
+ }
+ 
+ async function hostHome(req, res, host) {
+@@ -405,7 +414,7 @@ app.post('/api/meets/:id/food/:truck/order', limitOrder, async (req, res) => {
+   if (b.website) return res.status(400).json({ error: 'Couldn’t place the order. Try again.' });
+   const email = U.clean(b.email, 120).toLowerCase();
+   if (!U.EMAIL_RE.test(email)) return res.status(400).json({ error: 'Add your email so we can tell you when it’s ready.' });
+-  const origin = `${SCHEME}://${req.get('host')}`;
++  const origin = await publicOrigin(req);
+   const device = /^[A-Za-z0-9_-]{16,64}$/.test(String(b.device || '')) ? D.sha('dev:' + b.device).slice(0, 32) : D.sha('ip:' + (req.ip || '')).slice(0, 32);
+   const r = await K.order(f.m.ref, req.params.truck, {
+     name: U.clean(b.name, 40), items: Array.isArray(b.items) ? b.items.slice(0, 30) : [], pickupAt: Number(b.pickupAt), clientKey: String(b.clientKey || ''),
+@@ -492,7 +501,7 @@ app.post('/api/alerts', limitForm, async (req, res) => {
+   if (have && have.sent_at && Date.now() - have.sent_at < 5 * 60000) return res.json({ ok: true, message: 'Check your email for the link we just sent.' });
+   if (have) await run('UPDATE subscribers SET token_hash = ?, off_at = NULL, sent_at = ? WHERE id = ?', [D.sha(t), Date.now(), have.id]);
+   else await run('INSERT INTO subscribers (host_id, email, token_hash, created_at, sent_at) VALUES (?, ?, ?, ?, ?)', [host.id, email, D.sha(t), Date.now(), Date.now()]);
+-  const link = `${SCHEME}://${req.get('host')}/alerts/yes?t=${t}`;
++  const link = `${await publicOrigin(req)}/alerts/yes?t=${t}`;
+   // Sent behind the scenes: the answer doesn't depend on it (a failed send waits in the outbox and is retried).
+   mail.send({ key: 'alerts-confirm-' + D.sha(t).slice(0, 20), to: email, fromName: host.name, subject: `Confirm alerts from ${host.name}`,
+     text: `Tap to get an email when ${host.name} posts a meet or something changes:\n${link}\n\nDidn't ask for this? Ignore it and you won't hear from us.`,
+@@ -509,6 +518,7 @@ app.get('/alerts/:act', async (req, res) => {
+   const host = s ? await get('SELECT * FROM hosts WHERE id = ?', [s.host_id]) : null;
+   if (!s || !host) return res.status(404).type('html').send(V.message(null, { title: 'That link is old', text: 'Sign up again from the meet page.', href: '/', cta: 'Go to the main page' }));
+   const home = `${SCHEME}://${host.domain_on && host.custom_domain ? host.custom_domain : SITE_DOMAIN + '/' + host.slug}`;
++  res.set('Cache-Control', 'no-store');
+   if (req.params.act === 'yes') {
+     await run('UPDATE subscribers SET verified_at = COALESCE(verified_at, ?), off_at = NULL WHERE id = ?', [Date.now(), s.id]);
+     return res.type('html').send(V.message(host, { title: 'You’re on the list', text: `You’ll get an email when ${host.name} posts a meet or something changes.`, href: home, cta: 'See the next meet' }));
+@@ -590,7 +600,7 @@ async function vendorProfile(req, res, k) {
+   // Their own clip, or the host's usual one.
+   const vid = k.video && k.video_status === 'ready' ? k : host.video && host.video_status === 'ready' ? host : null;
+   res.set('Cache-Control', preview ? 'no-store' : 'no-cache').type('html').send(V.vendorPage(host, k, {
+-    tz, vid, logos, photos, spots, meets: served ? served.n : 0, at, hostUrl, preview, origin: `${SCHEME}://${req.get('host')}` }));
++    tz, vid, logos, photos, spots, meets: served ? served.n : 0, at, hostUrl, preview, origin: await publicOrigin(req) }));
+ }
+ app.get('/v/:slug', async (req, res) => {
+   if (req.vendorSub) return notFound(req, res, null);
+@@ -704,7 +714,7 @@ app.get('/', async (req, res) => {
+   const main = onSite ? await homeHost() : null;
+   if (main && !(main.domain_on && main.custom_domain)) { req.isMain = true; return hostHome(req, res, main); }
+   const [site, meets, owner] = await Promise.all([siteRow(), allUpcoming(), siteOwner()]);
+-  res.set('Cache-Control', 'no-cache').type('html').send(V.landing(await siteFace(site, owner, meets), { meets, instagram: owner && owner.instagram, origin: `${SCHEME}://${req.get('host')}` }));
++  res.set('Cache-Control', 'no-cache').type('html').send(V.landing(await siteFace(site, owner, meets), { meets, instagram: owner && owner.instagram, origin: await publicOrigin(req) }));
+ });
+ /* ---------- a club member's page (/@handle), and the editor their link opens ---------- */
+ app.get(/^\/@([a-z0-9-]{3,40})(\/edit)?\/?$/i, async (req, res) => {
+@@ -723,7 +733,7 @@ app.get(/^\/@([a-z0-9-]{3,40})(\/edit)?\/?$/i, async (req, res) => {
+   const crew = club ? await all(`SELECT m.handle, m.name, m.car, (SELECT CASE WHEN p.kind = 'video' THEN p.poster ELSE p.file END FROM member_photos p WHERE p.member_id = m.id AND (p.kind = 'photo' OR p.status = 'ready') ORDER BY p.id LIMIT 1) AS face
+     FROM members m WHERE m.club_id = ? AND m.id != ? ORDER BY m.updated_at DESC LIMIT 8`, [club.id, m.id]) : [];
+   const vid = m.video_status === 'ready' && m.video ? m : host.video && host.video_status === 'ready' ? host : null;
+-  res.set('Cache-Control', 'no-cache').type('html').send(V.memberPage(host, m, { photos, club, crew, vid, origin: `${SCHEME}://${req.get('host')}` }));
++  res.set('Cache-Control', 'no-cache').type('html').send(V.memberPage(host, m, { photos, club, crew, vid, origin: await publicOrigin(req) }));
+ });
+ 
+ app.get('/:a', async (req, res, next) => {

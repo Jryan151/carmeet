@@ -1,0 +1,36 @@
+diff --git a/host.js b/host.js
+index 24aaa5b..b7aab23 100644
+--- a/host.js
++++ b/host.js
+@@ -197,8 +197,11 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
+     res.set('Cache-Control', 'no-store').json({ host: hostShape(h), meet: m ? meetShape(m, h) : null, trucks, preorders: trucks.reduce((n, v) => n + (v.preorders || 0), 0),
+       subscribers: subs.n, requests: reqs.n, unlogged, last: last ? meetShape(last, h) : null });
+   });
+-  const truckShape = (v) => ({ inviteId: v.inviteId, status: v.status, code: v.code, slug: v.slug || null, name: v.name || null, emoji: v.emoji || '',
+-    cardReady: !!v.cardReady, payAtTruck: !!v.payAtTruck, paused: !!v.paused, openNow: !!v.openNow, setUp: v.setUp !== false, hostProfile: !!v.hostProfile, preorders: v.preorders || 0, plates: v.plates === undefined ? null : v.plates });
++  // What the food side sends, in the types the portal expects (it puts numbers straight into the page).
++  const num = (x) => (Number.isFinite(Number(x)) ? Number(x) : 0);
++  const str = (x) => (x === undefined || x === null ? null : String(x));
++  const truckShape = (v) => ({ inviteId: num(v.inviteId), status: str(v.status), code: str(v.code), slug: str(v.slug), name: str(v.name), emoji: str(v.emoji) || '',
++    cardReady: !!v.cardReady, payAtTruck: !!v.payAtTruck, paused: !!v.paused, openNow: !!v.openNow, setUp: v.setUp !== false, hostProfile: !!v.hostProfile, preorders: num(v.preorders), plates: v.plates === undefined || v.plates === null ? null : num(v.plates) });
+ 
+   /* ---------- meets ---------- */
+   r.get('/meets', signedIn, async (req, res) => {
+diff --git a/public/portal.js b/public/portal.js
+index eda7d1a..8d1b123 100644
+--- a/public/portal.js
++++ b/public/portal.js
+@@ -348,11 +348,11 @@
+     if (!me.foodOn) html += '<p class="small dim">Food pre-orders aren’t connected on this site yet.</p>';
+     html += trucks.length ? trucks.map(function (v) {
+       var name = v.name ? (v.emoji ? v.emoji + ' ' : '') + v.name : 'Invite ' + (v.code || '');
+-      var st = v.status === 'in' ? '<span class="tag in">' + (v.hostProfile && !v.setUp ? 'In · setting up' : 'Confirmed') + ' · ' + v.preorders + ' pre-order' + (v.preorders === 1 ? '' : 's') + (v.plates !== null ? ' · ' + v.plates + ' plates sold' : '') + (v.cardReady ? '' : v.payAtTruck ? ' · paid at the truck' : ' · order at the truck') + (v.paused ? ' · paused' : '') + (v.openNow ? ' · open now' : '') + '</span>'
++      var st = v.status === 'in' ? '<span class="tag in">' + (v.hostProfile && !v.setUp ? 'In · setting up' : 'Confirmed') + ' · ' + esc(v.preorders) + ' pre-order' + (v.preorders === 1 ? '' : 's') + (v.plates !== null ? ' · ' + esc(v.plates) + ' plates sold' : '') + (v.cardReady ? '' : v.payAtTruck ? ' · paid at the truck' : ' · order at the truck') + (v.paused ? ' · paused' : '') + (v.openNow ? ' · open now' : '') + '</span>'
+         : v.status === 'invited' ? '<span class="tag">Link sent, waiting</span>' : '<span class="tag">' + esc(v.status === 'declined' ? 'Declined' : v.status === 'left' ? 'Not coming' : v.status) + '</span>';
+       var again = v.hostProfile && ['in', 'invited'].indexOf(v.status) >= 0 && !m.over ? '<button class="btn sm" data-send-slug="' + esc(v.slug) + '">' + (v.status === 'in' ? 'New link' : 'Link again') + '</button>' : '';
+       return '<div class="rowx"><div><div>' + esc(name) + '</div>' + st + '</div><div class="bar" style="margin:0;flex:none">' + again +
+-        (['in', 'invited'].indexOf(v.status) >= 0 && !m.over ? '<button class="btn sm" data-drop-truck="' + v.inviteId + '">Remove</button>' : '') + '</div></div>';
++        (['in', 'invited'].indexOf(v.status) >= 0 && !m.over ? '<button class="btn sm" data-drop-truck="' + esc(v.inviteId) + '">Remove</button>' : '') + '</div></div>';
+     }).join('') : '<p class="small dim">No trucks yet.</p>';
+     if (!m.over && m.status === 'on' && me.foodOn) {
+       if (invite && invite.meet === m.id) {

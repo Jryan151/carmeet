@@ -1,0 +1,428 @@
+{
+  "clients": 50,
+  "baseline": {
+    "byCat": {
+      "page /vendors": {
+        "n": 43,
+        "errors": 0,
+        "codes": {
+          "200": 43
+        },
+        "p50": 634.9,
+        "p95": 876.1,
+        "p99": 919.8,
+        "max": 919.8,
+        "errSamples": []
+      },
+      "page /@handle": {
+        "n": 245,
+        "errors": 0,
+        "codes": {
+          "200": 245
+        },
+        "p50": 1416.3,
+        "p95": 1939.1,
+        "p99": 2037.6,
+        "max": 2063.3,
+        "errSamples": []
+      },
+      "page /<meet-name>": {
+        "n": 274,
+        "errors": 0,
+        "codes": {
+          "200": 274
+        },
+        "p50": 1807.9,
+        "p95": 2426,
+        "p99": 4042.4,
+        "max": 4884.5,
+        "errSamples": []
+      },
+      "page /": {
+        "n": 150,
+        "errors": 0,
+        "codes": {
+          "200": 150
+        },
+        "p50": 903.5,
+        "p95": 1206.2,
+        "p99": 1354,
+        "max": 2996.9,
+        "errSamples": []
+      },
+      "page /members": {
+        "n": 90,
+        "errors": 0,
+        "codes": {
+          "200": 90
+        },
+        "p50": 588,
+        "p95": 874.1,
+        "p99": 2862.1,
+        "max": 2862.1,
+        "errSamples": []
+      },
+      "page /<host>": {
+        "n": 230,
+        "errors": 0,
+        "codes": {
+          "200": 230
+        },
+        "p50": 1178.1,
+        "p95": 1614.3,
+        "p99": 2377.2,
+        "max": 3925.8,
+        "errSamples": []
+      },
+      "page /v/<vendor>": {
+        "n": 118,
+        "errors": 0,
+        "codes": {
+          "200": 118
+        },
+        "p50": 1905.9,
+        "p95": 2747.1,
+        "p99": 2815.3,
+        "max": 2886.2,
+        "errSamples": []
+      },
+      "page /meets": {
+        "n": 95,
+        "errors": 0,
+        "codes": {
+          "200": 95
+        },
+        "p50": 593.4,
+        "p95": 947.3,
+        "p99": 3584.4,
+        "max": 3584.4,
+        "errSamples": []
+      },
+      "page /<meet-name>/<date>": {
+        "n": 210,
+        "errors": 0,
+        "codes": {
+          "200": 210
+        },
+        "p50": 1877.8,
+        "p95": 2459.9,
+        "p99": 2798,
+        "max": 4406.3,
+        "errSamples": []
+      }
+    },
+    "rps": 36.4
+  },
+  "heavy": {
+    "byCat": {
+      "page /<host>": {
+        "n": 885,
+        "errors": 0,
+        "codes": {
+          "200": 885
+        },
+        "p50": 1196.3,
+        "p95": 1660.9,
+        "p99": 1910.1,
+        "max": 3600.8,
+        "errSamples": []
+      },
+      "page /@handle": {
+        "n": 888,
+        "errors": 0,
+        "codes": {
+          "200": 888
+        },
+        "p50": 1467.7,
+        "p95": 1973.5,
+        "p99": 2218,
+        "max": 5414.6,
+        "errSamples": []
+      },
+      "page /meets": {
+        "n": 336,
+        "errors": 0,
+        "codes": {
+          "200": 336
+        },
+        "p50": 621.6,
+        "p95": 932.4,
+        "p99": 1240.2,
+        "max": 4013.9,
+        "errSamples": []
+      },
+      "page /<meet-name>/<date>": {
+        "n": 863,
+        "errors": 0,
+        "codes": {
+          "200": 863
+        },
+        "p50": 1807.8,
+        "p95": 2441.6,
+        "p99": 2698.7,
+        "max": 4875.8,
+        "errSamples": []
+      },
+      "page /<meet-name>": {
+        "n": 905,
+        "errors": 0,
+        "codes": {
+          "200": 905
+        },
+        "p50": 1804.8,
+        "p95": 2417.2,
+        "p99": 2708.1,
+        "max": 5733,
+        "errSamples": []
+      },
+      "page /members": {
+        "n": 348,
+        "errors": 0,
+        "codes": {
+          "200": 348
+        },
+        "p50": 561.8,
+        "p95": 904.7,
+        "p99": 1117.2,
+        "max": 3036,
+        "errSamples": []
+      },
+      "page /": {
+        "n": 511,
+        "errors": 0,
+        "codes": {
+          "200": 511
+        },
+        "p50": 887.1,
+        "p95": 1246,
+        "p99": 1421.5,
+        "max": 3160.3,
+        "errSamples": []
+      },
+      "page /vendors": {
+        "n": 187,
+        "errors": 0,
+        "codes": {
+          "200": 187
+        },
+        "p50": 627.6,
+        "p95": 859.8,
+        "p99": 1186.3,
+        "max": 3447.1,
+        "errSamples": []
+      },
+      "page /v/<vendor>": {
+        "n": 418,
+        "errors": 0,
+        "codes": {
+          "200": 418
+        },
+        "p50": 2018.4,
+        "p95": 2702.4,
+        "p99": 2873.8,
+        "max": 2932.3,
+        "errSamples": []
+      }
+    },
+    "rps": 35.6
+  },
+  "queue": {
+    "maxEncodesAtOnce": 2,
+    "samplesWith2PlusEncodes": 73,
+    "samples": 418,
+    "maxFfmpegAtOnce": 2,
+    "niceSeen": [
+      19,
+      0
+    ],
+    "overlapExamples": [
+      {
+        "t": 118170,
+        "ff": [
+          {
+            "pid": 29411,
+            "nice": 19,
+            "secs": 27,
+            "kind": "hevc"
+          },
+          {
+            "pid": 29905,
+            "nice": 19,
+            "secs": 0,
+            "kind": "h264"
+          }
+        ]
+      },
+      {
+        "t": 118686,
+        "ff": [
+          {
+            "pid": 29411,
+            "nice": 19,
+            "secs": 28,
+            "kind": "hevc"
+          },
+          {
+            "pid": 29905,
+            "nice": 19,
+            "secs": 0,
+            "kind": "h264"
+          }
+        ]
+      },
+      {
+        "t": 119209,
+        "ff": [
+          {
+            "pid": 29411,
+            "nice": 19,
+            "secs": 29,
+            "kind": "hevc"
+          },
+          {
+            "pid": 29905,
+            "nice": 19,
+            "secs": 1,
+            "kind": "h264"
+          }
+        ]
+      }
+    ]
+  },
+  "uploads": [
+    {
+      "name": "host background (4K 60 fps, 96 MB)",
+      "status": 202,
+      "answeredMs": 151077,
+      "body": "{\"video\":{\"status\":\"processing\"}}",
+      "final": "ready",
+      "doneAtS": 197.3
+    },
+    {
+      "name": "meet background (395 MB)",
+      "status": 202,
+      "answeredMs": 152012,
+      "body": "{\"video\":{\"status\":\"processing\"}}",
+      "final": "ready",
+      "doneAtS": 215.9
+    },
+    {
+      "name": "member feed clip (1080p 30 s)",
+      "status": 202,
+      "answeredMs": 117661,
+      "body": "{\"member\":{\"id\":1,\"handle\":\"driver-1\",\"name\":\"\",\"car\":\"2019 Civic Type R\",\"mods\":\"Stage 2 tune\\nCoilovers\\nWide body\",\"i",
+      "final": "ready",
+      "doneAtS": 154.2
+    },
+    {
+      "name": "member feed clip (upright .mov)",
+      "status": 202,
+      "answeredMs": 63921,
+      "body": "{\"member\":{\"id\":16,\"handle\":\"driver-16\",\"name\":\"Driver 16\",\"car\":\"GR86\",\"mods\":\"Stage 2 tune\\nCoilovers\\nWide body\",\"ins",
+      "final": "ready",
+      "doneAtS": 152.1
+    },
+    {
+      "name": "vendor clip (1080p 30 s)",
+      "status": 202,
+      "answeredMs": 118180,
+      "body": "{\"video\":{\"status\":\"processing\"}}",
+      "final": "ready",
+      "doneAtS": 172.6
+    }
+  ],
+  "pictures": {
+    "count": 200,
+    "allCopiesMadeS": 152.1
+  },
+  "restart": {
+    "oldPid": 25793,
+    "before": {
+      "st": [
+        "processing",
+        "processing",
+        "processing",
+        "processing",
+        "processing"
+      ],
+      "ff": [
+        {
+          "pid": 30630,
+          "nice": 19,
+          "secs": 10,
+          "kind": "hevc"
+        },
+        {
+          "pid": 30658,
+          "nice": 19,
+          "secs": 9,
+          "kind": "h264"
+        }
+      ],
+      "tmp": [
+        "in-11bca9e15d435249",
+        "in-6b76f29393adc1db",
+        "in-77463bb62cf20e64",
+        "in-9f8c64336fd15744",
+        "in-ffb82671066d7ba2"
+      ]
+    },
+    "after": {
+      "st": [
+        "failed",
+        "failed",
+        "failed",
+        "failed",
+        "failed"
+      ],
+      "ff": [
+        {
+          "pid": 30630,
+          "nice": 19,
+          "secs": 14,
+          "kind": "hevc"
+        },
+        {
+          "pid": 30658,
+          "nice": 19,
+          "secs": 13,
+          "kind": "h264"
+        }
+      ],
+      "tmp": [
+        "in-11bca9e15d435249",
+        "in-6b76f29393adc1db",
+        "in-77463bb62cf20e64",
+        "in-9f8c64336fd15744",
+        "in-ffb82671066d7ba2"
+      ]
+    },
+    "hostVideoError": "The server restarted while this video was processing. Upload it again.",
+    "later": {
+      "ff": [],
+      "tmp": [
+        {
+          "f": "in-11bca9e15d435249",
+          "mb": 395
+        },
+        {
+          "f": "in-6b76f29393adc1db",
+          "mb": 43.4
+        },
+        {
+          "f": "in-77463bb62cf20e64",
+          "mb": 43.4
+        },
+        {
+          "f": "in-9f8c64336fd15744",
+          "mb": 96
+        },
+        {
+          "f": "in-ffb82671066d7ba2",
+          "mb": 24
+        }
+      ],
+      "orphanLoops": 15
+    }
+  }
+}

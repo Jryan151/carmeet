@@ -1,0 +1,54 @@
+diff --git a/host.js b/host.js
+index 56b32b6..d942b01 100644
+--- a/host.js
++++ b/host.js
+@@ -479,13 +479,16 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
+     if (to.alerts) {
+       const subs = await all('SELECT id, email FROM subscribers WHERE host_id = ? AND verified_at IS NOT NULL AND off_at IS NULL', [h.id]);
+       const page = m ? N.meetUrl(h, m) : pageUrl(h);
+-      for (const s of subs) {
++      // Eight at a time (the provider allows more): 200 people take a few seconds, not a minute.
++      const queue = subs.slice();
++      const one = async (s) => {
+         const off = `${SCHEME()}://${SITE_DOMAIN()}/alerts/off?s=${s.id}.${offSig(s.id)}`;
+         const ok = await mail.send({ key: `upd-${ins.lastID}-${s.id}`, to: s.email, fromName: h.name, subject, text: `${text}\n\n${page}\n\nStop these emails: ${off}`,
+           headers: { 'List-Unsubscribe': `<${off}>` },
+           html: mail.shell({ from: h.name, title: subject, html: `<p>${mail.esc(text).replace(/\n/g, '<br>')}</p><p><a href="${page}">See the meet</a></p>`, footer: `<a href="${off}">Stop these emails</a>` }) }).catch(() => false);
+         if (ok || !mail.configured()) sent++;
+-      }
++      };
++      await Promise.all(Array.from({ length: 8 }, async () => { for (let s; (s = queue.shift());) await one(s); }));
+     }
+     if (to.vendors && m) { const r2 = await K.notice(m.ref, subject, text); if (r2.ok) sent += r2.data.sent || 0; }
+     await run('UPDATE updates SET sent = ? WHERE id = ?', [sent, ins.lastID]);
+diff --git a/mail.js b/mail.js
+index 039917c..264fa2b 100644
+--- a/mail.js
++++ b/mail.js
+@@ -25,7 +25,7 @@ async function deliver(msg) {
+   if (!configured()) return { ok: false, retry: false, error: 'email not set up' };
+   try {
+     const r = await fetch('https://api.resend.com/emails', {
+-      method: 'POST',
++      method: 'POST', signal: AbortSignal.timeout(10000), // a slow provider: kept in the outbox and retried, never waited on
+       headers: { authorization: 'Bearer ' + process.env.RESEND_API_KEY, 'content-type': 'application/json', 'idempotency-key': msg.key },
+       body: JSON.stringify({ from: msg.fromName ? `${msg.fromName.replace(/[<>"]/g, '')} <${String(process.env.MAIL_FROM).replace(/^.*</, '').replace(/>.*$/, '')}>` : process.env.MAIL_FROM,
+         to: [msg.to], subject: msg.subject, html: msg.html, text: msg.text, headers: msg.headers }),
+diff --git a/server.js b/server.js
+index d6b661a..64b2245 100644
+--- a/server.js
++++ b/server.js
+@@ -493,10 +493,11 @@ app.post('/api/alerts', limitForm, async (req, res) => {
+   if (have) await run('UPDATE subscribers SET token_hash = ?, off_at = NULL, sent_at = ? WHERE id = ?', [D.sha(t), Date.now(), have.id]);
+   else await run('INSERT INTO subscribers (host_id, email, token_hash, created_at, sent_at) VALUES (?, ?, ?, ?, ?)', [host.id, email, D.sha(t), Date.now(), Date.now()]);
+   const link = `${SCHEME}://${req.get('host')}/alerts/yes?t=${t}`;
+-  await mail.send({ key: 'alerts-confirm-' + D.sha(t).slice(0, 20), to: email, fromName: host.name, subject: `Confirm alerts from ${host.name}`,
++  // Sent behind the scenes: the answer doesn't depend on it (a failed send waits in the outbox and is retried).
++  mail.send({ key: 'alerts-confirm-' + D.sha(t).slice(0, 20), to: email, fromName: host.name, subject: `Confirm alerts from ${host.name}`,
+     text: `Tap to get an email when ${host.name} posts a meet or something changes:\n${link}\n\nDidn't ask for this? Ignore it and you won't hear from us.`,
+     html: mail.shell({ from: host.name, title: 'One tap to confirm', html: `<p>Get an email when ${mail.esc(host.name)} posts a meet or something changes.</p><p><a href="${link}" style="display:inline-block;background:#f2a33a;color:#1c1e23;padding:12px 18px;border-radius:8px;text-decoration:none;font-weight:600">Yes, send me alerts</a></p>`,
+-      footer: 'Didn’t ask for this? Ignore it and you won’t hear from us.' }) });
++      footer: 'Didn’t ask for this? Ignore it and you won’t hear from us.' }) }).catch((e) => console.error('alerts mail:', e.message));
+   const dev = process.env.DEV_CODES === 'true' && process.env.NODE_ENV !== 'production' ? { devLink: link } : {};
+   res.json(Object.assign({ ok: true, message: 'Check your email and tap the link to confirm.' }, dev));
+ });

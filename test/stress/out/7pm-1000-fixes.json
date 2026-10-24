@@ -1,0 +1,24 @@
+{
+  "phones": 1000,
+  "windowS": 10,
+  "assetsPerPhone": 13,
+  "page": {
+    "p50": 5,
+    "p95": 30,
+    "p99": 64,
+    "max": 1223,
+    "failed": 0
+  },
+  "files": {
+    "p50": 6,
+    "p95": 66,
+    "max": 1267,
+    "failed": 3
+  },
+  "menu": {
+    "p50": 21,
+    "p95": 143,
+    "failed": 0
+  },
+  "allDoneS": 10
+}

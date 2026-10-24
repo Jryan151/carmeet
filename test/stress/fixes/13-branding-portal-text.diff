@@ -1,0 +1,13 @@
+diff --git a/public/portal.js b/public/portal.js
+index 8046ef5..eda7d1a 100644
+--- a/public/portal.js
++++ b/public/portal.js
+@@ -363,7 +363,7 @@
+         vendors.map(function (k) { return '<button type="button" data-send-kit="' + k.id + '"><span class="art">' + (k.url ? '<img src="' + esc(k.thumb || k.url) + '" alt="" loading="lazy" decoding="async">' : '🍽') + '</span><span>' + esc(k.name) + '</span></button>'; }).join('') + '</div>';
+       html += '<div class="bar"><button class="btn sm" data-new-invite="' + m.id + '">Invite a truck not in your list</button></div>' +
+         '<p class="small dim" style="margin:6px 0 0">They type their truck’s name, and it’s added to your Food vendors.</p>';
+-      if (known && known.length) html += '<p class="small dim" style="margin:14px 0 6px">Trucks with their own Online Kitchen (one tap, they accept in their app):</p><div class="bar">' +
++      if (known && known.length) html += '<p class="small dim" style="margin:14px 0 6px">Trucks with their own ordering account (one tap, they accept in their app):</p><div class="bar">' +
+         known.map(function (k) { return '<button class="btn sm" data-add-known="' + esc(k.slug) + '">+ ' + esc((k.emoji ? k.emoji + ' ' : '') + k.name) + '</button>'; }).join('') + '</div>';
+     }
+     return html + '<div class="msg" id="truckMsg" role="status"></div></div>';

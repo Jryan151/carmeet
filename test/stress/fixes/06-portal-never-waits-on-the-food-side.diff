@@ -1,0 +1,183 @@
+diff --git a/host.js b/host.js
+index 5c2d6b1..56b32b6 100644
+--- a/host.js
++++ b/host.js
+@@ -159,10 +159,16 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
+     return s;
+   }
+   // The look of the trucks' menus follows the host's page (logo, video, colors): re-send upcoming meets when it changes.
++  /** Re-sends meets to the food side, three at a time, without anyone waiting on it. */
++  function syncAll(h, meets) {
++    const list = meets.slice();
++    const worker = async () => { for (let m; (m = list.shift());) await sync(h, m).catch(() => {}); };
++    return Promise.all([worker(), worker(), worker()]).catch((e) => console.error('sync:', e.message));
++  }
+   async function refreshLook(hostId) {
+     try {
+       const h = await get('SELECT * FROM hosts WHERE id = ?', [hostId]);
+-      for (const m of await all("SELECT * FROM meets WHERE host_id = ? AND day >= ? AND status = 'on'", [h.id, U.addDays(U.dayKey(Date.now(), tzOf(h)), -1)])) await sync(h, m);
++      await syncAll(h, await all("SELECT * FROM meets WHERE host_id = ? AND day >= ? AND status = 'on'", [h.id, U.addDays(U.dayKey(Date.now(), tzOf(h)), -1)]));
+     } catch (e) { console.error('refresh look:', e.message); }
+   }
+   const own = (req, id) => get('SELECT * FROM meets WHERE id = ? AND host_id = ?', [parseInt(id, 10) || 0, req.me.id]);
+@@ -325,7 +331,8 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
+   r.get('/meets/:id/trucks', signedIn, async (req, res) => {
+     const m = await own(req, req.params.id);
+     if (!m) return res.status(404).json({ error: 'That meet is gone.' });
+-    const list = (await trucksFor(m, { fresh: true })).map(truckShape).filter((v) => v.status !== 'removed');
++    const gone = new Set((await all('SELECT truck_slug FROM kit_gone WHERE host_id = ?', [req.me.id])).map((x) => x.truck_slug));
++    const list = (await trucksFor(m, { fresh: true })).map(truckShape).filter((v) => v.status !== 'removed' && !gone.has(v.slug));
+     const inNow = new Set(list.filter((v) => v.slug && ['in', 'invited'].includes(v.status)).map((v) => v.slug));
+     const vendorRows = await all("SELECT * FROM kit_logos WHERE host_id = ? AND kind = 'vendor' ORDER BY name COLLATE NOCASE", [req.me.id]);
+     const mine = new Set(vendorRows.map((k) => k.truck_slug).filter(Boolean));
+@@ -713,9 +720,9 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
+       const twin = rows.find((x) => x.id !== t.id && x.file && !x.truck_slug && norm(x.name) && norm(x.name) === norm(t.name));
+       if (twin) { await mergeInto(t, twin); twin.merged = true; }
+     }
+-    for (const k of await all("SELECT * FROM kit_logos WHERE host_id = ? AND truck_slug IS NOT NULL AND file != '' AND (logo_synced IS NULL OR logo_synced != file)", [h.id])) {
+-      await syncLogo(h, k).catch(() => {});
+-    }
++    const unsent = await all("SELECT * FROM kit_logos WHERE host_id = ? AND truck_slug IS NOT NULL AND file != '' AND (logo_synced IS NULL OR logo_synced != file)", [h.id]);
++    // Sent behind the scenes, one after another: the list answers now.
++    (async () => { for (const k of unsent) await syncLogo(h, k).catch(() => {}); })();
+   }
+   // What the reader's answer means in the lists: food → Food vendors, club → Clubs, vendor → Vendors (non-food).
+   const KIND_OF = { food: 'vendor', club: 'group', vendor: 'sponsor' };
+@@ -840,21 +847,35 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
+     await run('UPDATE meets SET venue_id = NULL WHERE venue_id = ?', [k.id]);
+     await run('UPDATE members SET club_id = NULL WHERE club_id = ?', [k.id]);
+     if (k.truck_slug) {
+-      // Its truck leaves every meet still to come, and isn't put back in the lists from an old invite.
++      // Its truck leaves every meet still to come, and isn't put back in the lists from an old invite. The food side
++      // is told behind the scenes, and told again (dropGone, every few minutes) until every invite is gone.
+       await run('INSERT OR IGNORE INTO kit_gone (host_id, truck_slug) VALUES (?, ?)', [req.me.id, k.truck_slug]);
+       await run('DELETE FROM host_vendors WHERE host_id = ? AND slug = ?', [req.me.id, k.truck_slug]);
+-      const tz = tzOf(req.me);
+-      const meets = (await all('SELECT * FROM meets WHERE host_id = ? AND ref IS NOT NULL AND day >= ?', [req.me.id, U.addDays(U.dayKey(Date.now(), tz), -1)]))
+-        .filter((m) => U.meetTimes(m, tz).endsAt > Date.now());
+-      for (const m of meets) {
+-        const list = await trucksFor(m, { fresh: true }).catch(() => []);
+-        for (const v of list.filter((x) => x.slug === k.truck_slug && ['in', 'invited'].includes(x.status))) await K.dropInvite(m.ref, v.inviteId).catch(() => {});
+-        staleTrucks(m.ref);
+-      }
++      await Promise.race([dropGone(req.me.id).catch(() => {}), new Promise((ok) => setTimeout(ok, 5000))]); // usually done by then
+     }
+     res.json({ ok: true });
+   });
+ 
++  /** Every truck the host deleted (kit_gone) leaves the meets still to come on the food side. Only a real list from
++      the food side counts: a meet whose list can't be had is tried again next time. */
++  async function dropGone(hostId) {
++    const h = await get('SELECT * FROM hosts WHERE id = ?', [hostId]);
++    const gone = new Set((await all('SELECT truck_slug FROM kit_gone WHERE host_id = ?', [hostId])).map((x) => x.truck_slug));
++    if (!h || !gone.size) return;
++    const tz = tzOf(h);
++    const meets = (await all('SELECT * FROM meets WHERE host_id = ? AND day >= ?', [h.id, U.addDays(U.dayKey(Date.now(), tz), -1)])).filter((m) => U.meetTimes(m, tz).endsAt > Date.now());
++    for (const m of meets) {
++      const r2 = await K.meetVendors(m.ref);
++      if (!r2.ok || !Array.isArray(r2.data.vendors)) continue;
++      for (const v of r2.data.vendors.filter((x) => x && gone.has(x.slug) && ['in', 'invited'].includes(x.status))) {
++        // Still deleted? (The host may have sent the same truck a new link since this started.)
++        if (await get('SELECT 1 AS x FROM kit_gone WHERE host_id = ? AND truck_slug = ?', [hostId, v.slug])) await K.dropInvite(m.ref, v.inviteId).catch(() => {});
++      }
++      staleTrucks(m.ref);
++    }
++  }
++  setInterval(async () => { try { for (const x of await all('SELECT DISTINCT host_id FROM kit_gone')) await dropGone(x.host_id); } catch (e) { /* next time */ } }, Number(process.env.DROP_RETRY_MS) || 5 * 60000).unref();
++
+   /* ---------- a Food vendor's menu, put in by the host (a photo of their board), so the truck only checks it ---------- */
+   r.get('/kit/:id/menu', signedIn, async (req, res) => {
+     const k = await ownKit(req, req.params.id);
+@@ -1188,7 +1209,12 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
+       [name, U.clean(pick('tagline', 'tagline'), 120), U.clean(pick('city', 'city'), 60), accent, U.handle(pick('instagram', 'instagram')), U.handle(pick('tiktok', 'tiktok')), U.handle(pick('youtube', 'youtube')),
+         U.cleanBlock(pick('rules', 'rules'), 600), close, domain || null, domainOn, Date.now(), h.id]);
+     const fresh = await get('SELECT * FROM hosts WHERE id = ?', [h.id]);
+-    if (closeChanged || name !== h.name || accent !== h.accent) { for (const m of await all("SELECT * FROM meets WHERE host_id = ? AND day >= ? AND status = 'on'", [h.id, U.dayKey(Date.now(), tzOf(h))])) await sync(fresh, m); }
++    // The food side hears about it behind the scenes (each meet shows "not sent" until it has), so a slow or hung
++    // food side never holds up saving Settings.
++    if (closeChanged || name !== h.name || accent !== h.accent) {
++      const all3 = syncAll(fresh, await all("SELECT * FROM meets WHERE host_id = ? AND day >= ? AND status = 'on'", [h.id, U.dayKey(Date.now(), tzOf(h))]));
++      await Promise.race([all3, new Promise((ok) => setTimeout(ok, 5000))]); // usually done by then; never more than 5 s
++    }
+     res.json({ host: hostShape(fresh) });
+   });
+ 
+diff --git a/kitchen.js b/kitchen.js
+index f111225..f25b425 100644
+--- a/kitchen.js
++++ b/kitchen.js
+@@ -75,7 +75,7 @@ async function profileLogo(hostKey, slug, buf, type) {
+ }
+ const profileMenu = (hostKey, slug, items) => call('PUT', '/profiles/' + encodeURIComponent(slug) + '/menu', { hostKey, items, mode: 'replace' });
+ /* The names on logos, and what each one is (food, club, another vendor), read by the food side's AI. */
+-const readLogos = (hostKey, files) => call('POST', '/logo-read', { hostKey, files }, 70000);
++const readLogos = (hostKey, files) => call('POST', '/logo-read', { hostKey, files }, 30000); // the AI read: longer than other calls, never minutes
+ const addKnown = (ref, slug) => call('POST', '/' + encodeURIComponent(ref) + '/vendors', { slug });
+ const dropInvite = (ref, id) => call('DELETE', '/' + encodeURIComponent(ref) + '/invites/' + encodeURIComponent(id));
+ const notice = (ref, subject, text) => call('POST', '/' + encodeURIComponent(ref) + '/notice', { subject, text });
+diff --git a/meetproxy.js b/meetproxy.js
+index 1c2a8c6..fd2959b 100644
+--- a/meetproxy.js
++++ b/meetproxy.js
+@@ -66,7 +66,9 @@ function middleware(scheme) {
+       res.writeHead(r.statusCode || 502, out);
+       r.pipe(res);
+     });
+-    up.setTimeout(0);
++    // A menu that hasn't started answering in 15 s won't: the phone gets the "not loading" page instead of a spinner
++    // that never ends (and the connection is let go).
++    up.setTimeout(15000, () => up.destroy(new Error('the food side took too long')));
+     up.on('error', () => {
+       if (res.headersSent) return res.destroy();
+       res.status(502).type('html').send('<!doctype html><meta name="viewport" content="width=device-width"><body style="background:#07060b;color:#eee;font:16px system-ui;padding:40px;text-align:center">The menu isn’t loading right now. Try again in a minute.</body>');
+diff --git a/server.js b/server.js
+index 8950ef9..d6b661a 100644
+--- a/server.js
++++ b/server.js
+@@ -210,7 +210,8 @@ const truckCache = new Map(); // meet ref → { at, list }: the public page asks
+ const truckLoads = new Map(); // meet ref → the request on its way
+ async function trucksFor(m, { fresh } = {}) {
+   const c = truckCache.get(m.ref);
+-  const age = c ? (c.stale ? 60001 : Date.now() - c.at) : Infinity; // a meet just changed: its list is asked for again
++  // A meet that just changed (stale): asked for again, the page waiting under a second for it, then the kept list.
++  const age = c && !c.stale ? Date.now() - c.at : Infinity;
+   if (!fresh && age < 60000) return c.list;
+   if (fresh) return loadTrucks(m);
+   const p = truckLoads.get(m.ref) || loadTrucks(m);
+@@ -228,7 +229,7 @@ async function loadTrucks_(m) {
+   // Only a real list replaces the one kept: anything else (an error, a body of the wrong shape) keeps the last good one.
+   const got = r.ok && Array.isArray(r.data.vendors) ? r.data.vendors.filter((v) => v && typeof v === 'object' && !Array.isArray(v)) : null;
+   const list = got || (c ? c.list : []);
+-  truckCache.set(m.ref, { at: got ? Date.now() : (c ? c.at : Date.now()), list });
++  truckCache.set(m.ref, { at: got ? Date.now() : (c ? c.at : Date.now()), list }); // a failed ask clears "stale": the kept list shows at once
+   if (got) {
+     // A truck that came in on a plain invite (it typed its name) joins the host's Food vendors, tied to its profile.
+     // Only trucks still in the meet, and never one the host deleted.
+@@ -237,8 +238,9 @@ async function loadTrucks_(m) {
+       const gone = !have && await get('SELECT 1 AS x FROM kit_gone WHERE host_id = ? AND truck_slug = ?', [m.host_id, v.slug]);
+       if (!have && !gone) await run("INSERT INTO kit_logos (host_id, kind, name, file, truck_slug, created_at) VALUES (?, 'vendor', ?, '', ?, ?)", [m.host_id, v.name, v.slug, Date.now()]).catch(() => {});
+     }
+-    for (const v of list.filter((x) => x.status === 'in' && x.slug)) {
+-      // The meets a Food vendor served at, for "At 6 meets" on their profile.
++    const goneHere = new Set((await all('SELECT truck_slug FROM kit_gone WHERE host_id = ?', [m.host_id])).map((x) => x.truck_slug));
++    for (const v of list.filter((x) => x.status === 'in' && x.slug && !goneHere.has(x.slug))) {
++      // The meets a Food vendor served at, for "At 6 meets" on their profile. Never one the host deleted.
+       const kit = await get("SELECT id FROM kit_logos WHERE host_id = ? AND truck_slug = ? AND kind IN ('vendor', 'sponsor')", [m.host_id, v.slug]);
+       if (kit) await run('INSERT OR IGNORE INTO kit_meets (kit_id, meet_id) VALUES (?, ?)', [kit.id, m.id]).catch(() => {});
+       await run('INSERT INTO host_vendors (host_id, slug, name, emoji, last_meet_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT (host_id, slug) DO UPDATE SET name = excluded.name, emoji = excluded.emoji, last_meet_at = MAX(COALESCE(host_vendors.last_meet_at, 0), excluded.last_meet_at)',
+@@ -268,9 +270,13 @@ async function latestRecap(host) {
+   return Object.assign(r, { photos: photos.map((p) => '/uploads/' + p.file) });
+ }
+ async function renderMeet(req, res, host, m, isHome) {
+-  const [trucks, last, recap, upcoming, kitVendors, kitAll] = await Promise.all([trucksFor(m), lastTurnout(host), latestRecap(host), upcomingOf(host),
++  const [trucks0, last, recap, upcoming, kitVendors, kitAll, gone] = await Promise.all([trucksFor(m), lastTurnout(host), latestRecap(host), upcomingOf(host),
+     all('SELECT k.id, k.kind, k.name, k.file, k.instagram, k.truck_slug, k.page_slug, k.page_on, v.truck_slug AS meet_truck FROM meet_kit_vendors v JOIN kit_logos k ON k.id = v.kit_id WHERE v.meet_id = ? AND k.host_id = ? ORDER BY v.created_at, v.kit_id', [m.id, host.id]),
+-    all("SELECT id, kind, name, file, instagram, truck_slug, page_slug, page_on FROM kit_logos WHERE host_id = ? AND kind IN ('vendor', 'sponsor')", [host.id])]);
++    all("SELECT id, kind, name, file, instagram, truck_slug, page_slug, page_on FROM kit_logos WHERE host_id = ? AND kind IN ('vendor', 'sponsor')", [host.id]),
++    all('SELECT truck_slug FROM kit_gone WHERE host_id = ?', [host.id])]);
++  // A truck the host deleted isn't listed, even before the food side has let it go.
++  const goneSet = new Set(gone.map((x) => x.truck_slug));
++  const trucks = trucks0.filter((v) => !goneSet.has(v.slug));
+   const venue = m.venue_id ? await get("SELECT name, file, instagram, note FROM kit_logos WHERE id = ? AND host_id = ? AND kind = 'venue'", [m.venue_id, host.id]) : null;
+   // The other weeks listed: on a meet name's address, only that meet's; on the host's page, their own.
+   const ups = req.meetName ? upcoming.filter((x) => x.page_name === req.meetName) : upcoming.filter((x) => !N.onName(host, x) || x.page_name === m.page_name || N.homeNames(host).has(x.page_name));

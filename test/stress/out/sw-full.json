@@ -1,0 +1,173 @@
+[
+  {
+    "area": "first visit",
+    "check": "no stylesheet or blocking script to wait for (styles inline)",
+    "pass": true,
+    "evidence": {
+      "ttfb": 775.7999999998137,
+      "htmlDone": 815.0999999996275,
+      "fcp": 1036,
+      "bytes": 10728,
+      "firstSubDone": 1246.6999999997206,
+      "blockingCss": 0,
+      "headScripts": 0,
+      "flyerBlur": true,
+      "bgBlur": true
+    }
+  },
+  {
+    "area": "first visit",
+    "check": "first paint comes from the page alone, before any other file finishes",
+    "pass": true,
+    "evidence": "FCP 1036 ms, page done 815 ms, first other file done 1247 ms, first byte 776 ms, page 10728 B on the wire"
+  },
+  {
+    "area": "first visit",
+    "check": "blur placeholders inside the page (flyer and background still)",
+    "pass": true,
+    "evidence": {
+      "ttfb": 775.7999999998137,
+      "htmlDone": 815.0999999996275,
+      "fcp": 1036,
+      "bytes": 10728,
+      "firstSubDone": 1246.6999999997206,
+      "blockingCss": 0,
+      "headScripts": 0,
+      "flyerBlur": true,
+      "bgBlur": true
+    }
+  },
+  {
+    "area": "second visit",
+    "check": "the saved page shows in about 1 s on the weak signal",
+    "pass": true,
+    "evidence": "controller true; FCP 1236 ms (first visit 1036 ms)"
+  },
+  {
+    "area": "second visit",
+    "check": "\"Newer info is ready\" shows when the saved page was out of date",
+    "pass": true,
+    "evidence": "the fresh page came within 1 s and showed directly ({\"responseStart\":770,\"fromSW\":true})"
+  },
+  {
+    "area": "offline",
+    "check": "the saved meet page opens with no signal",
+    "pass": true,
+    "evidence": "200: TASTY TUESDAY Phoenix Next meet Pre-order food Follow on Instagram Moved to the "
+  },
+  {
+    "area": "offline",
+    "check": "the portal opens, signed in, from the phone",
+    "pass": true,
+    "evidence": "200: TASTY TUESDAY meets.test/tasty-tuesday Next meet Meets Flyer kit Send update Vendors Members History Settings No connect"
+  },
+  {
+    "area": "offline",
+    "check": "its first screen (Next meet) shows something other than an error",
+    "pass": false,
+    "evidence": "TASTY TUESDAY meets.test/tasty-tuesday Next meet Meets Flyer kit Send update Vendors Members History Settings No connection. Try again."
+  },
+  {
+    "area": "offline",
+    "check": "a saved list (Flyer kit) opens offline",
+    "pass": true,
+    "evidence": "TASTY TUESDAY meets.test/tasty-tuesday Next meet Meets Flyer kit Send update Vendors Members History Settings Split a logo sheet One picture with lots of logos "
+  },
+  {
+    "area": "clips",
+    "check": "Range (none): service worker answers like the server",
+    "pass": true,
+    "evidence": "sw 200/3417349  · server 200/3417349 "
+  },
+  {
+    "area": "clips",
+    "check": "Range bytes=0-1: service worker answers like the server",
+    "pass": true,
+    "evidence": "sw 206/2 bytes 0-1/3417349 · server 206/2 bytes 0-1/3417349"
+  },
+  {
+    "area": "clips",
+    "check": "Range bytes=0-: service worker answers like the server",
+    "pass": true,
+    "evidence": "sw 206/3417349 bytes 0-3417348/3417349 · server 206/3417349 bytes 0-3417348/3417349"
+  },
+  {
+    "area": "clips",
+    "check": "Range bytes=1000-1999: service worker answers like the server",
+    "pass": true,
+    "evidence": "sw 206/1000 bytes 1000-1999/3417349 · server 206/1000 bytes 1000-1999/3417349"
+  },
+  {
+    "area": "clips",
+    "check": "Range bytes=-500: service worker answers like the server",
+    "pass": true,
+    "evidence": "sw 206/500 bytes 3416849-3417348/3417349 · server 206/500 bytes 3416849-3417348/3417349"
+  },
+  {
+    "area": "clips",
+    "check": "Range bytes=3417339-3417449: service worker answers like the server",
+    "pass": true,
+    "evidence": "sw 206/10 bytes 3417339-3417348/3417349 · server 206/10 bytes 3417339-3417348/3417349"
+  },
+  {
+    "area": "clips",
+    "check": "Range bytes=3417349-: service worker answers like the server",
+    "pass": false,
+    "evidence": "sw 416/0 bytes */3417349 · server 500/35459 bytes */3417349"
+  },
+  {
+    "area": "clips",
+    "check": "Range bytes=99999999-: service worker answers like the server",
+    "pass": false,
+    "evidence": "sw 416/0 bytes */3417349 · server 500/35459 bytes */3417349"
+  },
+  {
+    "area": "clips",
+    "check": "Range bytes=abc: service worker answers like the server",
+    "pass": false,
+    "evidence": "sw 416/0 bytes */3417349 · server 200/3417349 "
+  },
+  {
+    "area": "clips",
+    "check": "Range bytes=0-1,5-6: service worker answers like the server",
+    "pass": false,
+    "evidence": "sw 416/0 bytes */3417349 · server 200/3417349 "
+  },
+  {
+    "area": "clips",
+    "check": "Range bytes=5-2: service worker answers like the server",
+    "pass": false,
+    "evidence": "sw 416/0 bytes */3417349 · server 500/35459 bytes */3417349"
+  },
+  {
+    "area": "clips",
+    "check": "a stalled download gives up after about 15 s",
+    "pass": true,
+    "evidence": {
+      "status": "error",
+      "err": "Failed to fetch",
+      "ms": 23490.899999999907
+    }
+  },
+  {
+    "area": "clips",
+    "check": "the next try downloads it whole",
+    "pass": true,
+    "evidence": {
+      "status": 200,
+      "len": 3417349
+    }
+  },
+  {
+    "area": "clips",
+    "check": "a clip replaced mid-download: the phone keeps either the whole old file or nothing",
+    "pass": true,
+    "evidence": "download {\"status\":200,\"len\":3417349}, kept 3417349 B"
+  },
+  {
+    "area": "sign out",
+    "check": "host B never sees host A’s data on a slow connection",
+    "pass": false,
+    "evidence": "seen within 36 s: Tasty Tuesday; lists kept on the phone now: /api/host/me (B’s), /api/host/recaps (B’s), /api/host/portal-video (B’s), /api/host/meets (B’s), /api/host/members (B’s), /api/host/kit (B’s)"
+  }
+]

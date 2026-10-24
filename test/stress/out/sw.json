@@ -1,0 +1,8 @@
+[
+  {
+    "area": "sign out",
+    "check": "host B never sees host A’s data on a slow connection",
+    "pass": true,
+    "evidence": "seen within 35 s: nothing {}; lists kept on the phone now: /api/host/me (B’s), /api/host/members (B’s), /api/host/kit (B’s), /api/host/recaps (B’s), /api/host/meets (B’s), /api/host/portal-video (B’s)"
+  }
+]
