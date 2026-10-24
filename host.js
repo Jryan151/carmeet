@@ -1061,6 +1061,17 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
 
   /* ---------- background video: the host's default, or one for a single meet ---------- */
   let videoQueue = Promise.resolve(); // one at a time, so a big upload never starves the site of CPU
+  // The smaller HEVC copies wait behind every new clip: a clip shows as soon as its H.264 loop is made, and its HEVC copy
+  // (about four times the work) follows when the queue is free. Kept only if the row still plays that same clip.
+  let hevcQueue = Promise.resolve();
+  function hevcLater(table, id, video, fileCol, hevcCol) {
+    hevcQueue = hevcQueue.then(() => videoQueue).then(async () => {
+      const hv = await V.hevcOf(video, UPLOAD_DIR);
+      if (!hv) return;
+      const r2 = await run(`UPDATE ${table} SET ${hevcCol} = ? WHERE id = ? AND ${fileCol} = ?`, [hv, id, video]);
+      if (!r2.changes) unlinkUpload(hv); // replaced or removed meanwhile
+    }).catch((e) => console.error('hevc:', e.message));
+  }
   const tmpDir = path.join(UPLOAD_DIR, 'tmp');
   fs.mkdirSync(tmpDir, { recursive: true });
   const unlinkUpload = (f) => { if (f) fs.promises.unlink(path.join(UPLOAD_DIR, path.basename(f))).catch(() => {}); };
@@ -1078,6 +1089,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
         const old = await get(`SELECT video, video_poster, video_hevc FROM ${table} WHERE id = ?`, [id]);
         await run(`UPDATE ${table} SET video = ?, video_hevc = ?, video_poster = ?, video_status = 'ready', video_error = NULL WHERE id = ?`, [out.video, out.hevc, out.poster, id]);
         if (old) { unlinkUpload(old.video); unlinkUpload(old.video_poster); unlinkUpload(old.video_hevc); }
+        hevcLater(table, id, out.video, 'video', 'video_hevc');
         if (table === 'hosts') refreshLook(id);
         else if (table === 'meets') { const m = await get('SELECT * FROM meets WHERE id = ?', [id]); if (m) sync(await get('SELECT * FROM hosts WHERE id = ?', [m.host_id]), m).catch(() => {}); }
       } catch (e) {
@@ -1203,6 +1215,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
       clubId: club ? club.id : null, clubName: club ? club.name : '', clubLogo: club && club.file ? Vw.small(club.file, 256) : '',
       header: m.header === 'name' ? 'name' : m.header === 'logo' && m.header_file ? 'logo' : club && club.file ? 'club' : 'name',
       headerLogo: m.header_file ? Vw.small(m.header_file, 720) : '',
+      showName: !m.name_off,
       url: memberUrl(m), video: videoShape(m), videoReady: V.ffmpegOk(), maxPhotos: MAX_MEMBER_PHOTOS,
       photos: photos.map((x) => x.kind === 'video'
         ? { id: x.id, kind: 'video', status: x.status || 'ready', url: x.file ? '/uploads/' + x.file : null, thumb: x.poster ? Vw.small(x.poster, 480) : null, caption: x.caption || '' }
@@ -1242,6 +1255,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     if (b.about !== undefined) out.about = U.cleanBlock(b.about, 600);
     if (b.instagram !== undefined) out.instagram = U.handle(b.instagram) || null;
     if (b.header !== undefined) out.header = ['club', 'logo', 'name'].includes(b.header) ? b.header : null;
+    if (b.showName !== undefined) out.name_off = b.showName ? 0 : 1;
     return out;
   }
   r.get('/members', signedIn, async (req, res) => {
@@ -1344,6 +1358,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
         const still = await get('SELECT id FROM member_photos WHERE id = ?', [ins.lastID]);
         if (!still) { unlinkUpload(out.video); unlinkUpload(out.hevc); unlinkUpload(out.poster); return; } // removed while it was processing
         await run("UPDATE member_photos SET file = ?, hevc = ?, poster = ?, status = 'ready' WHERE id = ?", [out.video, out.hevc, out.poster, ins.lastID]);
+        hevcLater('member_photos', ins.lastID, out.video, 'file', 'hevc');
       } catch (e) {
         console.error('member clip:', e.message);
         await run("UPDATE member_photos SET status = 'failed' WHERE id = ?", [ins.lastID]);

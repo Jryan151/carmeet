@@ -69,25 +69,32 @@ const VF = "scale='if(gte(iw,ih),-2,trunc(min(iw,1080)/2)*2)':'if(gte(iw,ih),tru
  *   - H.264, which every phone plays: at most about 3.4 MB (usually 1.5–2.5).
  *   - HEVC, the same picture at about half the size, for phones that play it (iPhones, most newer Androids). Pages
  *     offer it first; a phone that can't play it takes the H.264 one. Skipped when ffmpeg has no x265.
- * Then a still from 1 second in. Resolves { video, hevc, poster } file names (hevc may be null).
+ * Then a still from 1 second in. Resolves { video, hevc: null, poster }: the HEVC copy comes after, from hevcOf().
  */
 async function process_(input, dir) {
   const id = crypto.randomBytes(10).toString('hex');
-  const video = `bg-${id}.mp4`, hevc = `bg-${id}.hevc.mp4`, poster = `bg-${id}.jpg`;
+  const video = `bg-${id}.mp4`, poster = `bg-${id}.jpg`;
   const common = ['-hide_banner', '-loglevel', 'error', '-y', '-i', input, '-t', String(SECONDS), '-map', '0:v:0', '-an', '-sn', '-dn', '-map_metadata', '-1', '-map_chapters', '-1', '-vf', VF];
-  await run(common.concat(['-threads', THREADS(), '-c:v', 'libx264', '-preset', process.env.VIDEO_PRESET || 'slow', '-crf', '26', '-maxrate', '1800k', '-bufsize', '3600k',
+  // "medium": about a third faster than "slow" for the same size here (the bitrate ceiling sets the size).
+  await run(common.concat(['-threads', THREADS(), '-c:v', 'libx264', '-preset', process.env.VIDEO_PRESET || 'medium', '-crf', '26', '-maxrate', '1800k', '-bufsize', '3600k',
     '-profile:v', 'high', '-level', '4.1', '-g', '48', '-movflags', '+faststart', path.join(dir, video)]), 10 * 60 * 1000);
-  let hv = null;
-  if (x265Ok() && process.env.VIDEO_HEVC !== '0') {
-    try {
-      await run(common.concat(['-threads', THREADS(), '-c:v', 'libx265', '-preset', process.env.VIDEO_PRESET === 'veryfast' ? 'veryfast' : 'medium', '-crf', '28', '-tag:v', 'hvc1',
-        '-x265-params', `log-level=error:keyint=48:vbv-maxrate=1000:vbv-bufsize=2000:pools=${THREADS()}:frame-threads=1`, '-movflags', '+faststart', path.join(dir, hevc)]), 15 * 60 * 1000);
-      hv = hevc;
-    } catch (e) { fs.promises.unlink(path.join(dir, hevc)).catch(() => {}); }
-  }
   await run(['-hide_banner', '-loglevel', 'error', '-y', '-ss', '1', '-i', path.join(dir, video), '-frames:v', '1', '-q:v', '5', '-vf', "scale='min(1280,iw)':-2", path.join(dir, poster)], 60 * 1000)
     .catch(() => run(['-hide_banner', '-loglevel', 'error', '-y', '-i', path.join(dir, video), '-frames:v', '1', '-q:v', '5', path.join(dir, poster)], 60 * 1000));
-  return { video, hevc: hv, poster };
+  return { video, hevc: null, poster };
+}
+/**
+ * The smaller HEVC copy, made after the clip is already showing (it takes about four times as long as the H.264 one,
+ * so it no longer holds up "Processing"). Made from the finished loop: already 15 seconds, scaled and silent.
+ * Resolves its file name, or null when there's no x265 or it fails.
+ */
+async function hevcOf(video, dir) {
+  if (!x265Ok() || process.env.VIDEO_HEVC === '0') return null;
+  const hevc = String(video).replace(/\.mp4$/, '') + '.hevc.mp4';
+  try {
+    await run(['-hide_banner', '-loglevel', 'error', '-y', '-i', path.join(dir, video), '-an', '-c:v', 'libx265', '-preset', process.env.VIDEO_PRESET === 'veryfast' ? 'veryfast' : 'medium', '-crf', '28', '-tag:v', 'hvc1',
+      '-x265-params', `log-level=error:keyint=48:vbv-maxrate=1000:vbv-bufsize=2000:pools=${THREADS()}:frame-threads=1`, '-movflags', '+faststart', path.join(dir, hevc)], 15 * 60 * 1000);
+    return hevc;
+  } catch (e) { fs.promises.unlink(path.join(dir, hevc)).catch(() => {}); return null; }
 }
 
 // The image read back as a small grid of RGBA pixels (S×S, stretched), plus its real size. ffmpeg's own
@@ -170,4 +177,4 @@ async function small(input, dir, size) {
     return name;
   } catch (e) { fs.promises.unlink(tmp).catch(() => {}); return null; }
 }
-module.exports = { receive, process: process_, ffmpegOk, trimLogo, small, TRIMMED, MAX_UPLOAD, SECONDS };
+module.exports = { receive, process: process_, hevcOf, ffmpegOk, trimLogo, small, TRIMMED, MAX_UPLOAD, SECONDS };

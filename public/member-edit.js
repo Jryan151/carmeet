@@ -35,12 +35,13 @@
         '<label for="meAbout">About</label><textarea id="meAbout" name="about" maxlength="600" rows="3" placeholder="How the car came together, where you take it.">' + esc(m.about) + '</textarea>' +
         '<div class="bar"><button class="btn go" type="submit">Save</button></div><div class="msg" data-me-msg role="status"></div></form></div>' +
 
-        '<div class="card"><h3>Top of the page</h3><p class="small dim">What sits above the name, right on the footage (like a meet page).</p>' +
+        '<div class="card"><h3>Top of the page</h3><p class="small dim">What sits at the top, right on the footage (like a meet page). Turn your name off for more room for the footage.</p>' +
         '<div class="me-heads">' +
           (m.clubLogo ? headBtn('club', 'My club’s logo', '<img src="' + esc(m.clubLogo) + '" alt="">') : '') +
           (m.headerLogo ? headBtn('logo', 'My logo', '<img src="' + esc(m.headerLogo) + '" alt="">') : '') +
           headBtn('name', 'Just my name', '<span class="me-h-name">' + esc(m.name.split(' ')[0]) + '</span>') +
         '</div>' +
+        '<label style="display:flex;gap:8px;align-items:center;margin:10px 0"><input type="checkbox" data-me-showname style="width:auto"' + (m.showName ? ' checked' : '') + '> Show my name on the page</label>' +
         '<label class="btn sm" style="display:inline-block">' + (m.headerLogo ? 'Upload a different logo' : 'Upload a logo') + '<input type="file" accept="image/png,image/jpeg" hidden data-me-head></label>' +
         '<p class="small dim" style="margin:6px 0 0">A PNG with a see-through background looks best; a black square around it is trimmed off.</p>' +
         '<div class="msg" data-me-hmsg role="status"></div></div>' +
@@ -93,6 +94,10 @@
       }
     });
     box.addEventListener('change', function (e) {
+      if (e.target.hasAttribute('data-me-showname')) {
+        call('PUT', '', { showName: e.target.checked }).then(function (r) { if (r.ok) { m = r.d.member; draw(); } });
+        return;
+      }
       var t = e.target;
       if (t.hasAttribute('data-me-cap')) { call('PUT', '/photos/' + t.getAttribute('data-me-cap'), { caption: t.value.trim() }); return; }
       if (t.hasAttribute('data-me-video') && t.files[0]) return sendVideo(t, '/video', '[data-me-vmsg]');

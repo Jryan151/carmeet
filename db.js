@@ -173,6 +173,8 @@ async function ensureSchema() {
   // The top of a member's page: their photo in a circle (null), their club's logo ('club'), or a logo they uploaded ('logo').
   await addColumn('members', 'header', 'TEXT');
   await addColumn('members', 'header_file', 'TEXT');
+  // 1: their name stays off the top of the page (more room for the footage).
+  await addColumn('members', 'name_off', 'INTEGER NOT NULL DEFAULT 0');
   for (const t of ['hosts', 'meets', 'site', 'host_portal', 'kit_logos', 'members']) {
     await addColumn(t, 'video', 'TEXT');
     await addColumn(t, 'video_poster', 'TEXT');

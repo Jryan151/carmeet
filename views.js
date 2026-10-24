@@ -456,9 +456,9 @@ function memberPage(host, m, ctx) {
 <section class="hero m-hero${ctx.vid ? ' has-video' : ''}">
   ${heroBg(ctx.vid)}
   ${headLogo ? `<div class="avatar m-logo"><img src="${esc(headLogo)}" alt="${esc(m.header === 'logo' ? m.name : club ? club.name : m.name)}" fetchpriority="high"></div>` : '<div class="m-nologo" aria-hidden="true"></div>'}
-  <h1 class="m-name">${esc(m.name)}</h1>
+  <h1 class="m-name${m.name_off ? ' sr-only' : ''}">${esc(m.name)}</h1>
   ${m.car ? `<p class="m-car">${esc(m.car)}</p>` : ''}
-  <div class="showcase" aria-hidden="true"></div>
+  <div class="showcase${m.name_off ? ' tall' : ''}" aria-hidden="true"></div>
   ${club ? `<a class="m-club"${clubIg ? ` href="${esc(clubIg)}" rel="noopener" target="_blank"` : ''}>${club.file ? `<img src="${esc(small(club.file, 256))}" alt="">` : ''}<span>${esc(club.name)}</span></a>` : ''}
   <div class="actions">
     ${ig ? `<a class="btn go" href="${esc(ig)}" rel="noopener" target="_blank">Instagram</a>` : ''}

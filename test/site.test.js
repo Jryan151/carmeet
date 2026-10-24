@@ -251,10 +251,15 @@ test('a background video: any clip becomes a silent 15-second 1080p loop with a 
   assert.equal(v[0].r_frame_rate, '24/1', '24 frames a second');
   assert.ok(r.text.includes(`<source data-src="${me.video.url}" type="video/mp4">`), 'the clip loads after the page');
   assert.match(r.text, /<video muted loop playsinline preload="none"[^>]* data-bg>/);
+  const first = r;
   if (/libx265/.test(execFileSync('ffmpeg', ['-hide_banner', '-encoders']).toString())) {
+    // The HEVC copy comes after the clip is already showing.
+    for (let i = 0; i < 240 && !me.video.hevc; i++) { await new Promise((ok) => setTimeout(ok, 500)); me = (await request(ctx, 'GET', SITE, '/api/host/me', { cookie: C })).json.host; }
+    assert.ok(me.video.hevc, 'HEVC copy made after');
+    r = await request(ctx, 'GET', 'tastytuesday.com', '/' + day);
     assert.match(r.text, /<source data-src="\/uploads\/bg-[0-9a-f]+\.hevc\.mp4" type='video\/mp4; codecs="hvc1"'>/, 'HEVC offered first');
   }
-  assert.ok(r.text.includes(`poster="${me.video.poster}"`), 'the still, until its phone copy is made');
+  assert.ok(first.text.includes(`poster="${me.video.poster}"`), 'the still, until its phone copy is made');
   await new Promise((ok) => setTimeout(ok, 1500));
   r = await request(ctx, 'GET', 'tastytuesday.com', '/' + day);
   const webp = me.video.poster.replace(/\.jpg$/, '.s1280.webp');
