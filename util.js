@@ -5,7 +5,7 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{1,38}[a-z0-9])$/;
 const EMAIL_RE = /^[^\s@<>"]{1,64}@[^\s@<>"]{1,180}\.[a-z]{2,24}$/i;
-const RESERVED = new Set(['host', 'api', 'o', 'hooks', 'food-photo', 'uploads', 'alerts', 'static', 'admin', 'login', 'about', 'help', 'privacy', 'terms', 'site', 'www', 'meets', 'meet']);
+const RESERVED = new Set(['host', 'api', 'o', 'hooks', 'food-photo', 'uploads', 'alerts', 'static', 'admin', 'login', 'about', 'help', 'privacy', 'terms', 'site', 'www', 'meets', 'meet', 'members', 'vendors', 'clubs']);
 
 const zone = (tz) => { try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); return tz; } catch (e) { return 'America/Phoenix'; } };
 /** The parts of an instant on a clock: { y, m, d, h, min, wd }. */

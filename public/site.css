@@ -383,3 +383,44 @@ main > section.v-about { padding: 18px; }
   display: flex; align-items: center; gap: 12px; padding: 8px 8px 8px 16px; border-radius: 999px; background: rgba(18, 14, 28, .92);
   border: 1px solid var(--line); box-shadow: 0 10px 30px rgba(0, 0, 0, .5); font-size: 14px; white-space: nowrap; }
 .fresh-bar .btn.sm { min-height: 34px; padding: 0 14px; font-size: 14px; }
+
+/* ---------- the site's own pages: the front page, every meet, the members, vendors ---------- */
+.site-hero { text-align: center; padding-top: 30px; }
+.site-mark { display: block; width: min(320px, 78%); margin: 0 auto; text-decoration: none; }
+.site-mark img { width: 100%; height: auto; max-height: 220px; object-fit: contain; filter: drop-shadow(0 2px 16px rgba(0, 0, 0, .75)); }
+.site-mark span { display: block; font: 400 clamp(34px, 10vw, 64px)/1.05 var(--display); text-transform: uppercase; letter-spacing: .02em; text-shadow: 0 2px 18px rgba(0, 0, 0, .7); }
+.site-line { margin: 12px auto 0; max-width: 34ch; color: var(--dim); text-shadow: 0 1px 10px rgba(0, 0, 0, .8); }
+.site-hero .showcase { height: clamp(200px, 40vh, 420px); }
+.site-go { display: grid; gap: 12px; max-width: 380px; margin: 0 auto 8px; }
+.site-go .btn { width: 100%; justify-content: center; min-height: 54px; font-size: 17px; }
+.site-go .count { display: inline-grid; place-items: center; min-width: 26px; height: 26px; margin-left: 8px; padding: 0 7px; border-radius: 999px; background: var(--on-accent); color: var(--accent); font-size: 14px; }
+.site-hero.small-top { padding-bottom: 6px; }
+.site-hero.small-top .site-mark { width: min(150px, 44%); }
+.site-hero.small-top .site-mark span { font-size: clamp(22px, 7vw, 34px); }
+.site-title { margin-top: 22px; font: 400 clamp(26px, 8vw, 40px)/1.1 var(--display); text-transform: uppercase; text-shadow: 0 2px 18px rgba(0, 0, 0, .7); }
+.mcards { display: grid; gap: 12px; }
+.mcard { display: flex; gap: 14px; align-items: center; padding: 10px; text-decoration: none; background: var(--lot); border: 1px solid var(--line); border-radius: var(--radius);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+.mcard-pic { width: 84px; flex: none; aspect-ratio: 4 / 5; border-radius: 10px; overflow: hidden; background: #000; display: grid; place-items: center; }
+.mcard-pic img { width: 100%; height: 100%; object-fit: cover; }
+.mcard-pic.logo img { object-fit: contain; padding: 10%; }
+.mcard-pic span { font-size: 30px; }
+.mcard-info { min-width: 0; display: grid; gap: 2px; }
+.mcard-info b { font: 400 16px/1.25 var(--display); letter-spacing: .04em; text-transform: uppercase; }
+.mcard-when { color: var(--accent); font-weight: 600; font-size: 15px; }
+.mcard-info .dim { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.live-tag { justify-self: start; margin-top: 4px; padding: 2px 9px; border-radius: 999px; background: var(--ok); color: #082010; font-size: 12px; font-weight: 600; }
+.site-page section.day h2 { font-size: 16px; color: var(--dim); }
+.find { width: 100%; max-width: 380px; margin: 16px auto 0; display: block; }
+.club h2 { display: flex; align-items: center; gap: 10px; }
+.club-badge { width: 34px; height: 34px; border-radius: 50%; object-fit: contain; background: #000; }
+.m-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px 10px; }
+.m-grid a { text-decoration: none; text-align: center; min-width: 0; }
+.m-grid .mini { width: 100%; aspect-ratio: 1; border-radius: 50%; overflow: hidden; background: #000; border: 1px solid var(--line); display: grid; place-items: center; margin-bottom: 8px; }
+.m-grid .mini img { width: 100%; height: 100%; object-fit: cover; }
+.m-grid b { display: block; font-size: 14px; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.m-grid .dim { display: block; font-size: 12px; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (min-width: 560px) { .m-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.v-ask { background: var(--lot); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+.v-ask label { display: block; margin-top: 12px; }
+.v-ask input:not(.hp), .v-ask select, .v-ask textarea { width: 100%; }

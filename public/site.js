@@ -88,4 +88,15 @@
   }
   Array.prototype.forEach.call(document.querySelectorAll('form[data-form="alerts"]'), function (f) { wire(f, '/api/alerts', function (form) { form.reset(); }); });
   Array.prototype.forEach.call(document.querySelectorAll('form[data-form="vendor"]'), function (f) { wire(f, '/api/vendor-request', function (form) { form.reset(); }); });
+
+  // Members: find someone by name or car (each club hides when none of its members match).
+  var find = document.querySelector('[data-find]');
+  if (find) find.addEventListener('input', function () {
+    var q = find.value.trim().toLowerCase();
+    Array.prototype.forEach.call(document.querySelectorAll('[data-club]'), function (sec) {
+      var any = false;
+      Array.prototype.forEach.call(sec.querySelectorAll('[data-find-text]'), function (a) { var hit = !q || a.getAttribute('data-find-text').indexOf(q) >= 0; a.hidden = !hit; any = any || hit; });
+      sec.hidden = !any;
+    });
+  });
 })();

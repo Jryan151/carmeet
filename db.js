@@ -81,6 +81,9 @@ async function ensureSchema() {
   // The site's own front page (one row): its background video, set by the site owner (SITE_OWNER_EMAIL).
   await exec("CREATE TABLE IF NOT EXISTS site (id INTEGER PRIMARY KEY CHECK (id = 1), updated_at INTEGER)");
   await run('INSERT OR IGNORE INTO site (id, updated_at) VALUES (1, 0)');
+  // The front page's own look: its logo and a line under it (the site owner sets them in Settings).
+  await addColumn('site', 'logo', 'TEXT');
+  await addColumn('site', 'tagline', 'TEXT');
   // Each meet's flyer (the one they post on Instagram), shown as the page's main picture.
   await addColumn('meets', 'flyer', 'TEXT');
   // The flyer kit: vendor and car group logos a host keeps on hand to paste onto each week's flyer.

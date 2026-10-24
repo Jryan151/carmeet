@@ -874,7 +874,7 @@
 
   function drawSettings() {
     Promise.all([api('GET', '/me'), api('GET', '/recaps'), api('GET', '/meets'), api('GET', '/site-video'), api('GET', '/portal-video')]).then(function (rs) {
-      me = rs[0].d.host; var recaps = rs[1].d.recaps || []; var siteVideo = rs[3].ok ? rs[3].d.video : null;
+      me = rs[0].d.host; var recaps = rs[1].d.recaps || []; var siteVideo = rs[3].ok ? rs[3].d.video : null, siteFront = rs[3].ok ? rs[3].d : {};
       var portalVideo = (rs[4].ok && rs[4].d.video) || {};
       var html = '<div class="card"><h3>Your page</h3><form id="setForm">' +
         '<label for="sName">Meet name</label><input id="sName" maxlength="60" value="' + esc(me.name) + '">' +
@@ -893,7 +893,14 @@
       html += videoCard(portalVideo, 'portal');
       html += '<div class="card"><h3>Demo mode</h3><p class="small dim">See your page filled in: sample food trucks plus every vendor and club logo in your Flyer kit. Only you see it; nothing is saved or shown to anyone else.</p>' +
         '<div class="bar"><a class="btn go" href="/' + esc(me.slug) + '?demo=1" target="_blank" rel="noopener">Open demo</a></div></div>';
-      if (me.owner && siteVideo) html += videoCard(siteVideo, 'site');
+      if (me.owner && siteVideo) {
+        html += '<div class="card"><h3>Front page</h3><p class="small dim">' + esc(location.host) + ' itself: your logo on top, a line under it, then Upcoming meets, Member profiles and Vendors over the front page video. <a href="/" target="_blank" rel="noopener">See it</a></p>' +
+          (siteFront.logo ? '<img src="' + esc(siteFront.logo) + '" alt="" style="max-width:200px;max-height:90px;object-fit:contain;margin:6px 0;background:#000;border-radius:8px;padding:6px">' : '') +
+          '<label for="siteLogo">' + (siteFront.logo ? 'Change the logo' : 'Logo (a PNG with a see-through background looks best)') + '</label><input type="file" id="siteLogo" accept="image/jpeg,image/png">' +
+          '<label for="siteLine">Line under it (optional)</label><input id="siteLine" maxlength="120" placeholder="Arizona car meets, clubs and builds" value="' + esc(siteFront.tagline || '') + '">' +
+          '<div class="bar"><button class="btn sm go" type="button" id="siteLineSave">Save</button></div><div class="msg" id="siteMsg" role="status"></div></div>';
+        html += videoCard(siteVideo, 'site');
+      }
       html += '<div class="card"><h3>Recap</h3><p class="small dim">The newest recap shows on your page: a video link and up to 9 photos.</p><form id="recapForm">' +
         '<label for="rVideo">Video link (YouTube, Instagram, TikTok, Vimeo)</label><input id="rVideo" maxlength="300" placeholder="https://youtube.com/watch?v=…">' +
         '<label for="rCap">Caption</label><input id="rCap" maxlength="140" placeholder="Last Tuesday at Dunlap">' +
@@ -922,6 +929,14 @@
         e.preventDefault();
         api('PUT', '/settings', { name: $('sName').value.trim(), city: $('sCity').value.trim(), accent: accent, instagram: $('sIg').value.trim(), tiktok: $('sTt').value.trim(), youtube: $('sYt').value.trim(), rules: $('sRules').value, closeMinutes: +$('sClose').value, alertsOn: $('sAlerts').checked })
           .then(function (r) { if (!r.ok) return say($('setMsg'), r.d.error); me = r.d.host; $('whoName').textContent = me.name; say($('setMsg'), 'Saved.', true); });
+      };
+      if ($('siteLogo')) $('siteLogo').onchange = function () {
+        var f = $('siteLogo').files[0]; if (!f) return;
+        say($('siteMsg'), 'Uploading…', true);
+        api('POST', '/site-logo', null, f).then(function (r) { if (!r.ok) return say($('siteMsg'), r.d.error); drawSettings(); });
+      };
+      if ($('siteLineSave')) $('siteLineSave').onclick = function () {
+        api('PUT', '/site-front', { tagline: $('siteLine').value.trim() }).then(function (r) { say($('siteMsg'), r.ok ? 'Saved.' : r.d.error, r.ok); });
       };
       $('logoFile').onchange = function () {
         var f = this.files[0]; if (!f) return;

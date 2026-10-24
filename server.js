@@ -495,9 +495,18 @@ app.get('/alerts/:act', async (req, res) => {
 app.post('/api/vendor-request', limitForm, async (req, res) => {
   const b = req.body || {};
   if (b.website) return res.json({ ok: true });
-  const host = await get('SELECT * FROM hosts WHERE slug = ?', [String(b.host || '')]);
+  // To a meet's host (picked on the site's Vendors page), a host's page, or the site's owner.
+  let host = null;
+  if (b.meet) { const m = await get('SELECT host_id FROM meets WHERE id = ?', [parseInt(b.meet, 10) || 0]); if (m) host = await get('SELECT * FROM hosts WHERE id = ?', [m.host_id]); }
+  if (!host && b.host) host = await get('SELECT * FROM hosts WHERE slug = ?', [String(b.host)]);
+  if (!host && b.site) host = await siteOwner();
   if (!host) return res.status(404).json({ error: 'No such host.' });
   const name = U.clean(b.name, 60); const contact = U.clean(b.contact, 80);
+  if (b.site) {
+    // The extra details from the site's form go in the note the host reads.
+    const meet = b.meet ? await get('SELECT title, day FROM meets WHERE id = ?', [parseInt(b.meet, 10) || 0]) : null;
+    b.note = [b.kind === 'other' ? 'Not food (shop, merch, detailing…)' : '', U.handle(b.instagram) ? 'Instagram: @' + U.handle(b.instagram) : '', meet ? `For: ${meet.title || host.name} on ${meet.day}` : '', U.cleanBlock(b.note, 300)].filter(Boolean).join('\n');
+  }
   if (!name || !contact) return res.status(400).json({ error: 'Add your business name and a phone or email.' });
   const ipHash = D.sha('vr:' + (req.ip || '')).slice(0, 24);
   const recent = await get('SELECT COUNT(*) AS n FROM vendor_requests WHERE host_id = ? AND ip_hash = ? AND created_at > ?', [host.id, ipHash, Date.now() - 864e5]);
@@ -585,12 +594,45 @@ app.get('/o', async (req, res) => {
   res.redirect(303, `/o/${t}?${req.query.paid ? 'paid=1' : 'canceled=1'}`);
 });
 
-// The site's own front page can be one host's page: HOME_HOST=<slug>, or the only host when there's just one.
+// The site's own front page is its landing page (every meet, the members, vendors). HOME_HOST=<slug> makes it one
+// host's page instead.
 async function homeHost() {
   if (process.env.HOME_HOST) return get('SELECT * FROM hosts WHERE slug = ?', [String(process.env.HOME_HOST).toLowerCase()]);
-  const rows = await all('SELECT * FROM hosts WHERE slug IS NOT NULL LIMIT 2');
-  return rows.length === 1 ? rows[0] : null;
+  return null;
 }
+/** The site's owner (their Instagram in the footer, vendor requests from the site's own page). */
+async function siteOwner() {
+  if (process.env.SITE_OWNER_EMAIL) { const h = await get('SELECT * FROM hosts WHERE lower(email) = ?', [String(process.env.SITE_OWNER_EMAIL).trim().toLowerCase()]); if (h) return h; }
+  return get('SELECT * FROM hosts ORDER BY id LIMIT 1');
+}
+/** Every meet still to come, on every host, each with its page address. */
+async function allUpcoming() {
+  const rows = await all(`SELECT m.*, h.slug, h.name AS host_name, h.timezone, h.logo AS host_logo, h.domain_on, h.custom_domain FROM meets m JOIN hosts h ON h.id = m.host_id
+    WHERE m.status = 'on' AND m.day >= ? ORDER BY m.day, m.start_time LIMIT 80`, [U.addDays(U.dayKey(Date.now(), TZ()), -1)]);
+  return rows.filter((r) => U.meetTimes(r, r.timezone || TZ()).endsAt > Date.now())
+    .map((r) => Object.assign(r, { url: N.meetUrl({ id: r.host_id, slug: r.slug, name: r.host_name, domain_on: r.domain_on, custom_domain: r.custom_domain }, r) }));
+}
+const siteRow = () => get('SELECT * FROM site WHERE id = 1');
+app.get('/meets', async (req, res, next) => {
+  if (req.own) return next();
+  const [site, meets, owner] = await Promise.all([siteRow(), allUpcoming(), siteOwner()]);
+  res.set('Cache-Control', 'no-cache').type('html').send(V.meetsPage(site, { meets, instagram: owner && owner.instagram }));
+});
+app.get('/members', async (req, res, next) => {
+  if (req.own) return next();
+  const [site, owner, rows] = await Promise.all([siteRow(), siteOwner(), all(`SELECT m.handle, m.name, m.car, k.name AS club, k.file AS club_logo,
+      (SELECT CASE WHEN p.kind = 'video' THEN p.poster ELSE p.file END FROM member_photos p WHERE p.member_id = m.id AND (p.kind = 'photo' OR p.status = 'ready') ORDER BY p.id LIMIT 1) AS face
+    FROM members m LEFT JOIN kit_logos k ON k.id = m.club_id ORDER BY m.name COLLATE NOCASE`)]);
+  const groups = [];
+  for (const r of rows) { const n = r.club || 'Members'; let g = groups.find((x) => x.name === n); if (!g) groups.push(g = { name: n, logo: r.club_logo, members: [] }); g.members.push(r); }
+  groups.sort((a, b) => (a.name === 'Members') - (b.name === 'Members') || b.members.length - a.members.length);
+  res.set('Cache-Control', 'no-cache').type('html').send(V.membersPage(site, { groups, count: rows.length, instagram: owner && owner.instagram }));
+});
+app.get('/vendors', async (req, res, next) => {
+  if (req.own) return next();
+  const [site, meets, owner] = await Promise.all([siteRow(), allUpcoming(), siteOwner()]);
+  res.set('Cache-Control', 'no-cache').type('html').send(V.vendorsPage(site, { meets, instagram: owner && owner.instagram }));
+});
 app.get('/privacy', async (req, res) => {
   const main = req.own || (await homeHost());
   res.set('Cache-Control', 'no-cache').type('html').send(V.privacy(main || null));
@@ -607,10 +649,8 @@ app.get('/', async (req, res) => {
   const onSite = !(await get('SELECT 1 AS x FROM hosts WHERE custom_domain = ?', [String(req.hostname || '').toLowerCase()]));
   const main = onSite ? await homeHost() : null;
   if (main && !(main.domain_on && main.custom_domain)) { req.isMain = true; return hostHome(req, res, main); }
-  const rows = await all(`SELECT m.*, h.slug, h.name AS host_name, h.timezone FROM meets m JOIN hosts h ON h.id = m.host_id
-    WHERE m.status = 'on' AND m.day >= ? ORDER BY m.day, m.start_time LIMIT 30`, [U.addDays(U.dayKey(Date.now(), TZ()), -1)]);
-  const list = rows.filter((m) => U.meetTimes(m, m.timezone || TZ()).endsAt > Date.now()).slice(0, 12);
-  res.set('Cache-Control', 'no-cache').type('html').send(V.home(list, await get('SELECT * FROM site WHERE id = 1')));
+  const [site, meets, owner] = await Promise.all([siteRow(), allUpcoming(), siteOwner()]);
+  res.set('Cache-Control', 'no-cache').type('html').send(V.landing(site, { meets, instagram: owner && owner.instagram, origin: `${SCHEME}://${req.get('host')}` }));
 });
 /* ---------- a club member's page (/@handle), and the editor their link opens ---------- */
 app.get(/^\/@([a-z0-9-]{3,40})(\/edit)?\/?$/i, async (req, res) => {

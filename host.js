@@ -28,7 +28,8 @@ const offSig = (id) => crypto.createHmac('sha256', linkSecret()).update('off:' +
 function offOk(s) { const [id, sig] = String(s || '').split('.'); return /^\d+$/.test(id || '') && sig && crypto.timingSafeEqual(Buffer.from(offSig(id)), Buffer.from(sig.padEnd(32).slice(0, 32))) ? +id : 0; }
 
 /** The site owner (SITE_OWNER_EMAIL) also sets the front page's background video. */
-const isOwner = (h) => !!process.env.SITE_OWNER_EMAIL && String(h.email).toLowerCase() === String(process.env.SITE_OWNER_EMAIL).trim().toLowerCase();
+// The site's owner (the front page is theirs): SITE_OWNER_EMAIL, or with none set, the first host to sign up.
+const isOwner = (h) => (process.env.SITE_OWNER_EMAIL ? String(h.email).toLowerCase() === String(process.env.SITE_OWNER_EMAIL).trim().toLowerCase() : h.id === 1);
 const videoShape = (x) => ({ status: x.video_status || null, url: x.video ? '/uploads/' + x.video : null, poster: x.video_poster ? '/uploads/' + x.video_poster : null,
   thumb: x.video_poster ? require('./views').small(x.video_poster, 480) : null, hevc: x.video_hevc ? '/uploads/' + x.video_hevc : null, error: x.video_error || null });
 
@@ -1001,7 +1002,25 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
   // The front page's video: the site owner only.
   r.get('/site-video', signedIn, async (req, res) => {
     if (!isOwner(req.me)) return res.status(404).json({ error: 'Not found.' });
-    res.set('Cache-Control', 'no-store').json({ video: videoShape(await get('SELECT * FROM site WHERE id = 1')) });
+    const site = await get('SELECT * FROM site WHERE id = 1');
+    res.set('Cache-Control', 'no-store').json({ video: videoShape(site), logo: site.logo ? '/uploads/' + site.logo : '', tagline: site.tagline || '', url: `${SCHEME()}://${SITE_DOMAIN()}/` });
+  });
+  // The front page's logo and its line, the owner's to set.
+  r.post('/site-logo', signedIn, rawImage, async (req, res) => {
+    if (!isOwner(req.me)) return res.status(404).json({ error: 'Not found.' });
+    let name = Buffer.isBuffer(req.body) ? await saveImage(req.body) : null;
+    if (!name) return res.status(400).json({ error: 'Use a JPEG or PNG image.' });
+    const trimmed = await V.trimLogo(path.join(UPLOAD_DIR, name), UPLOAD_DIR);
+    if (trimmed) { fs.promises.unlink(path.join(UPLOAD_DIR, name)).catch(() => {}); name = trimmed; }
+    const old = await get('SELECT logo FROM site WHERE id = 1');
+    if (old && old.logo) unlinkUpload(old.logo);
+    await run('UPDATE site SET logo = ?, updated_at = ? WHERE id = 1', [name, Date.now()]);
+    res.json({ logo: '/uploads/' + name });
+  });
+  r.put('/site-front', signedIn, async (req, res) => {
+    if (!isOwner(req.me)) return res.status(404).json({ error: 'Not found.' });
+    await run('UPDATE site SET tagline = ?, updated_at = ? WHERE id = 1', [U.clean((req.body || {}).tagline, 120) || null, Date.now()]);
+    res.json({ ok: true });
   });
   r.post('/site-video', signedIn, (req, res) => (isOwner(req.me) ? takeVideo(req, res, 'site', 1) : res.status(404).json({ error: 'Not found.' })));
   r.delete('/site-video', signedIn, async (req, res) => {

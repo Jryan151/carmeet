@@ -54,8 +54,22 @@ test('a meet: posted, sent to the food side, on the page with nothing from the o
   assert.equal(r.status, 200);
   r = await request(ctx, 'GET', SITE, '/tasty-tuesday/2020-01-01');
   assert.equal(r.status, 404);
+  // The site's front page: its own landing (the buttons), with this meet under Next up.
   r = await request(ctx, 'GET', SITE, '/');
-  assert.match(r.text, /Tasty Tuesday/);
+  assert.match(r.text, /href="\/meets"[^>]*>Upcoming meets/); assert.match(r.text, /href="\/members"/); assert.match(r.text, /href="\/vendors"/);
+  assert.match(r.text, /JDM night/);
+  r = await request(ctx, 'GET', SITE, '/meets');
+  assert.match(r.text, new RegExp(`<a class="mcard" href="http://meets.test/tasty-tuesday/${day}">`));
+  r = await request(ctx, 'GET', SITE, '/vendors');
+  const opt = new RegExp(`<option value="(\\d+)">JDM night`).exec(r.text);
+  assert.ok(opt, 'the meets to pick from');
+  r = await request(ctx, 'POST', SITE, '/api/vendor-request', { body: { site: '1', name: 'Wrap Shop', contact: 'wrap@example.com', kind: 'other', instagram: '@wrapshop', meet: opt[1], food: 'Car wraps' } });
+  assert.equal(r.status, 200, r.text);
+  r = await request(ctx, 'GET', SITE, '/api/host/requests', { cookie: C });
+  const vr = r.json.requests.find((x) => x.name === 'Wrap Shop');
+  assert.match(vr.note, /Not food[\s\S]*@wrapshop[\s\S]*JDM night/);
+  r = await request(ctx, 'GET', SITE, '/members');
+  assert.equal(r.status, 200);
 });
 
 test('trucks: an invite link to text, then a truck that takes cards shows Pre-order', async () => {
@@ -150,7 +164,7 @@ test('a food vendor asks for a spot; the host sees it', async () => {
   assert.equal(r.json.requests[0].name, 'Lemon Stand');
   r = await request(ctx, 'PUT', SITE, '/api/host/requests/' + r.json.requests[0].id, { cookie: C, body: { status: 'dismissed' } });
   r = await request(ctx, 'GET', SITE, '/api/host/requests', { cookie: C });
-  assert.equal(r.json.requests.length, 0);
+  assert.ok(!r.json.requests.some((x) => x.name === 'Lemon Stand'));
 });
 
 test('turnout: only once a meet has started; history averages by spot', async () => {
@@ -177,7 +191,7 @@ test('settings, and a host’s own domain once it’s turned on', async () => {
   assert.deepEqual([r.json.host.accent, r.json.host.instagram, r.json.host.closeMinutes, r.json.host.customDomain, r.json.host.domainOn], ['#5fb3d9', 'tastytuesday', 60, 'tastytuesday.com', false]);
   assert.equal(k().calls.filter((c) => c.method === 'PUT').slice(-1)[0].body.closeMinutes, 60, 'the food side hears the new cutoff');
   r = await request(ctx, 'GET', 'tastytuesday.com', '/');
-  assert.match(r.text, /Nothing here|Car meets/, 'not live until turned on');
+  assert.match(r.text, /Nothing here|Upcoming meets/, 'not live until turned on');
   r = await request(ctx, 'POST', SITE, '/api/host/admin/domain', { body: { slug: 'tasty-tuesday' }, headers: { 'x-admin-token': 'wrong-wrong-wrong-wrong-xx' } });
   assert.equal(r.status, 404);
   r = await request(ctx, 'POST', SITE, '/api/host/admin/domain', { body: { slug: 'tasty-tuesday' }, headers: { 'x-admin-token': 'test-admin-token-0123456789' } });
@@ -253,10 +267,16 @@ test('a background video: any clip becomes a silent 15-second 1080p loop with a 
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test('only the site owner sets the front page video', async () => {
-  const r = await request(ctx, 'GET', SITE, '/api/host/site-video', { cookie: C });
+test('only the site owner sets the front page (with none named, the first host)', async () => {
+  let r = await request(ctx, 'GET', SITE, '/api/host/site-video', { cookie: C });
+  assert.equal(r.status, 200, 'the first host');
+  r = await request(ctx, 'PUT', SITE, '/api/host/site-front', { cookie: C, body: { tagline: 'Arizona car meets' } });
+  r = await request(ctx, 'GET', SITE, '/');
+  assert.match(r.text, /Arizona car meets/);
+  const C2 = await host(ctx, { email: 'second@example.com', name: 'Second Meet', slug: 'second-meet' });
+  r = await request(ctx, 'GET', SITE, '/api/host/site-video', { cookie: C2 });
   assert.equal(r.status, 404, 'a host who isn’t the owner doesn’t see it');
-  const me = (await request(ctx, 'GET', SITE, '/api/host/me', { cookie: C })).json.host;
+  const me = (await request(ctx, 'GET', SITE, '/api/host/me', { cookie: C2 })).json.host;
   assert.equal(me.owner, false);
 });
 

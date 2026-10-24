@@ -560,4 +560,89 @@ ${list.length ? `<div class="list-meets">${list.map((r) => {
   return layout({ title: `${SITE()}: car meets`, description: 'Car meets: where, when, and food you can pre-order.', body });
 }
 
-module.exports = { small, ver, inlineCss, layout, meetPage, vendorPage, memberPage, memberEdit, hostEmpty, foodPage, orderPage, message, home, privacy };
+/* ---------- the site's own pages: the front page, every meet, every member, and vendors asking for a spot ----------
+   Same look as a meet page: the site's footage behind everything, its logo on top, then the open view, then the
+   buttons. Each page links back to the front. */
+function siteTop(site, { tall } = {}) {
+  const vid = site && site.video && site.video_status === 'ready' ? site : null;
+  const logo = site && site.logo ? small(site.logo, 720) : null;
+  return { vid, html: `${heroBg(vid)}
+  <a class="site-mark" href="/">${logo ? `<img src="${esc(logo)}" alt="${esc(SITE())}" fetchpriority="high">` : `<span>${esc(SITE())}</span>`}</a>
+  ${tall && site && site.tagline ? `<p class="site-line">${esc(site.tagline)}</p>` : ''}` };
+}
+const meetName = (r) => r.title || r.host_name;
+/** One meet as a card: its flyer (or the host's logo), its name, when and where. */
+function meetCard(r, tz) {
+  const t = U.meetTimes(r, r.timezone || tz);
+  const pic = r.flyer ? small(r.flyer, 480) : r.logo && /^\/uploads\//.test(r.logo) ? small(r.logo, 256) : r.host_logo && /^\/uploads\//.test(r.host_logo) ? small(r.host_logo, 256) : null;
+  return `<a class="mcard" href="${esc(r.url)}"><div class="mcard-pic${r.flyer ? '' : ' logo'}">${pic ? `<img src="${esc(pic)}" alt="" loading="lazy" decoding="async">` : '<span aria-hidden="true">🏁</span>'}</div>
+  <div class="mcard-info"><b>${esc(meetName(r))}</b><span class="mcard-when">${esc(U.dayShort(t.startsAt, r.timezone || tz))} · ${esc(U.time12(t.startsAt, r.timezone || tz))}</span><span class="dim">${esc(r.place)}</span>${t.startsAt <= Date.now() ? '<span class="live-tag">Happening now</span>' : ''}</div></a>`;
+}
+function landing(site, ctx) {
+  const tz = process.env.TIMEZONE || 'America/Phoenix';
+  const top = siteTop(site, { tall: true });
+  const next = (ctx.meets || []).slice(0, 3);
+  let body = `<main class="wrap site-page">
+<section class="hero site-hero${top.vid ? ' has-video' : ''}">
+  ${top.html}
+  <div class="showcase" aria-hidden="true"></div>
+  <nav class="site-go" aria-label="Main">
+    <a class="btn go" href="/meets">Upcoming meets${ctx.meets && ctx.meets.length ? ` <span class="count">${ctx.meets.length}</span>` : ''}</a>
+    <a class="btn" href="/members">Member profiles</a>
+    <a class="btn" href="/vendors">Vendors: request a spot</a>
+  </nav>
+</section>`;
+  if (next.length) body += `<section><h2>Next up</h2><div class="mcards">${next.map((r) => meetCard(r, tz)).join('')}</div>${ctx.meets.length > next.length ? '<p style="text-align:center;margin-top:14px"><a class="btn" href="/meets">See all meets</a></p>' : ''}</section>`;
+  body += `</main>${siteFoot(site, ctx)}`;
+  return layout({ title: SITE(), description: (site && site.tagline) || `${SITE()}: car meets, clubs and the people behind the builds.`, body, scripts: ['site.js'], image: ctx.origin && site && site.logo ? ctx.origin + small(site.logo, 720) : null });
+}
+function siteFoot(site, ctx) {
+  return `<footer><div class="wrap">${ctx.instagram ? `<div class="social"><a href="https://instagram.com/${esc(ctx.instagram)}" rel="noopener">Instagram</a></div>` : ''}<p><a href="/">${esc(SITE())}</a></p></div></footer>`;
+}
+function meetsPage(site, ctx) {
+  const tz = process.env.TIMEZONE || 'America/Phoenix';
+  const top = siteTop(site);
+  const list = ctx.meets || [];
+  // By day: "Fri, Oct 23", then that night's meets.
+  const days = []; for (const r of list) { const k = r.day; let d = days.find((x) => x.k === k); if (!d) days.push(d = { k, label: U.dayLong(U.meetTimes(r, r.timezone || tz).startsAt, r.timezone || tz), list: [] }); d.list.push(r); }
+  const body = `<main class="wrap site-page">
+<section class="hero site-hero small-top${top.vid ? ' has-video' : ''}">${top.html}<h1 class="site-title">Upcoming meets</h1></section>
+${days.length ? days.map((d) => `<section class="day"><h2>${esc(d.label)}</h2><div class="mcards">${d.list.map((r) => meetCard(r, tz)).join('')}</div></section>`).join('') : '<section><p class="dim">Nothing posted yet. Check back soon.</p></section>'}
+</main>${siteFoot(site, ctx)}`;
+  return layout({ title: `Upcoming meets · ${SITE()}`, description: `Every car meet coming up on ${SITE()}.`, body, scripts: ['site.js'] });
+}
+function membersPage(site, ctx) {
+  const top = siteTop(site);
+  const groups = ctx.groups || [];
+  const body = `<main class="wrap site-page">
+<section class="hero site-hero small-top${top.vid ? ' has-video' : ''}">${top.html}<h1 class="site-title">Member profiles</h1>
+${ctx.count > 8 ? '<input class="find" type="search" placeholder="Find a member or a car" aria-label="Find a member or a car" data-find>' : ''}</section>
+${groups.length ? groups.map((g) => `<section class="club" data-club><h2>${g.logo ? `<img src="${esc(small(g.logo, 256))}" alt="" class="club-badge">` : ''}${esc(g.name)}</h2><div class="m-grid">${g.members.map((m) => `<a href="/@${esc(m.handle)}" data-find-text="${esc((m.name + ' ' + (m.car || '') + ' ' + m.handle).toLowerCase())}"><div class="mini">${m.face ? `<img src="${esc(small(m.face, 256))}" alt="" loading="lazy">` : '<span class="emoji" aria-hidden="true">🚗</span>'}</div><b>${esc(m.name)}</b>${m.car ? `<span class="dim">${esc(m.car)}</span>` : ''}</a>`).join('')}</div></section>`).join('') : '<section><p class="dim">Member pages are coming soon.</p></section>'}
+</main>${siteFoot(site, ctx)}`;
+  return layout({ title: `Members · ${SITE()}`, description: `The members and their builds on ${SITE()}.`, body, scripts: ['site.js'] });
+}
+function vendorsPage(site, ctx) {
+  const tz = process.env.TIMEZONE || 'America/Phoenix';
+  const top = siteTop(site);
+  const meets = ctx.meets || [];
+  const body = `<main class="wrap site-page">
+<section class="hero site-hero small-top${top.vid ? ' has-video' : ''}">${top.html}<h1 class="site-title">Vendors</h1>
+<p class="site-line">Food trucks, shops, detailers, merch: ask for a spot at a meet. The host gets back to you.</p></section>
+<section><form data-form="vendor" class="v-ask">
+  <input type="hidden" name="site" value="1">
+  <label for="vaName">Business name</label><input id="vaName" name="name" maxlength="60" required>
+  <label for="vaContact">Phone or email</label><input id="vaContact" name="contact" maxlength="80" required inputmode="email">
+  <label for="vaIg">Instagram (optional)</label><input id="vaIg" name="instagram" maxlength="60" autocapitalize="off" placeholder="@yourbusiness">
+  <label for="vaKind">What kind</label><select id="vaKind" name="kind"><option value="food">Food or drinks</option><option value="other">Shop, merch, detailing, something else</option></select>
+  <label for="vaFood">What you serve or sell</label><input id="vaFood" name="food" maxlength="80" placeholder="Birria tacos · Car wraps · Tees">
+  <label for="vaMeet">Which meet</label><select id="vaMeet" name="meet"><option value="">Any of them</option>${meets.map((r) => `<option value="${r.id}">${esc(meetName(r))} · ${esc(U.dayShort(U.meetTimes(r, r.timezone || tz).startsAt, r.timezone || tz))}</option>`).join('')}</select>
+  <label for="vaNote">Anything else (optional)</label><textarea id="vaNote" name="note" maxlength="400"></textarea>
+  <input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
+  <p style="margin-top:14px"><button class="btn go" type="submit">Send request</button></p>
+  <div class="msg" role="status"></div>
+</form></section>
+</main>${siteFoot(site, ctx)}`;
+  return layout({ title: `Vendors · ${SITE()}`, description: `Ask for a vendor spot at a car meet on ${SITE()}.`, body, scripts: ['site.js'] });
+}
+
+module.exports = { landing, meetsPage, membersPage, vendorsPage, small, ver, inlineCss, layout, meetPage, vendorPage, memberPage, memberEdit, hostEmpty, foodPage, orderPage, message, home, privacy };

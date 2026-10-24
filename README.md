@@ -126,9 +126,18 @@ sent.
 
 ## Meet names and saved locations
 
-With `VENDOR_SUBDOMAINS=1`, every meet name has its own address: Fuel Friday at `fuel-friday.<domain>`, a week at
-`fuel-friday.<domain>/<date>`. It's made from the meet's name the first time it's saved and can be changed in the
-meet's form. Two different meets can be on the same night. Old `<site>/<host>/<date>` links forward.
+Every meet name has its own address at the end of the site's: Fuel Friday at `<domain>/fuel-friday`, a week at
+`<domain>/fuel-friday/<date>`. It's made from the meet's name the first time it's saved and can be changed in the
+meet's form (a meet named like the host stays on the host's page). Two different meets can be on the same night.
+Old `<host>/<date>` and `fuel-friday.<domain>` links forward.
+
+## The front page
+
+`<domain>/` is the site's own landing page: its logo and a line (Settings › Front page, the site owner only), the
+front page video behind it, and three buttons: Upcoming meets (`/meets`, every host's), Member profiles (`/members`,
+by club) and Vendors (`/vendors`, a request form that goes to the picked meet's host, or the owner). The owner is
+`SITE_OWNER_EMAIL`, or with none set, the first host who signed up. `HOME_HOST=<slug>` makes the front page one host's
+page instead.
 
 A parking map can be kept as a location (📍 Save this layout as a location, under the map). Pick that location for a
 meet and its map starts from it.
