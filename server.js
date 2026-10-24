@@ -121,13 +121,9 @@ app.use(async (req, res, next) => {
   const h = String(req.hostname || '').toLowerCase();
   req.own = null; req.vendorSub = null;
   const sub = U.subOf(h);
-  const named = sub && U.subdomainsOn() ? await N.hostOfName(sub) : null;
-  if (named) {
-    // A meet name's own address (fuel-friday.<domain>): its next meet at "/", a week at "/<date>", everything a meet
-    // page needs. The portal and the rest of the site are on the main address.
-    if (/^\/(host|api\/host|v|@)(\/|$)/.test(req.path)) return res.redirect(302, `${SCHEME}://${SITE_DOMAIN}${req.originalUrl}`);
-    req.own = named; req.meetName = sub;
-    return next();
+  // An old meet-name address (fuel-friday.<domain>): it lives at <domain>/fuel-friday now.
+  if (sub && !(await pageBySlug(sub)) && (await N.hostOfName(sub))) {
+    return res.redirect(301, `${SCHEME}://${SITE_DOMAIN}/${sub}${req.originalUrl === '/' ? '' : req.originalUrl}`);
   }
   if (sub) {
     // A vendor's own address (<truck>.<site domain>) shows their profile at "/" and the files it needs. Their menu
@@ -191,7 +187,7 @@ app.get(/^\/food-photo\/([a-z0-9_-]{1,63})(\/.+)$/, limitRead, async (req, res) 
 });
 
 /* ---------- helpers for pages ---------- */
-const baseOf = (req, host) => (req.own && req.own.id === host.id ? '' : '/' + host.slug);
+const baseOf = (req, host) => (req.meetName ? '/' + req.meetName : req.own && req.own.id === host.id ? '' : '/' + host.slug);
 // The "Page by" line: not on a host's own domain, and not when the site itself opens on this host.
 const badgeOf = (host, req) => !host.domain_on && !(req && req.isMain);
 const truckCache = new Map(); // meet ref → { at, list }: the public page asks at most once a minute
@@ -643,16 +639,31 @@ app.get('/:a', async (req, res, next) => {
     return m ? renderMeet(req, res, req.own, m, false) : notFound(req, res, req.own);
   }
   if (U.RESERVED.has(req.params.a)) return next();
-  const host = await get('SELECT * FROM hosts WHERE slug = ?', [String(req.params.a).toLowerCase()]);
-  if (!host) return notFound(req, res, null);
+  const a = String(req.params.a).toLowerCase();
+  const host = await get('SELECT * FROM hosts WHERE slug = ?', [a]);
+  if (!host) {
+    // A meet name (<site>/fuel-friday): its next week.
+    const nh = await N.hostOfName(a);
+    if (!nh) return notFound(req, res, null);
+    req.meetName = a;
+    return hostHome(req, res, nh);
+  }
   if (host.domain_on && host.custom_domain && req.query.demo !== '1') return res.redirect(301, `${SCHEME}://${host.custom_domain}/`);
   return hostHome(req, res, host);
 });
 app.get('/:a/:b', async (req, res, next) => {
   if (req.own) return notFound(req, res, req.own);
   if (U.RESERVED.has(req.params.a)) return next();
-  const host = await get('SELECT * FROM hosts WHERE slug = ?', [String(req.params.a).toLowerCase()]);
-  if (!host) return notFound(req, res, null);
+  const a = String(req.params.a).toLowerCase();
+  const host = await get('SELECT * FROM hosts WHERE slug = ?', [a]);
+  if (!host) {
+    // A week of a meet name (<site>/fuel-friday/<date>).
+    const nh = await N.hostOfName(a);
+    if (!nh) return notFound(req, res, null);
+    req.meetName = a;
+    const m = await meetOn(nh, req.params.b, a);
+    return m ? renderMeet(req, res, nh, m, false) : notFound(req, res, nh);
+  }
   if (host.domain_on && host.custom_domain) return res.redirect(301, `${SCHEME}://${host.custom_domain}/${encodeURIComponent(req.params.b)}`);
   const m = await meetOn(host, req.params.b);
   if (m && toName(req, res, host, m)) return;
@@ -661,7 +672,9 @@ app.get('/:a/:b', async (req, res, next) => {
 app.get('/:a/food/:truck', async (req, res, next) => (req.own ? foodPage(req, res, req.own, req.params.a, req.params.truck) : next()));
 app.get('/:a/:b/food/:truck', async (req, res) => {
   if (req.own) return notFound(req, res, req.own);
-  const host = await get('SELECT * FROM hosts WHERE slug = ?', [String(req.params.a).toLowerCase()]);
+  const a = String(req.params.a).toLowerCase();
+  let host = await get('SELECT * FROM hosts WHERE slug = ?', [a]);
+  if (!host) { host = await N.hostOfName(a); if (host) req.meetName = a; }
   if (!host) return notFound(req, res, null);
   return foodPage(req, res, host, req.params.b, req.params.truck);
 });

@@ -33,7 +33,7 @@ test('signing in needs the right code; a new host picks a free address', async (
 
 test('a meet: posted, sent to the food side, on the page with nothing from the ordering system', async () => {
   day = ymd(4);
-  let r = await request(ctx, 'POST', SITE, '/api/host/meets', { cookie: C, body: { day, start: '19:00', end: '22:00', place: 'Dunlap lot', address: '3500 W Dunlap Ave, Phoenix, AZ', title: 'JDM night' } });
+  let r = await request(ctx, 'POST', SITE, '/api/host/meets', { cookie: C, body: { day, start: '19:00', end: '22:00', place: 'Dunlap lot', address: '3500 W Dunlap Ave, Phoenix, AZ', title: 'JDM night', pageName: 'tasty-tuesday' } });
   assert.equal(r.status, 201, r.text);
   meetId = r.json.meet.id;
   assert.equal(r.json.meet.synced, true);

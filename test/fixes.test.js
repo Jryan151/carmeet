@@ -26,34 +26,36 @@ test('each meet name has its own address; two meets can share a night, the same 
   r = await request(ctx, 'POST', SITE, '/api/host/meets', { cookie: C, body: { day, start: '19:00', end: '23:00', place: 'LV Smoke Shop lot', title: 'Fuel Friday' } });
   assert.equal(r.status, 201, r.text); ff = r.json.meet;
   assert.equal(ff.pageName, 'fuel-friday');
-  assert.equal(ff.url, `http://fuel-friday.meets.test/${day}`);
+  assert.equal(ff.url, `http://meets.test/fuel-friday/${day}`, 'at the end of the address');
+  assert.equal(tt.url, `http://meets.test/tasty-tuesday/${day}`, 'named like the host: the host’s page');
   r = await request(ctx, 'POST', SITE, '/api/host/meets', { cookie: C, body: { day, start: '19:00', end: '23:00', place: 'Again', title: 'fuel friday' } });
   assert.equal(r.status, 409);
-  // Its own address shows it; the host's page doesn't, and its old link forwards.
-  r = await request(ctx, 'GET', 'fuel-friday.meets.test', '/');
+  // Its own address shows it; the host's page doesn't; links to it from elsewhere forward.
+  r = await request(ctx, 'GET', SITE, '/fuel-friday');
   assert.equal(r.status, 200); assert.match(r.text, /LV Smoke Shop lot/); assert.doesNotMatch(r.text, /Dunlap lot/);
-  r = await request(ctx, 'GET', 'fuel-friday.meets.test', '/' + day);
+  r = await request(ctx, 'GET', SITE, `/fuel-friday/${day}`);
   assert.match(r.text, /LV Smoke Shop lot/);
   r = await request(ctx, 'GET', SITE, '/tasty-tuesday');
   assert.match(r.text, /Dunlap lot/); assert.doesNotMatch(r.text, /LV Smoke Shop lot/);
   r = await request(ctx, 'GET', SITE, `/tasty-tuesday/${day}`);
-  assert.equal(r.headers.location, `http://tasty-tuesday.meets.test/${day}`, 'that night’s link: their own meet, at its address');
-  r = await request(ctx, 'GET', 'tasty-tuesday.meets.test', '/' + day);
-  assert.match(r.text, /Dunlap lot/); assert.doesNotMatch(r.text, /LV Smoke Shop lot/);
-  r = await request(ctx, 'GET', 'fuel-friday.meets.test', '/host');
-  assert.equal(r.status, 302, 'the portal is on the main address');
+  assert.match(r.text, /Dunlap lot/, 'that night on the host’s page: their own meet');
+  r = await request(ctx, 'GET', 'fuel-friday.meets.test', `/${day}`);
+  assert.equal(r.headers.location, `http://meets.test/fuel-friday/${day}`, 'the old subdomain link forwards');
+  // A new host can't take a meet's name as their address.
+  const c2 = (await request(ctx, 'POST', SITE, '/api/host/code', { body: { email: 'ff@example.com' } })).json.devCode;
+  r = await request(ctx, 'POST', SITE, '/api/host/login', { body: { email: 'ff@example.com', code: c2, name: 'Fuel', slug: 'fuel-friday' } });
+  assert.equal(r.status, 409);
   // Changing it: checked, then the new address works.
   r = await request(ctx, 'PUT', SITE, `/api/host/meets/${ff.id}`, { cookie: C, body: { day, start: '19:00', end: '23:00', place: 'LV Smoke Shop lot', title: 'Fuel Friday', pageName: 'host' } });
   assert.equal(r.status, 400);
   r = await request(ctx, 'PUT', SITE, `/api/host/meets/${ff.id}`, { cookie: C, body: { day, start: '19:00', end: '23:00', place: 'LV Smoke Shop lot', title: 'Fuel Friday', pageName: 'fuelfriday' } });
   assert.equal(r.status, 200, r.text);
-  assert.equal(r.json.meet.url, `http://fuelfriday.meets.test/${day}`);
+  assert.equal(r.json.meet.url, `http://meets.test/fuelfriday/${day}`);
   // Repeat next week keeps the name.
   r = await request(ctx, 'POST', SITE, `/api/host/meets/${ff.id}/again`, { cookie: C });
   assert.equal(r.json.meet.pageName, 'fuelfriday');
-  // Caddy may get a certificate for it.
-  r = await request(ctx, 'GET', SITE, '/caddy/ask?domain=fuelfriday.meets.test');
-  assert.equal(r.status, 200);
+  r = await request(ctx, 'GET', SITE, `/fuelfriday/${day}`);
+  assert.match(r.text, /LV Smoke Shop lot/);
 });
 
 test('a vendor sent their link shows under Food right away; deleted, it’s gone everywhere and stays gone', { skip: spawnSync('ffmpeg', ['-version']).status !== 0 }, async () => {

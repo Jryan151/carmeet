@@ -112,7 +112,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
       const slug = String(b.slug || '').toLowerCase().trim();
       if (!name) return res.status(400).json({ error: 'What’s your meet called?', needsName: true });
       if (!U.SLUG_RE.test(slug) || U.RESERVED.has(slug)) return res.status(400).json({ error: 'Pick a page address: 3 to 40 letters, numbers or dashes.', needsName: true });
-      if (await get('SELECT 1 AS x FROM hosts WHERE slug = ?', [slug])) return res.status(409).json({ error: 'That address is taken. Try another.', needsName: true });
+      if (await get('SELECT 1 AS x FROM hosts WHERE slug = ?', [slug]) || await get('SELECT 1 AS x FROM meets WHERE page_name = ?', [slug])) return res.status(409).json({ error: 'That address is taken. Try another.', needsName: true });
       const now = Date.now();
       const ins = await run(`INSERT INTO hosts (slug, name, email, city, rules, timezone, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [slug, name, email, U.clean(b.city, 60), 'No burnouts or revving\nPark straight, leave room to walk\nTake your trash with you', process.env.TIMEZONE || 'America/Phoenix', now, now]);
@@ -137,14 +137,14 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     return { name: h.name, slug: h.slug, email: h.email, tagline: h.tagline || '', city: h.city || '', accent: h.accent || '', logo: h.logo || '',
       instagram: h.instagram || '', tiktok: h.tiktok || '', youtube: h.youtube || '', rules: h.rules || '', closeMinutes: h.close_minutes,
       timezone: h.timezone || '', mapTiles: geo.tiles(), mapCredit: geo.credit(), customDomain: h.custom_domain || '', domainOn: !!h.domain_on, pageUrl: pageUrl(h), siteName: SITE(), foodOn: K.on(), mailOn: mail.configured(),
-      video: videoShape(h), videoReady: V.ffmpegOk(), owner: isOwner(h), alertsOn: !!h.alerts_on, namesOn: U.subdomainsOn(), siteDomain: SITE_DOMAIN() };
+      video: videoShape(h), videoReady: V.ffmpegOk(), owner: isOwner(h), alertsOn: !!h.alerts_on, namesOn: true, siteDomain: SITE_DOMAIN() };
   }
   function meetShape(m, h) {
     const tz = tzOf(h); const t = U.meetTimes(m, tz);
     return { id: m.id, ref: m.ref, title: m.title || '', day: m.day, start: m.start_time, end: m.end_time, place: m.place, address: m.address || '', notes: m.notes || '',
       status: m.status, startsAt: t.startsAt, endsAt: t.endsAt, label: `${U.dayShort(t.startsAt, tz)}, ${U.time12(t.startsAt, tz)}–${U.time12(t.endsAt, tz)}`,
       over: t.endsAt < Date.now(), people: m.turnout_people, cars: m.turnout_cars, video: videoShape(m), flyer: m.flyer ? '/uploads/' + m.flyer : null, lot: LotMap.clean(m.lot), venueId: m.venue_id || null, logo: m.logo ? '/uploads/' + m.logo : null, synced: !!m.synced_at && !m.sync_error, syncError: m.sync_error || '', url: N.meetUrl(h, m),
-      pageName: m.page_name || '', nameUrl: N.onName(h, m) ? N.nameUrl(h, m) : null, namesOn: U.subdomainsOn(), siteDomain: SITE_DOMAIN() };
+      pageName: m.page_name || '', nameUrl: N.onName(h, m) ? N.nameUrl(h, m) : null, namesOn: true, siteDomain: SITE_DOMAIN() };
   }
   async function sync(h, m) {
     const s = await K.syncMeet(h, m, N.meetUrl(h, m));
