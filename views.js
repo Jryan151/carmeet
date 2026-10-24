@@ -434,7 +434,9 @@ function memberPage(host, m, ctx) {
   const first = items.length ? items[items.length - 1] : null;
   const face = first ? small(still(first), 480) : club && club.file ? small(club.file, 256) : null;
   // The top: a logo, like a meet page's (their club's, or one they uploaded), else their photo in a circle.
-  const headLogo = m.header === 'logo' && m.header_file ? small(m.header_file, 720) : m.header === 'club' && club && club.file ? small(club.file, 720) : null;
+  // The top: a logo sitting right on the footage (no circle, no box): their club's by default, or one they uploaded;
+  // or just their name, big.
+  const headLogo = m.header === 'name' ? null : m.header === 'logo' && m.header_file ? small(m.header_file, 720) : club && club.file ? small(club.file, 720) : null;
   const ig = m.instagram ? `https://instagram.com/${encodeURIComponent(m.instagram)}` : null;
   const clubIg = club && club.instagram ? `https://instagram.com/${encodeURIComponent(club.instagram)}` : null;
   const mods = String(m.mods || '').split(/\n|,(?![^(]*\))/).map((x) => x.trim()).filter(Boolean).slice(0, 40);
@@ -443,7 +445,7 @@ function memberPage(host, m, ctx) {
   let body = `<main class="wrap member">
 <section class="hero m-hero${ctx.vid ? ' has-video' : ''}">
   ${heroBg(ctx.vid)}
-  ${headLogo ? `<div class="avatar m-logo"><img src="${esc(headLogo)}" alt="${esc(m.name)}"></div>` : `<div class="m-face${first ? '' : ' logo'}">${face ? `<img src="${esc(face)}" alt="">` : '<span aria-hidden="true">🚗</span>'}</div>`}
+  ${headLogo ? `<div class="avatar m-logo"><img src="${esc(headLogo)}" alt="${esc(m.header === 'logo' ? m.name : club ? club.name : m.name)}" fetchpriority="high"></div>` : '<div class="m-nologo" aria-hidden="true"></div>'}
   <h1 class="m-name">${esc(m.name)}</h1>
   ${m.car ? `<p class="m-car">${esc(m.car)}</p>` : ''}
   <div class="showcase" aria-hidden="true"></div>

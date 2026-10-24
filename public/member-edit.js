@@ -35,11 +35,11 @@
         '<label for="meAbout">About</label><textarea id="meAbout" name="about" maxlength="600" rows="3" placeholder="How the car came together, where you take it.">' + esc(m.about) + '</textarea>' +
         '<div class="bar"><button class="btn go" type="submit">Save</button></div><div class="msg" data-me-msg role="status"></div></form></div>' +
 
-        '<div class="card"><h3>Top of the page</h3><p class="small dim">What sits above the name: a photo in a circle, or a logo on the footage (like a meet page).</p>' +
+        '<div class="card"><h3>Top of the page</h3><p class="small dim">What sits above the name, right on the footage (like a meet page).</p>' +
         '<div class="me-heads">' +
-          headBtn('photo', 'My photo', '<div class="me-h-face">' + (firstPhoto() ? '<img src="' + esc(firstPhoto()) + '" alt="">' : '🚗') + '</div>') +
           (m.clubLogo ? headBtn('club', 'My club’s logo', '<img src="' + esc(m.clubLogo) + '" alt="">') : '') +
           (m.headerLogo ? headBtn('logo', 'My logo', '<img src="' + esc(m.headerLogo) + '" alt="">') : '') +
+          headBtn('name', 'Just my name', '<span class="me-h-name">' + esc(m.name.split(' ')[0]) + '</span>') +
         '</div>' +
         '<label class="btn sm" style="display:inline-block">' + (m.headerLogo ? 'Upload a different logo' : 'Upload a logo') + '<input type="file" accept="image/png,image/jpeg" hidden data-me-head></label>' +
         '<p class="small dim" style="margin:6px 0 0">A PNG with a see-through background looks best; a black square around it is trimmed off.</p>' +

@@ -1148,7 +1148,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
       m.club_id ? get("SELECT id, name, file FROM kit_logos WHERE id = ? AND kind = 'group'", [m.club_id]) : null]);
     return { id: m.id, handle: m.handle, name: m.name, car: m.car || '', mods: m.mods || '', instagram: m.instagram || '', about: m.about || '',
       clubId: club ? club.id : null, clubName: club ? club.name : '', clubLogo: club && club.file ? Vw.small(club.file, 256) : '',
-      header: m.header === 'logo' && m.header_file ? 'logo' : m.header === 'club' && club && club.file ? 'club' : 'photo',
+      header: m.header === 'name' ? 'name' : m.header === 'logo' && m.header_file ? 'logo' : club && club.file ? 'club' : 'name',
       headerLogo: m.header_file ? Vw.small(m.header_file, 720) : '',
       url: memberUrl(m), video: videoShape(m), videoReady: V.ffmpegOk(), maxPhotos: MAX_MEMBER_PHOTOS,
       photos: photos.map((x) => x.kind === 'video'
@@ -1188,7 +1188,7 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     if (b.mods !== undefined) out.mods = U.cleanBlock(b.mods, 1200);
     if (b.about !== undefined) out.about = U.cleanBlock(b.about, 600);
     if (b.instagram !== undefined) out.instagram = U.handle(b.instagram) || null;
-    if (b.header !== undefined) out.header = ['club', 'logo'].includes(b.header) ? b.header : null;
+    if (b.header !== undefined) out.header = ['club', 'logo', 'name'].includes(b.header) ? b.header : null;
     return out;
   }
   r.get('/members', signedIn, async (req, res) => {

@@ -83,18 +83,21 @@ test('the page: the top, the feed with photos and clips, the build, the crew; th
   assert.ok(r.text.indexOf('m-shot clip') < r.text.indexOf('class="m-shot"'), 'newest first');
   assert.ok(r.text.indexOf('class="showcase"') < r.text.indexOf('<section class="m-feed"'), 'the feed is below the open top');
   assert.match(r.text, /instagram\.com\/jays_m3/);
-  // The top: their club's logo instead of their photo, or one they upload.
-  r = await request(ctx, 'PUT', SITE, `/api/host/members/${jay.id}`, { cookie: C, body: { header: 'club' } });
-  assert.equal(r.json.member.header, 'club');
+  // The top: no circle. Their club's logo by default, sitting on the footage; one they upload; or just their name.
+  r = await request(ctx, 'GET', SITE, `/api/host/members/${jay.id}`, { cookie: C });
+  assert.equal(r.json.member.header, 'club', 'a club member: the club logo by default');
   r = await request(ctx, 'GET', SITE, '/@jays-m3');
-  assert.match(r.text, /<div class="avatar m-logo"><img src="\/uploads\/[^"]+" alt="Jay Ramirez"><\/div>/);
-  assert.doesNotMatch(r.text, /class="m-face/);
+  assert.match(r.text, /<div class="avatar m-logo"><img src="\/uploads\/[^"]+" alt="Unforsaken" fetchpriority="high"><\/div>/);
+  assert.doesNotMatch(r.text, /class="m-face/, 'no circle');
   r = await request(ctx, 'POST', SITE, `/api/host/members/${jay.id}/header`, { cookie: C, raw: { buf: png(), type: 'image/png' } });
   assert.equal(r.json.member.header, 'logo');
   assert.ok(r.json.member.headerLogo);
-  r = await request(ctx, 'PUT', SITE, `/api/host/members/${jay.id}`, { cookie: C, body: { header: 'photo' } });
   r = await request(ctx, 'GET', SITE, '/@jays-m3');
-  assert.match(r.text, /class="m-face/);
+  assert.match(r.text, /<div class="avatar m-logo"><img src="\/uploads\/logo-[^"]+" alt="Jay Ramirez"/);
+  r = await request(ctx, 'PUT', SITE, `/api/host/members/${jay.id}`, { cookie: C, body: { header: 'name' } });
+  assert.equal(r.json.member.header, 'name');
+  r = await request(ctx, 'GET', SITE, '/@jays-m3');
+  assert.doesNotMatch(r.text, /class="avatar m-logo"/);
   r = await request(ctx, 'GET', SITE, '/@JAYS-M3');
   assert.equal(r.status, 301);
   r = await request(ctx, 'GET', SITE, '/@jays-m3/edit');
