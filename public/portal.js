@@ -62,6 +62,10 @@
     if (navigator.clipboard) navigator.clipboard.writeText(text).then(done, function () {}); else done();
   }
 
+  // What prospects-admin.js (Admin › Prospects) uses from here.
+  window.Portal = { api: api, view: view, esc: esc, say: say, copy: copy, me: function () { return me; }, forget: function () { kept = {}; },
+    on: function (t) { return tab === t; }, show: function (t) { show(t); } };
+
   /* ---------- sign in ---------- */
   function showSignin(text) { $('signin').hidden = false; $('portal').hidden = true; $('whoName').textContent = 'Host portal'; $('whoUrl').textContent = ''; if (text) say($('signMsg'), text); }
   $('fEmail').addEventListener('submit', function (e) {
@@ -111,6 +115,8 @@
       $('signin').hidden = true; $('portal').hidden = false;
       $('whoName').textContent = me.name; $('whoUrl').innerHTML = '<a href="' + esc(me.pageUrl) + '" target="_blank" rel="noopener">' + esc(me.pageUrl.replace(/^https?:\/\//, '')) + '</a>';
       if (me.accent) document.documentElement.style.setProperty('--accent', me.accent);
+      $('tabProspects').hidden = !me.owner; // Admin › Prospects: the site owner only
+      if (tab === 'prospects' && !me.owner) tab = 'next';
       api('GET', '/portal-video').then(function (v) { if (v.ok) portalBg(v.d.video); });
       show(tab);
       prefetch();
@@ -124,7 +130,8 @@
     tab = t;
     Array.prototype.forEach.call(document.querySelectorAll('.tabs [data-tab]'), function (b) { b.setAttribute('aria-selected', String(b.getAttribute('data-tab') === t)); });
     view('<p class="dim" style="padding:20px 0">Loading…</p>');
-    ({ next: drawNext, meets: drawMeets, kit: drawKit, updates: drawUpdates, vendors: drawVendors, members: drawMembers, history: drawHistory, settings: drawSettings })[t]();
+    ({ next: drawNext, meets: drawMeets, kit: drawKit, updates: drawUpdates, vendors: drawVendors, members: drawMembers, history: drawHistory, settings: drawSettings,
+      prospects: function () { window.PortalProspects.draw(); } })[t]();
   }
 
 

@@ -496,7 +496,7 @@ function memberPage(host, m, ctx) {
   if (!items.length && !mods.length && !m.about) body += `<section class="m-box"><p class="dim">Photos coming soon.</p></section>`;
   body += `</main><footer><div class="wrap"><p>@${esc(m.handle)} · ${esc(SITE())}</p></div></footer>`;
   const img = ctx.origin ? (first ? ctx.origin + small(still(items[0]), 1080) : ctx.vid ? `${ctx.origin}/uploads/${ctx.vid.video_poster}` : null) : null;
-  return layout({ title: m.name && m.car ? `${m.name} · ${m.car}` : who, description: desc, host, body, scripts: ['site.js', 'member.js'], image: img });
+  return layout({ title: m.name && m.car ? `${m.name} · ${m.car}` : who, description: desc, host, body, scripts: ['site.js', 'member.js'], image: img, noindex: !!ctx.noindex });
 }
 /** The editor a member's link opens (the key is after the # in the link, so it's never sent in a request line). */
 function memberEdit(host, m) {
@@ -506,6 +506,76 @@ function memberEdit(host, m) {
 </main>`;
   return layout({ title: `Your page · ${memberLabel(m)}`, host, body, scripts: ['member-edit.js'], noindex: true });
 }
+
+/* ---------- a club's own page (/c/<name>): their footage behind it, their logo on top, their members ----------
+   Built for a club before asking them (a prospect): unlisted and never indexed, with "Make it ours" at the top until
+   someone from the club claims it with their email. Claimed, it's theirs: listed, no bar, kept.
+   ctx: { vid, members: [{ handle, name, car, face }], next: { url, title, when, place } | null, origin } */
+function clubPage(k, ctx) {
+  const logo = k.file ? small(k.file, 720) : null;
+  const ig = k.instagram ? `https://instagram.com/${encodeURIComponent(k.instagram)}` : null;
+  const look = { accent: /^#[0-9a-f]{6}$/i.test(k.accent || '') ? k.accent : null };
+  const days = k.prospect && k.expires_at ? Math.max(0, Math.ceil((k.expires_at - Date.now()) / 864e5)) : null;
+  let body = k.prospect
+    ? `<div class="claim-bar" role="note"><span><b>Made for ${esc(k.name)}</b> from footage at the meets. Keep it free, or it comes down in ${days} day${days === 1 ? '' : 's'}.</span>
+  <button class="btn sm go" type="button" data-claim-open>Make it ours</button></div>`
+    : '';
+  body += `<main class="wrap member club-page">
+<section class="hero m-hero${ctx.vid ? ' has-video' : ''}">
+  ${heroBg(ctx.vid)}
+  ${logo ? `<div class="avatar m-logo"><img src="${esc(logo)}" alt="${esc(k.name)}" fetchpriority="high"></div>` : '<div class="m-nologo" aria-hidden="true"></div>'}
+  <h1 class="m-name${logo ? ' sr-only' : ''}">${esc(k.name)}</h1>
+  ${k.note ? `<p class="m-car">${esc(k.note)}</p>` : ''}
+  <div class="showcase" aria-hidden="true"></div>
+  <div class="actions">
+    ${ig ? `<a class="btn go" href="${esc(ig)}" rel="noopener" target="_blank">Instagram</a>` : ''}
+    <button class="btn" type="button" data-share>Share</button>
+  </div>
+  ${ctx.members.length ? '<p class="m-more" aria-hidden="true">Scroll for the crew ↓</p>' : ''}
+</section>`;
+  if (ctx.next) {
+    body += `<section class="m-box"><h2>Next meet</h2><a class="mcard" href="${esc(ctx.next.url)}"><div class="mcard-info"><b>${esc(ctx.next.title)}</b><span class="mcard-when">${esc(ctx.next.when)}</span><span class="dim">${esc(ctx.next.place)}</span></div></a></section>`;
+  }
+  body += `<section class="m-box"><h2>The crew</h2>${ctx.members.length
+    ? `<div class="m-grid">${ctx.members.map((m) => `<a href="/@${esc(m.handle)}"><div class="mini">${m.face ? `<img src="${esc(small(m.face, 256))}" alt="" loading="lazy">` : '<span class="emoji" aria-hidden="true">🚗</span>'}</div><b>${esc(memberLabel(m))}</b>${m.name && m.car ? `<span class="dim">${esc(m.car)}</span>` : ''}</a>`).join('')}</div>`
+    : '<p class="dim">Member pages coming soon.</p>'}</section>`;
+  if (k.prospect) {
+    body += `<dialog class="claim" id="claim" aria-labelledby="claimTitle"><form method="dialog" class="claim-x"><button class="link" aria-label="Close">✕</button></form>
+  <h2 id="claimTitle">Make it ${esc(k.name)}’s</h2>
+  <p class="dim">Free. Your email gets a 6-digit code, then the page is yours: it stays up, shows with the other clubs, and you get a link to change it and send each member theirs. No account, no card.</p>
+  <form data-claim="${esc(k.page_slug)}">
+    <div data-step="email"><label for="clEmail">Your email</label><input id="clEmail" type="email" name="email" required maxlength="120" autocomplete="email">
+      <p style="margin-top:12px"><button class="btn go" type="submit">Send my code</button></p></div>
+    <div data-step="code" hidden><label for="clCode">6-digit code</label><input id="clCode" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6">
+      <p style="margin-top:12px"><button class="btn go" type="submit">Make it ours</button> <button class="link" type="button" data-claim-again>Send a new code</button></p></div>
+    <div class="msg" role="status"></div>
+  </form>
+  <p class="small dim">Not for you? Ignore it: it comes down on its own. Want it gone now, or a photo off it? Message <a href="https://instagram.com/" data-owner-ig rel="noopener" target="_blank">us on Instagram</a>.</p>
+</dialog>`;
+  } else {
+    body += `<details class="ask club-admin"><summary>Run this club? Get your editor link</summary>
+  <form data-claim="${esc(k.page_slug)}" data-relink>
+    <div data-step="email"><label for="clEmail">The email the page was claimed with</label><input id="clEmail" type="email" name="email" required maxlength="120" autocomplete="email">
+      <p style="margin-top:12px"><button class="btn" type="submit">Send my code</button></p></div>
+    <div data-step="code" hidden><label for="clCode">6-digit code</label><input id="clCode" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6">
+      <p style="margin-top:12px"><button class="btn go" type="submit">Open the editor</button> <button class="link" type="button" data-claim-again>Send a new code</button></p></div>
+    <div class="msg" role="status"></div>
+  </form></details>`;
+  }
+  body += `</main><footer><div class="wrap">${ctx.ownerIg ? `<div class="social"><a href="https://instagram.com/${esc(ctx.ownerIg)}" rel="noopener">Footage by @${esc(ctx.ownerIg)}</a></div>` : ''}<p><a href="/">${esc(SITE())}</a></p></div></footer>`;
+  if (k.prospect && ctx.ownerIg) body = body.replace('href="https://instagram.com/" data-owner-ig', `href="https://instagram.com/${esc(ctx.ownerIg)}" data-owner-ig`);
+  const img = ctx.origin ? (logo ? ctx.origin + logo : ctx.vid ? `${ctx.origin}/uploads/${ctx.vid.video_poster}` : null) : null;
+  return layout({ title: k.name, description: k.note || `${k.name} and their builds.`, host: look, body, scripts: ['site.js', 'member.js', 'club.js'], noindex: !!k.prospect, image: img });
+}
+/** The club's editor (the key is after the # in the link, so it's never in a request line or a log). */
+function clubEdit(k) {
+  const body = `<main class="wrap member-edit">
+<header class="top"><div><span class="who">${esc(k.name)}</span><div class="city"><a href="/c/${esc(k.page_slug)}" target="_blank" rel="noopener">${esc(SITE_DOMAIN())}/c/${esc(k.page_slug)}</a></div></div></header>
+<div id="clubEditor" data-id="${k.id}"><p class="dim">Loading…</p></div>
+</main>`;
+  return layout({ title: `Edit · ${k.name}`, host: { accent: k.accent }, body, scripts: ['club-edit.js'], noindex: true });
+}
+const SITE_DOMAIN = () => String(process.env.SITE_DOMAIN || 'localhost').toLowerCase();
 
 /** A host with nothing scheduled yet. */
 function hostEmpty(host, ctx) {
@@ -670,4 +740,4 @@ function vendorsPage(site, ctx) {
   return layout({ title: `Vendors · ${SITE()}`, description: `Ask for a vendor spot at a car meet on ${SITE()}.`, body, scripts: ['site.js'] });
 }
 
-module.exports = { forget, landing, meetsPage, membersPage, vendorsPage, small, ver, inlineCss, layout, meetPage, vendorPage, memberPage, memberEdit, hostEmpty, foodPage, orderPage, message, home, privacy };
+module.exports = { forget, landing, meetsPage, membersPage, vendorsPage, small, ver, inlineCss, layout, meetPage, vendorPage, memberPage, memberEdit, clubPage, clubEdit, hostEmpty, foodPage, orderPage, message, home, privacy };

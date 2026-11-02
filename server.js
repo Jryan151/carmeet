@@ -81,6 +81,8 @@ app.post('/hooks/kitchen', express.raw({ type: 'application/json', limit: '20kb'
 // The logo sheet splitter sends up to 16 cut-outs at once (base64): that one route takes up to 20 MB, parsed here
 // before the site-wide 50 KB limit would refuse it.
 app.use('/api/host/logo-read', express.json({ limit: '20mb' }));
+// Screenshots of a club's Instagram for Admin › Prospects (shrunk on the phone first, a few at a time).
+app.use(/^\/api\/host\/prospects\/\d+\/read$/, express.json({ limit: '25mb' }));
 app.use(express.json({ limit: '50kb' }));
 
 /* ---------- which host a request is for: a host's own domain, or the site's ---------- */
@@ -717,7 +719,7 @@ app.get('/members', async (req, res, next) => {
   if (req.own) return next();
   const [site, owner, rows] = await Promise.all([siteRow(), siteOwner(), all(`SELECT m.handle, m.name, m.car, k.name AS club, k.file AS club_logo,
       (SELECT CASE WHEN p.kind = 'video' THEN p.poster ELSE p.file END FROM member_photos p WHERE p.member_id = m.id AND (p.kind = 'photo' OR p.status = 'ready') ORDER BY p.id LIMIT 1) AS face
-    FROM members m LEFT JOIN kit_logos k ON k.id = m.club_id ORDER BY COALESCE(NULLIF(m.name, ''), m.car, m.handle) COLLATE NOCASE`)]);
+    FROM members m LEFT JOIN kit_logos k ON k.id = m.club_id WHERE COALESCE(k.prospect, 0) = 0 ORDER BY COALESCE(NULLIF(m.name, ''), m.car, m.handle) COLLATE NOCASE`)]);
   const groups = [];
   for (const r of rows) { const n = r.club || 'Members'; let g = groups.find((x) => x.name === n); if (!g) groups.push(g = { name: n, logo: r.club_logo, members: [] }); g.members.push(r); }
   groups.sort((a, b) => (a.name === 'Members') - (b.name === 'Members') || b.members.length - a.members.length);
@@ -776,7 +778,36 @@ app.get(/^\/@([a-z0-9-]{3,40})(\/edit)?\/?$/i, async (req, res) => {
   const crew = club ? await all(`SELECT m.handle, m.name, m.car, (SELECT CASE WHEN p.kind = 'video' THEN p.poster ELSE p.file END FROM member_photos p WHERE p.member_id = m.id AND (p.kind = 'photo' OR p.status = 'ready') ORDER BY p.id LIMIT 1) AS face
     FROM members m WHERE m.club_id = ? AND m.id != ? ORDER BY m.updated_at DESC LIMIT 8`, [club.id, m.id]) : [];
   const vid = m.video_status === 'ready' && m.video ? m : host.video && host.video_status === 'ready' ? host : null;
-  res.set('Cache-Control', 'no-cache').type('html').send(V.memberPage(host, m, { photos, club, crew, vid, origin: await publicOrigin(req) }));
+  const unlisted = !!(m.club_id && (await get('SELECT 1 AS x FROM kit_logos WHERE id = ? AND prospect = 1', [m.club_id])));
+  if (unlisted) res.set('X-Robots-Tag', 'noindex');
+  res.set('Cache-Control', 'no-cache').type('html').send(V.memberPage(host, m, { photos, club, crew, vid, origin: await publicOrigin(req), noindex: unlisted }));
+});
+
+/* ---------- a club's own page (/c/<name>), and the editor its link opens ---------- */
+app.get(/^\/c\/([a-z0-9-]{3,40})(\/edit)?\/?$/i, async (req, res) => {
+  const mm = /^\/c\/([a-z0-9-]{3,40})(\/edit)?\/?$/i.exec(req.path);
+  if (req.own || req.vendorSub) return res.redirect(302, `${SCHEME}://${SITE_DOMAIN}${req.originalUrl}`);
+  const k = await get("SELECT * FROM kit_logos WHERE page_slug = ? AND kind = 'group' AND (prospect = 1 OR claimed_at IS NOT NULL)", [mm[1].toLowerCase()]);
+  if (!k) return notFound(req, res, null);
+  if (mm[1] !== k.page_slug) return res.redirect(301, '/c/' + k.page_slug + (mm[2] || ''));
+  if (mm[2]) return res.set({ 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex', 'Referrer-Policy': 'no-referrer' }).type('html').send(V.clubEdit(k));
+  const host = await get('SELECT * FROM hosts WHERE id = ?', [k.host_id]);
+  const members = await all(`SELECT m.handle, m.name, m.car, (SELECT CASE WHEN p.kind = 'video' THEN p.poster ELSE p.file END FROM member_photos p WHERE p.member_id = m.id AND (p.kind = 'photo' OR p.status = 'ready') ORDER BY p.id LIMIT 1) AS face
+    FROM members m WHERE m.club_id = ? ORDER BY m.created_at`, [k.id]);
+  let next = null;
+  if (k.next_meet_id && host) {
+    const nm = await get("SELECT * FROM meets WHERE id = ? AND status = 'on'", [k.next_meet_id]);
+    const tz = tzOf(host);
+    if (nm && U.meetTimes(nm, tz).endsAt > Date.now()) {
+      const t = U.meetTimes(nm, tz);
+      next = { url: N.meetUrl(host, nm), title: nm.title || host.name, when: `${U.dayShort(t.startsAt, tz)} · ${U.time12(t.startsAt, tz)}`, place: nm.place };
+    }
+  }
+  const ready = (x) => x && x.video && x.video_status === 'ready';
+  const vid = ready(k) ? k : ready(host) ? host : null;
+  if (k.prospect) res.set('X-Robots-Tag', 'noindex');
+  const owner = await siteOwner();
+  res.set('Cache-Control', 'no-cache').type('html').send(V.clubPage(k, { vid, members, next, origin: await publicOrigin(req), ownerIg: owner && owner.instagram }));
 });
 
 app.get('/:a', async (req, res, next) => {

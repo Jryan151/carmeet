@@ -186,4 +186,32 @@ async function small(input, dir, size) {
     return name;
   } catch (e) { fs.promises.unlink(tmp).catch(() => {}); return null; }
 }
-module.exports = { receive, process: process_, hevcOf, ffmpegOk, trimLogo, small, TRIMMED, MAX_UPLOAD, SECONDS };
+/**
+ * The colors a logo is made of, most used first: up to 5 hex colors, skipping see-through, near-black, near-white and
+ * gray pixels (the background and outlines, not the brand). Colors close to each other count as one. [] when none.
+ */
+async function colors(input) {
+  if (!ffmpegOk()) return [];
+  const px = await pixels(input);
+  if (!px) return [];
+  const { buf } = px;
+  const bins = new Map();
+  for (let i = 0; i < buf.length; i += 4 * 3) { // every third pixel is plenty
+    const r = buf[i], g = buf[i + 1], b = buf[i + 2], a = buf[i + 3];
+    if (a < 128) continue;
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+    if (mx < 45 || mn > 225 || mx - mn < 28) continue; // black, white, gray
+    const key = (r >> 4) + ',' + (g >> 4) + ',' + (b >> 4);
+    const e = bins.get(key) || { n: 0, r: 0, g: 0, b: 0 };
+    e.n++; e.r += r; e.g += g; e.b += b; bins.set(key, e);
+  }
+  const list = [...bins.values()].sort((x, y) => y.n - x.n).map((e) => [e.r / e.n, e.g / e.n, e.b / e.n].map(Math.round));
+  const out = [];
+  for (const c of list) {
+    if (out.some((o) => Math.abs(o[0] - c[0]) + Math.abs(o[1] - c[1]) + Math.abs(o[2] - c[2]) < 70)) continue;
+    out.push(c);
+    if (out.length >= 5) break;
+  }
+  return out.map((c) => '#' + c.map((v) => v.toString(16).padStart(2, '0')).join(''));
+}
+module.exports = { receive, process: process_, hevcOf, ffmpegOk, trimLogo, small, colors, TRIMMED, MAX_UPLOAD, SECONDS };

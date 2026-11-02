@@ -855,7 +855,8 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     if (k.file) unlinkUpload(k.file);
     // Its profile goes with it: pictures, clip, spots, meet history, old addresses.
     for (const x of await all('SELECT file FROM kit_media WHERE kit_id = ?', [k.id])) unlinkUpload(x.file);
-    unlinkUpload(k.video); unlinkUpload(k.video_poster); unlinkUpload(k.video_hevc);
+    if (!k.footage_id) { unlinkUpload(k.video); unlinkUpload(k.video_poster); unlinkUpload(k.video_hevc); }
+    await run('DELETE FROM club_codes WHERE kit_id = ?', [k.id]);
     for (const t of ['kit_media', 'kit_spots', 'kit_meets', 'kit_old_slugs']) await run(`DELETE FROM ${t} WHERE kit_id = ?`, [k.id]);
     await run('DELETE FROM kit_logos WHERE id = ?', [k.id]);
     await run('DELETE FROM meet_kit_vendors WHERE kit_id = ?', [k.id]);
@@ -1117,6 +1118,8 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
       if (!hv) return;
       const r2 = await run(`UPDATE ${table} SET ${hevcCol} = ? WHERE id = ? AND ${fileCol} = ?`, [hv, id, video]);
       if (!r2.changes) unlinkUpload(hv); // replaced or removed meanwhile
+      // A library clip: the pages using it get the smaller copy too.
+      else if (table === 'footage') for (const t of ['kit_logos', 'members']) await run(`UPDATE ${t} SET video_hevc = ? WHERE footage_id = ? AND video = ?`, [hv, id, video]);
     });
   }
   const tmpDir = path.join(UPLOAD_DIR, 'tmp');
@@ -1142,9 +1145,9 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     enqueue('main', async () => {
       try {
         const out = await V.process(up.file, UPLOAD_DIR);
-        const old = await get(`SELECT video, video_poster, video_hevc FROM ${table} WHERE id = ?`, [id]);
-        await run(`UPDATE ${table} SET video = ?, video_hevc = ?, video_poster = ?, video_status = 'ready', video_error = NULL WHERE id = ?`, [out.video, out.hevc, out.poster, id]);
-        if (old) { unlinkUpload(old.video); unlinkUpload(old.video_poster); unlinkUpload(old.video_hevc); }
+        const old = await get(`SELECT video, video_poster, video_hevc, footage_id FROM ${table} WHERE id = ?`, [id]);
+        await run(`UPDATE ${table} SET video = ?, video_hevc = ?, video_poster = ?, video_status = 'ready', video_error = NULL, footage_id = NULL WHERE id = ?`, [out.video, out.hevc, out.poster, id]);
+        if (old && !old.footage_id) { unlinkUpload(old.video); unlinkUpload(old.video_poster); unlinkUpload(old.video_hevc); } // a library clip stays in the library
         hevcLater(table, id, out.video, 'video', 'video_hevc');
         if (table === 'hosts') refreshLook(id);
         else if (table === 'meets') { const m = await get('SELECT * FROM meets WHERE id = ?', [id]); if (m) sync(await get('SELECT * FROM hosts WHERE id = ?', [m.host_id]), m).catch(() => {}); }
@@ -1155,9 +1158,9 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     });
   }
   async function dropVideo(table, id) {
-    const row = await get(`SELECT video, video_poster, video_hevc FROM ${table} WHERE id = ?`, [id]);
-    if (row) { unlinkUpload(row.video); unlinkUpload(row.video_poster); unlinkUpload(row.video_hevc); }
-    await run(`UPDATE ${table} SET video = NULL, video_hevc = NULL, video_poster = NULL, video_status = NULL, video_error = NULL WHERE id = ?`, [id]);
+    const row = await get(`SELECT video, video_poster, video_hevc, footage_id FROM ${table} WHERE id = ?`, [id]);
+    if (row && !row.footage_id) { unlinkUpload(row.video); unlinkUpload(row.video_poster); unlinkUpload(row.video_hevc); }
+    await run(`UPDATE ${table} SET video = NULL, video_hevc = NULL, video_poster = NULL, video_status = NULL, video_error = NULL, footage_id = NULL WHERE id = ?`, [id]);
   }
   r.post('/video', signedIn, (req, res) => takeVideo(req, res, 'hosts', req.me.id));
   // The portal's own background (only the host sees it, behind their portal).
@@ -1366,7 +1369,8 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
     const m = await get('SELECT * FROM members WHERE id = ? AND host_id = ?', [parseInt(req.params.id, 10) || 0, req.me.id]);
     if (!m) return res.status(404).json({ error: 'That page is gone.' });
     for (const x of await all('SELECT file, poster, hevc FROM member_photos WHERE member_id = ?', [m.id])) { unlinkUpload(x.file); unlinkUpload(x.poster); unlinkUpload(x.hevc); }
-    unlinkUpload(m.video); unlinkUpload(m.video_poster); unlinkUpload(m.video_hevc); unlinkUpload(m.header_file);
+    if (!m.footage_id) { unlinkUpload(m.video); unlinkUpload(m.video_poster); unlinkUpload(m.video_hevc); }
+    unlinkUpload(m.header_file);
     await run('DELETE FROM member_photos WHERE member_id = ?', [m.id]);
     await run('DELETE FROM members WHERE id = ?', [m.id]);
     res.json({ ok: true });
@@ -1442,6 +1446,10 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
   });
   r.post('/members/:id/video', memberOnly, (req, res) => takeVideo(req, res, 'members', req.member.id));
   r.delete('/members/:id/video', memberOnly, async (req, res) => { await dropVideo('members', req.member.id); res.json({ member: await memberShape(await get('SELECT * FROM members WHERE id = ?', [req.member.id])) }); });
+
+  /* ---------- club prospects, the footage library, and the club's own editor (prospects.js) ---------- */
+  require('./prospects')(r, { signedIn, session, limited, rawImage, saveImage, unlinkUpload, takeVideo, dropVideo, videoShape, memberShape,
+    memberOnly, freeSlug, freeHandle, readMember, isOwner, UPLOAD_DIR, tzOf });
 
   return r;
 };
