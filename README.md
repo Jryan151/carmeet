@@ -124,6 +124,34 @@ club). Start one in the portal (Members: name, Instagram, car, club), then "Text
 editor for that one page, no account. A new link turns the old one off. Photos are shrunk on the phone before they're
 sent.
 
+## Club prospects (Admin › Prospects, the site owner only)
+
+Build a club's page before asking them, in about 30 minutes, then send one link. The portal's **Prospects** tab (only
+the site owner sees it) walks through it in order, with a clock:
+
+1. **Screenshots**: their profile and a few posts. The name, a line from the bio and the members with their cars are
+   read from them (AI). Nothing goes on the page until you tick it; a car ending in "?" is a guess from the photo.
+2. **Logo and color**: trimmed like any logo; the colors it's made of come back and the first becomes the page's.
+3. **Details**: name, Instagram, the line, the page address (`/c/<name>`), their next meet.
+4. **Background clip**: picked from the **footage library** (below).
+5. **Members**: two or three is plenty: photos, and a library clip behind each.
+6. **Look it over** on the phone.
+7. **Send it**: the DM (editable, with the link), Copy, and Open their DMs.
+
+Until a club claims it, the page and its member pages are **unlisted** (not on `/members`, `noindex`) and **deleted
+30 days after** it was started, with the member pages and photos ("Keep it 30 more days" pushes that back; "Take it down"
+removes it now). The page has **Make it ours** at the top: an email, a 6-digit code, and it's theirs: listed, kept, and
+they get an **editor link** by email (`/c/<name>/edit`, no account) to change their name, line, color, logo and clip,
+add members and text each one their own link. You get an email when a club claims its page. Lost link: "Run this club?"
+on their page sends a new one, only to the email that claimed it (the old one stops working).
+
+**Footage library**: upload a clip once with a title and tags (club, cars, meet), search by tag, use it behind any club
+or member page. Pages point at the library's files, so taking a clip off a page (or deleting the page) never deletes it;
+a clip can't be deleted while a page uses it.
+
+Reading screenshots needs `ANTHROPIC_API_KEY` in this site's `.env` (the same key Online Kitchen uses works);
+`ANTHROPIC_MODEL` picks the model. Without it, type the details by hand.
+
 ## Meet names and saved locations
 
 Every meet name has its own address at the end of the site's: Fuel Friday at `<domain>/fuel-friday`, a week at
@@ -210,6 +238,6 @@ curl -X POST https://<this domain>/api/host/admin/domain \
 
 ## Files
 
-`server.js` pages, public API, the food side's notices · `host.js` portal API · `kitchen.js` the only code that
+`server.js` pages, public API, the food side's notices · `host.js` portal API · `prospects.js` club prospects, footage library, club editor · `kitchen.js` the only code that
 talks to the food side · `views.js` server-written pages · `mail.js` email with retries · `db.js` SQLite ·
 `public/` styles and page scripts.

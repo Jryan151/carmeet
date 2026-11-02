@@ -101,6 +101,29 @@
   .ed-colors button[aria-pressed="true"] { border-color: var(--ink); }
   .ed-sw { width: 22px; height: 22px; flex: none; border-radius: 6px; border: 2px solid rgba(255, 255, 255, .2); cursor: pointer; padding: 0; }
   .rowx input { min-height: 40px; }
+  /* Admin › Prospects (prospects-admin.js) */
+  .pr-list .rowx .ent-face { width: 44px; height: 44px; }
+  .pr-steps { counter-reset: step; }
+  .pr-steps > .card > h3::before { counter-increment: step; content: counter(step) ". "; color: var(--accent); }
+  .pr-chip { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; border: 1px solid var(--line); color: var(--dim); }
+  .pr-chip.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 50%, transparent); }
+  .pr-chip.warn { color: #f2a33a; border-color: rgba(242, 163, 58, .5); }
+  .pr-shots { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
+  .pr-shots img { width: 64px; height: 110px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); }
+  .pr-found label { display: flex; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); color: var(--ink); margin: 0; }
+  .pr-found input[type=checkbox] { width: 22px; height: 22px; min-height: 0; flex: none; }
+  .pr-found .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; flex: 1; min-width: 0; }
+  .pr-found .fields input { min-height: 38px; font-size: 14px; }
+  .pr-clips { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; margin-top: 8px; }
+  .pr-clips button, .pr-clips figure { margin: 0; padding: 0; border-radius: 10px; border: 1px solid var(--line); background: var(--lot); color: var(--ink); overflow: hidden; text-align: left; font: 500 12px/1.3 var(--body); cursor: pointer; min-width: 0; }
+  .pr-clips img { width: 100%; aspect-ratio: 16 / 10; object-fit: cover; display: block; background: #000; }
+  .pr-clips span { display: block; padding: 6px 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pr-clips button[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+  .pr-clips figure { cursor: default; }
+  .pr-clips figure .bar { padding: 0 8px 8px; margin: 0; }
+  .pr-mem { padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .pr-mem:last-child { border-bottom: 0; }
+  textarea.pr-dm { width: 100%; min-height: 150px; font-size: 14px; }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -135,6 +158,7 @@
       <button role="tab" data-tab="members">Members</button>
       <button role="tab" data-tab="history">History</button>
       <button role="tab" data-tab="settings">Settings</button>
+      <button role="tab" data-tab="prospects" id="tabProspects" hidden>Prospects</button>
     </nav>
     <div id="view"></div>
   </div>
@@ -145,6 +169,7 @@
 <script src="/static/lot-detect.js?v=7" defer></script>
 <script src="/static/lot-editor.js?v=7" defer></script>
 <script src="/static/member-edit.js?v=7" defer></script>
+<script src="/static/prospects-admin.js?v=7" defer></script>
 <script src="/static/portal.js?v=7" defer></script>
 </body>
 </html>

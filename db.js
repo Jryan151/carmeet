@@ -177,7 +177,27 @@ async function ensureSchema() {
   await addColumn('members', 'header_file', 'TEXT');
   // 1: their name stays off the top of the page (more room for the footage).
   await addColumn('members', 'name_off', 'INTEGER NOT NULL DEFAULT 0');
-  for (const t of ['hosts', 'meets', 'site', 'host_portal', 'kit_logos', 'members']) {
+  /* Club prospects (Admin › Prospects, the site owner only): a club's page built before asking them (/c/<page_slug>),
+     unlisted until they claim it. prospect 1 = not claimed yet, gone at expires_at. Claimed: their email, and the
+     key their editor link carries (edit_hash). accent: the page's color, picked from their logo. */
+  await addColumn('kit_logos', 'prospect', 'INTEGER NOT NULL DEFAULT 0');
+  await addColumn('kit_logos', 'accent', 'TEXT');
+  await addColumn('kit_logos', 'expires_at', 'INTEGER');
+  await addColumn('kit_logos', 'claimed_at', 'INTEGER');
+  await addColumn('kit_logos', 'claim_email', 'TEXT');
+  await addColumn('kit_logos', 'edit_hash', 'TEXT');
+  await addColumn('kit_logos', 'next_meet_id', 'INTEGER');
+  // The emailed code that proves a club's email before they claim the page or get a new editor link.
+  await exec(`CREATE TABLE IF NOT EXISTS club_codes (
+    kit_id INTEGER PRIMARY KEY, email TEXT NOT NULL, code_hash TEXT NOT NULL, expires_at INTEGER NOT NULL, tries INTEGER NOT NULL DEFAULT 0, sent_at INTEGER NOT NULL
+  )`);
+  // The footage library: clips filmed once, tagged (club, car, meet), used behind any club or member page. A page
+  // using one points at the same files (footage_id), so removing it from a page never deletes the clip.
+  await exec(`CREATE TABLE IF NOT EXISTS footage (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, host_id INTEGER NOT NULL, title TEXT, tags TEXT, created_at INTEGER NOT NULL
+  )`);
+  for (const t of ['hosts', 'meets', 'site', 'host_portal', 'kit_logos', 'members', 'footage']) await addColumn(t, 'footage_id', 'INTEGER');
+  for (const t of ['hosts', 'meets', 'site', 'host_portal', 'kit_logos', 'members', 'footage']) {
     await addColumn(t, 'video', 'TEXT');
     await addColumn(t, 'video_poster', 'TEXT');
     await addColumn(t, 'video_hevc', 'TEXT'); // the same loop in HEVC (about half the size), when made
