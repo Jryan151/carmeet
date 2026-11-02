@@ -909,7 +909,8 @@ async function tidyAtStart() {
 
 if (require.main === module) {
   D.ensureSchema().then(() => {
-    app.listen(PORT, () => console.log(`Car meet site on port ${PORT} (${SITE_DOMAIN})${K.on() ? '' : ' · food side not connected (KITCHEN_API, MEET_PARTNER_KEY)'}`));
+    // This machine only (Caddy in front does HTTPS): nobody reaches port 4100 from outside. HOST=0.0.0.0 to change it.
+    app.listen(PORT, process.env.HOST || '127.0.0.1', () => console.log(`Car meet site on port ${PORT} (${SITE_DOMAIN})${K.on() ? '' : ' · food side not connected (KITCHEN_API, MEET_PARTNER_KEY)'}`));
     mail.start();
     tidyAtStart().catch((e) => console.error('startup tidy:', e.message));
   }).catch((e) => { console.error('Startup failed:', e); process.exit(1); });
