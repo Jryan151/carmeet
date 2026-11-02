@@ -73,7 +73,7 @@ async function start(opts = {}) {
     const tmp = path.dirname(ctx.dbFile);
     const env2 = Object.assign({}, process.env, { PORT: ctx.port, DB_FILE: ctx.dbFile, UPLOAD_DIR: path.join(tmp, 'uploads'), SITE_DOMAIN: 'meets.test', SITE_NAME: 'Meet Night',
       PUBLIC_SCHEME: 'http', MEET_PARTNER_KEY: H.KEY, RESEND_API_KEY: '', MAIL_FROM: '', DEV_CODES: 'true', NODE_ENV: 'test',
-      ADMIN_TOKEN: 'test-admin-token-0123456789', LINK_SECRET: 'test-link-secret-0123456789abcdef', KITCHEN_API: ctx.kitchenBase }, env);
+      ADMIN_TOKEN: 'test-admin-token-0123456789abcdef0123', LINK_SECRET: 'test-link-secret-0123456789abcdef', KITCHEN_API: ctx.kitchenBase }, env);
     ctx.child = spawn(process.execPath, [path.join(__dirname, '..', '..', '..', 'server.js')], { cwd: tmp, env: env2, stdio: ['ignore', 'pipe', 'pipe'] });
     ctx.child.stdout.on('data', (d) => ctx.log.push(String(d)));
     ctx.child.stderr.on('data', (d) => ctx.log.push(String(d)));

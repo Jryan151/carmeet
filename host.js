@@ -1257,7 +1257,11 @@ module.exports = function hostApi({ trucksFor, truckCache, UPLOAD_DIR, tzOf }) {
   r.post('/admin/domain', async (req, res) => {
     const want = String(process.env.ADMIN_TOKEN || '');
     const given = String(req.get('x-admin-token') || '');
-    if (want.length < 16 || given.length !== want.length || !crypto.timingSafeEqual(Buffer.from(want), Buffer.from(given))) return res.status(404).json({ error: 'Not found.' });
+    // Same rule as Online Kitchen: a short key is guessable, so the admin call stays off under 32 characters, and
+    // wrong keys from one network are cut off after 10 tries in 15 minutes.
+    const net = 'admin:' + (req.ip || '');
+    if (hits.get(net) && hits.get(net).n >= 10 && hits.get(net).reset > Date.now()) return res.status(429).json({ error: 'Too many tries. Wait a few minutes.' });
+    if (want.length < 32 || given.length !== want.length || !crypto.timingSafeEqual(Buffer.from(want), Buffer.from(given))) { limited(net, 1e9, 15 * 60000); return res.status(404).json({ error: 'Not found.' }); }
     const h = await get('SELECT * FROM hosts WHERE slug = ?', [String((req.body || {}).slug || '')]);
     if (!h || !h.custom_domain) return res.status(404).json({ error: 'No host with a domain by that name.' });
     await run('UPDATE hosts SET domain_on = ?, updated_at = ? WHERE id = ?', [(req.body || {}).on === false ? 0 : 1, Date.now(), h.id]);

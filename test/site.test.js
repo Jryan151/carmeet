@@ -194,7 +194,7 @@ test('settings, and a host’s own domain once it’s turned on', async () => {
   assert.match(r.text, /Nothing here|Upcoming meets/, 'not live until turned on');
   r = await request(ctx, 'POST', SITE, '/api/host/admin/domain', { body: { slug: 'tasty-tuesday' }, headers: { 'x-admin-token': 'wrong-wrong-wrong-wrong-xx' } });
   assert.equal(r.status, 404);
-  r = await request(ctx, 'POST', SITE, '/api/host/admin/domain', { body: { slug: 'tasty-tuesday' }, headers: { 'x-admin-token': 'test-admin-token-0123456789' } });
+  r = await request(ctx, 'POST', SITE, '/api/host/admin/domain', { body: { slug: 'tasty-tuesday' }, headers: { 'x-admin-token': 'test-admin-token-0123456789abcdef0123' } });
   assert.equal(r.status, 200);
   r = await request(ctx, 'GET', 'tastytuesday.com', '/');
   assert.match(r.text, /Dunlap lot/);
